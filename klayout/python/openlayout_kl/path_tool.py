@@ -4,7 +4,9 @@
   as its width, starts flush at the edge's midpoint and leaves it perpendicularly - so it continues
   the wire you clicked. Anywhere else the path uses the layer's minimum width.
 - While drawing, the end of the current segment snaps onto the facing edge of another shape on the
-  same layer when the cursor comes close; a path that ends on such an edge stops flush against it.
+  same layer when the cursor comes close; clicking while snapped places the path flush against that
+  edge and finishes it.
+- The preview is drawn with the current layer's colors and fill pattern.
 - Segments are horizontal or vertical only.
 - Click to add points; double-click or Enter to finish; Backspace removes the last point; Esc
   cancels.
@@ -42,6 +44,7 @@ class PathTool(pya.Plugin):
         self.bgn_ext = 0.0
         self.axis = None           # forced direction of the first segment ("h"/"v") when started on an edge
         self.snapped_flags = []    # per point: True if it sits on a target edge (path ends flush there)
+        self.hover = None          # (point, edge) of the last mouse move while drawing
         self.preview = None
         self.edge_marker = None
 
@@ -165,10 +168,14 @@ class PathTool(pya.Plugin):
     def show_preview(self, pts, end_flush=False):
         if self.preview is None:
             self.preview = pya.Marker(self._view)
-            self.preview.color = 0xE8B04B
-            self.preview.frame_color = 0xE8B04B
-            self.preview.dither_pattern = 1
             self.preview.line_width = 1
+            self.preview.vertex_size = 0
+            t = self.target()
+            if t is not None:  # draw the preview in the layer's own texture
+                lp = t[3]
+                self.preview.color = lp.eff_fill_color(True) & 0xFFFFFF
+                self.preview.frame_color = lp.eff_frame_color(True) & 0xFFFFFF
+                self.preview.dither_pattern = lp.eff_dither_pattern(True)
         self.preview.set(self.make_path(pts, end_flush).polygon())
 
     def show_edge(self, edge):
@@ -189,6 +196,7 @@ class PathTool(pya.Plugin):
             self.show_edge(self.pick_edge(p))
             return False
         nxt, edge = self.next_point(p)
+        self.hover = (nxt, edge)
         self.show_edge(edge)
         self.show_preview(self.points + [nxt], end_flush=edge is not None)
         return True
@@ -217,12 +225,15 @@ class PathTool(pya.Plugin):
             self.snapped_flags = [False]
             self.show_edge(None)
             return True
-        nxt, edge = self.next_point(p)
+        if self.hover is not None and self.hover[1] is not None:
+            nxt, edge = self.hover   # click into the snapped position shown in the preview
+        else:
+            nxt, edge = self.next_point(p)
         if nxt != self.points[-1]:
             self.points.append(nxt)
             self.snapped_flags.append(edge is not None)
-            if edge is not None:
-                self.status("Path: reached a shape edge - double-click or Enter to finish here")
+        if edge is not None:
+            self.finish()             # snapped onto a shape: the path is placed
         return True
 
     def mouse_double_click_event(self, p, buttons, prio):
@@ -242,6 +253,7 @@ class PathTool(pya.Plugin):
         elif key == pya.KeyCode.Backspace:
             self.points.pop()
             self.snapped_flags.pop()
+            self.hover = None
             if self.points:
                 self.show_preview(self.points)
             else:

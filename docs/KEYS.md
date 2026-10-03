@@ -39,7 +39,8 @@ xschem also runs in its Cadence-compatibility mode: crosshair cursor, persistent
 **Path (`p`)**: click the edge of an existing shape on the current layer to continue that wire -
 the path takes the edge's length as its width and starts flush at the edge. Elsewhere it uses the
 layer's minimum width (M1-M3 18 nm, M4-M5 24, M6-M7 32, M8-M9 40). While drawing, the segment end snaps onto the facing edge of the next shape on
-the same layer (highlighted in blue), and a path that ends there stops flush against it.
+the same layer (highlighted in blue); clicking while snapped places the path flush against it and
+finishes. The preview is drawn in the layer's own texture.
 Segments are horizontal or
 vertical only; click to add points, double-click or `Enter` to finish, `Backspace` removes the last
 point, `Esc` cancels. Move, stretch and rulers are also restricted to the axes.

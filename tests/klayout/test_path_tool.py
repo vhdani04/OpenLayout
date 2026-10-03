@@ -76,8 +76,12 @@ tool.mouse_click_event(pya.DPoint(0.2005, 0.02), L, True)
 nxt, edge = tool.next_point(pya.DPoint(0.344, 0.03))
 check("end snaps onto the facing edge of the next shape", edge is not None and abs(nxt.x - 0.35) < 1e-9
       and abs(nxt.y - 0.018) < 1e-9, (str(nxt), str(edge)))
+tool.mouse_moved_event(pya.DPoint(0.344, 0.03), 0, True)
+check("preview uses the layer texture", tool.preview is not None and
+      tool.preview.dither_pattern == view.current_layer.current().eff_dither_pattern(True) and
+      tool.preview.dither_pattern != 1, tool.preview.dither_pattern if tool.preview else None)
 tool.mouse_click_event(pya.DPoint(0.344, 0.03), L, True)
-tool.key_event(pya.KeyCode.Return, 0)
+check("clicking while snapped places the path", not tool.points)
 paths = [s for s in cell.shapes(m1).each() if s.is_path()]
 if paths:
     p = paths[0].dpath
