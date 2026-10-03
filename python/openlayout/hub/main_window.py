@@ -35,6 +35,7 @@ class HubAPI:
     ol.new_view(lib, cell, view="schematic")   view: schematic | symbol | layout
     ol.netlist(lib, cell)             netlist the schematic into sim/netlist/
     ol.sim(lib, cell)                 netlist + ngspice batch run in sim/<lib>/<cell>/
+    ol.generate(lib, cell)            generate/update the cell's layout from its schematic (KLayout)
     ol.xschem(tcl)                    send a Tcl command to the running xschem
     ol.klayout(cmd, **args)           send a request to the running KLayout bridge
     ol.wa                             the Workarea object (full Python API)
@@ -78,6 +79,7 @@ class HubAPI:
 
     def netlist(self, lib, cell): self._win.netlist(self._cell(lib, cell))
     def sim(self, lib, cell): self._win.simulate(self._cell(lib, cell))
+    def generate(self, lib, cell): self._win.generate_layout(self._cell(lib, cell))
     def xschem(self, tcl): return self._win.xschem.send(tcl)
     def klayout(self, cmd, **args): return self._win.klayout.request({"cmd": cmd, **args})
 
@@ -87,6 +89,7 @@ class HubAPI:
 
 class MainWindow(QMainWindow):
     logged = Signal(str, str)  # level, message (thread-safe logging)
+    refresh_requested = Signal()  # from worker threads
 
     def __init__(self, workarea: Workarea | None):
         super().__init__()
@@ -114,6 +117,7 @@ class MainWindow(QMainWindow):
         self._build_toolbar()
         self._build_statusbar()
         self.logged.connect(self.ciw.write)
+        self.refresh_requested.connect(self.lm.refresh)
         self.lm.openRequested.connect(self.open_target)
         self.lm.contextRequested.connect(self._context_menu)
         self.lm.selectionChanged.connect(self._update_actions)
@@ -160,6 +164,9 @@ class MainWindow(QMainWindow):
                                    S.SP_FileDialogDetailedView, "Netlist the cell's schematic (xschem)")
         self.a_sim = self._act("Simulate", lambda: self.simulate(self.lm.current_cell()), "F8",
                                S.SP_MediaPlay, "Netlist and simulate the cell in ngspice")
+        self.a_generate = self._act("Generate Layout", lambda: self.generate_layout(self.lm.current_cell()),
+                                    "F9", S.SP_ArrowForward,
+                                    "Generate or update the cell's layout from its schematic (Layout XL style)")
         self.a_drc = self._act("DRC", None, None, S.SP_DialogApplyButton, "Design rule check — coming in Phase 5",
                                enabled=False)
         self.a_lvs = self._act("LVS", None, None, S.SP_DialogYesButton,
@@ -179,7 +186,7 @@ class MainWindow(QMainWindow):
             ("&File", [self.a_new_wa, self.a_open_wa, None, self.a_new_lib, self.a_new_view, None,
                        self.a_refresh, None, self.a_quit]),
             ("&Edit", [self.a_open, None, self.a_copy, self.a_rename, self.a_delete]),
-            ("&Tools", [self.a_netlist, self.a_sim, None, self.a_drc, self.a_lvs, self.a_pex, None,
+            ("&Tools", [self.a_netlist, self.a_sim, self.a_generate, None, self.a_drc, self.a_lvs, self.a_pex, None,
                         self.a_start_xs, self.a_start_kl]),
             ("&View", [self.a_show_pdk]),
             ("&Help", [self.a_keys, self.a_help_cmds, self.a_about]),
@@ -193,7 +200,7 @@ class MainWindow(QMainWindow):
         tb.setObjectName("main_toolbar")
         tb.setMovable(False)
         tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        for a in [self.a_new_view, self.a_open, None, self.a_netlist, self.a_sim, None, self.a_drc, self.a_lvs,
+        for a in [self.a_new_view, self.a_open, None, self.a_netlist, self.a_sim, self.a_generate, None, self.a_drc, self.a_lvs,
                   None, self.a_refresh]:
             tb.addSeparator() if a is None else tb.addAction(a)
 
@@ -256,6 +263,10 @@ class MainWindow(QMainWindow):
             self.ciw.info(f"open {cell.key} {view.name} (requested by a tool)")
             self.open_target(view)
             return {"ok": True, "message": f"opening {cell.key} {view.name}"}
+        if cmd == "generate":
+            self.lm.select(cell.library.name, cell.name)
+            self.generate_layout(cell)
+            return {"ok": True, "message": f"generating layout of {cell.key}"}
         if cmd in ("select", "netlist", "simulate"):
             self.lm.select(cell.library.name, cell.name)
             self.raise_hub()
@@ -507,6 +518,27 @@ class MainWindow(QMainWindow):
 
         self.netlist(cell, then=sim)
 
+    # ---- schematic-driven layout ----------------------------------------------------------------
+    def generate_layout(self, cell):
+        """Layout XL style: create/update <cell>.gds from the schematic inside the KLayout session."""
+        if not cell:
+            return
+        sch = cell.view("schematic")
+        if sch is None or cell.library.readonly:
+            self.ciw.error(f"{cell.key}: needs a schematic in a writable library")
+            return
+        bridge = self.klayout
+        self.ciw.info(f"generate layout {cell.key} from {sch.path.name}" +
+                      ("" if bridge.running else " (starting KLayout…)"))
+
+        def work():
+            bridge.ensure_started()
+            reply = bridge.request({"cmd": "generate", "schematic": str(sch.path)}, timeout=300)
+            self.refresh_requested.emit()
+            return f"generated layout {reply['message']}"
+
+        self._in_thread(bridge, work)
+
     # ---- misc -------------------------------------------------------------------------------
     def _update_actions(self):
         lib, cell, view = self.lm.current_library(), self.lm.current_cell(), self.lm.current_view()
@@ -522,6 +554,7 @@ class MainWindow(QMainWindow):
         self.a_delete.setEnabled(writable_cell)
         self.a_netlist.setEnabled(has_sch and idle)
         self.a_sim.setEnabled(has_sch and idle)
+        self.a_generate.setEnabled(has_sch and writable_cell)
         self.a_start_xs.setEnabled(has_wa)
         self.a_start_kl.setEnabled(has_wa)
 
@@ -534,7 +567,7 @@ class MainWindow(QMainWindow):
             m.addSeparator()
             m.addActions([self.a_copy, self.a_rename, self.a_delete])
             m.addSeparator()
-            m.addActions([self.a_netlist, self.a_sim, self.a_drc, self.a_lvs])
+            m.addActions([self.a_netlist, self.a_sim, self.a_generate, self.a_drc, self.a_lvs])
         elif kind == "view" and self.lm.current_view():
             m.addActions([self.a_open, self.a_delete])
         if not m.isEmpty():

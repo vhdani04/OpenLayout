@@ -50,6 +50,25 @@ Cross-tool menus call `openlayout hubcmd`, which talks to the hub over localhost
 `OPENLAYOUT_KEYS=xschem|klayout` keeps a tool's own bindings; `OPENLAYOUT_UI=0` disables the
 KLayout additions.
 
+## Schematic-driven layout (Layout XL style)
+
+**Generate Layout** (hub F9, xschem or KLayout *OpenLayout* menu) netlists a cell's schematic and
+creates or updates `<cell>.gds`:
+
+- FinFETs become **OpenLayout_ASAP7** `nmos`/`pmos` PCells (vt, nfin, nf from the schematic; `m`
+  copies). The PCells follow the ASAP7 std-cell geometry: 54 nm gate pitch with dummy gates, fins
+  on the 27 nm grid, SDT/LISD source/drain contacts, a LIG strap joining the gate fingers, GCUT,
+  implant and VT layers. A `via` PCell covers LISD/LIG-M1 and M1-M9 stacks.
+- Standard cells become instances of the ASAP7 std-cell libraries; other subcircuits are copied from
+  their own layout view.
+- Schematic ports become M1 pins.
+- The link to the schematic is stored in `<cell>.ol.json`; every instance carries its schematic name
+  (GDS property), so placement and routing survive **Update from Schematic** (parameter changes are
+  applied in place, new parts land in a staging row, removed parts are reported, never deleted).
+
+The **Connectivity** panel then shows which nets are open (flight lines), shorted or complete, and
+re-checks as you edit.
+
 ## Using it
 
     openlayout new-workarea ~/designs/cpu8      # libs.def, xschemrc, sim/, libraries/cpu8

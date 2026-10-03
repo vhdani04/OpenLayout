@@ -82,23 +82,57 @@ def line_style(name):
     return line_idx[name], size
 
 
+def packet(layer, purpose):
+    """(stipple, line style, fill color, outline color, fill style) from display.drf (or fallback)."""
+    key = f"{ALIASES.get(layer.lower(), layer)}_{PURPOSE_ABBR[purpose]}".lower()
+    if key in packets:
+        st, ls, fill, outline, *rest = packets[key]
+        return st, ls, fill, outline, rest[0] if rest else "outlineStipple"
+    fill, outline, st, fill_style = FALLBACK.get(layer.lower(), ("gray", "gray", "blank", "outline"))
+    return st, "solid", fill, outline, fill_style
+
+
+# OpenLayout display classes on top of the Virtuoso packets (ASAP7 DRM layer tables):
+#   cut / marker layers -> dashed outline   (gate cut, dummy-gate/diffusion-break marker, boundaries)
+#   implant / VT masks  -> solid outline    (they mark regions, they are not material)
+#   vias                -> solid fill
+#   pins                -> the drawing layer's color, hollow with an X spanning the shape
+#   everything else (fin, active, gate, SDT, LIG, LISD, metals) keeps its stippled fill.
+OUTLINE_DASHED = {"gcut", "dummy", "boundary", "sramdrc"}
+OUTLINE_SOLID = {"well", "nselect", "pselect", "slvt", "lvt", "sramvt", "text"}
+SOLID_FILL = {f"v{i}" for i in range(10)}
+
+
 def make_props(layer, purpose, gds_l, gds_d):
     lp = pya.LayerPropertiesNode()
     lp.name = f"{layer} {purpose}"
     lp.source = f"{gds_l}/{gds_d}"
-    key = f"{ALIASES.get(layer.lower(), layer)}_{PURPOSE_ABBR[purpose]}".lower()
-    if key in packets:
-        st, ls, fill, outline, *rest = packets[key]
-        fill_style = rest[0] if rest else "outlineStipple"
-    else:
-        fill, outline, st, fill_style = FALLBACK.get(layer.lower(), ("gray", "gray", "blank", "outline"))
-        ls = "solid"
+    st, ls, fill, outline, fill_style = packet(layer, purpose)
     lp.fill_color = colors.get(fill, 0x808080)
     lp.frame_color = colors.get(outline, 0x808080)
     lp.dither_pattern = {"solid": 0, "outline": 1, "X": 1}.get(fill_style, stipple(st))
     lp.xfill = fill_style == "X"
     lp.line_style, lp.width = line_style(ls)
     lp.transparent = False
+    name = layer.lower()
+    if purpose == "drawing" and name in OUTLINE_DASHED | OUTLINE_SOLID:
+        lp.dither_pattern = 1
+        lp.xfill = False
+        lp.line_style, _ = line_style("dashed" if name in OUTLINE_DASHED else "solid")
+        lp.width = 2 if name in OUTLINE_DASHED else 1
+    elif purpose == "drawing" and name in SOLID_FILL:
+        lp.dither_pattern = 0
+        lp.fill_color = lp.frame_color
+        lp.xfill = False
+    elif purpose == "pin":
+        has_drawing = f"{ALIASES.get(name, layer)}_drg".lower() in packets
+        if has_drawing:
+            _, _, dfill, doutline, _ = packet(layer, "drawing")
+            lp.fill_color = colors.get(dfill, lp.fill_color)
+            lp.frame_color = colors.get(dfill, lp.frame_color)
+        lp.dither_pattern = 1
+        lp.xfill = True
+        lp.line_style, lp.width = 0, 1
     return lp
 
 

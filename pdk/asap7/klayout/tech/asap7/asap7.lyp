@@ -6,7 +6,7 @@
   <fill-color>#ffff00</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>C0</dither-pattern>
+  <dither-pattern>I1</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
@@ -65,7 +65,7 @@
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
-  <width>3</width>
+  <width>1</width>
   <marked>false</marked>
   <xfill>false</xfill>
   <animation>0</animation>
@@ -83,7 +83,7 @@
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
-  <width>3</width>
+  <width>1</width>
   <marked>false</marked>
   <xfill>false</xfill>
   <animation>0</animation>
@@ -101,7 +101,7 @@
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
-  <width>3</width>
+  <width>1</width>
   <marked>false</marked>
   <xfill>false</xfill>
   <animation>0</animation>
@@ -119,7 +119,7 @@
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
-  <width>3</width>
+  <width>1</width>
   <marked>false</marked>
   <xfill>false</xfill>
   <animation>0</animation>
@@ -169,11 +169,11 @@
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
   <dither-pattern>I1</dither-pattern>
-  <line-style>I0</line-style>
+  <line-style>C0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
-  <width>3</width>
+  <width>2</width>
   <marked>false</marked>
   <xfill>false</xfill>
   <animation>0</animation>
@@ -186,12 +186,12 @@
   <fill-color>#ff0000</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>C2</dither-pattern>
-  <line-style>I0</line-style>
+  <dither-pattern>I1</dither-pattern>
+  <line-style>C0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
-  <width>1</width>
+  <width>2</width>
   <marked>false</marked>
   <xfill>false</xfill>
   <animation>0</animation>
@@ -258,14 +258,14 @@
   <fill-color>#ff00ff</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V0 drawing</name>
   <source>18/0@1</source>
@@ -294,14 +294,14 @@
   <fill-color>#ff8000</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V1 drawing</name>
   <source>21/0@1</source>
@@ -330,14 +330,14 @@
   <fill-color>#d9e6ff</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V2 drawing</name>
   <source>25/0@1</source>
@@ -366,14 +366,14 @@
   <fill-color>#ffffcc</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V3 drawing</name>
   <source>35/0@1</source>
@@ -402,14 +402,14 @@
   <fill-color>#5e00e6</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V4 drawing</name>
   <source>45/0@1</source>
@@ -438,14 +438,14 @@
   <fill-color>#00cc66</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V5 drawing</name>
   <source>55/0@1</source>
@@ -474,14 +474,14 @@
   <fill-color>#00ffff</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V6 drawing</name>
   <source>65/0@1</source>
@@ -510,14 +510,14 @@
   <fill-color>#ffffff</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V7 drawing</name>
   <source>75/0@1</source>
@@ -546,14 +546,14 @@
   <fill-color>#bf4026</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V8 drawing</name>
   <source>85/0@1</source>
@@ -579,17 +579,17 @@
  <properties>
   <expanded>false</expanded>
   <frame-color>#00ff00</frame-color>
-  <fill-color>#ffffff</fill-color>
+  <fill-color>#00ff00</fill-color>
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
-  <dither-pattern>I1</dither-pattern>
+  <dither-pattern>I0</dither-pattern>
   <line-style>I0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
   <width>1</width>
   <marked>false</marked>
-  <xfill>true</xfill>
+  <xfill>false</xfill>
   <animation>0</animation>
   <name>V9 drawing</name>
   <source>95/0@1</source>
@@ -601,11 +601,11 @@
   <frame-brightness>0</frame-brightness>
   <fill-brightness>0</fill-brightness>
   <dither-pattern>I1</dither-pattern>
-  <line-style>I0</line-style>
+  <line-style>C0</line-style>
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
-  <width>3</width>
+  <width>2</width>
   <marked>false</marked>
   <xfill>false</xfill>
   <animation>0</animation>
@@ -623,7 +623,7 @@
   <valid>true</valid>
   <visible>true</visible>
   <transparent>false</transparent>
-  <width>1</width>
+  <width>2</width>
   <marked>false</marked>
   <xfill>false</xfill>
   <animation>0</animation>
@@ -678,15 +678,15 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>well pin</name>
    <source>1/251@1</source>
   </group-members>
   <group-members>
    <expanded>false</expanded>
-   <frame-color>#ccccd9</frame-color>
-   <fill-color>#ccccd9</fill-color>
+   <frame-color>#ffbff2</frame-color>
+   <fill-color>#ffbff2</fill-color>
    <frame-brightness>0</frame-brightness>
    <fill-brightness>0</fill-brightness>
    <dither-pattern>I1</dither-pattern>
@@ -696,7 +696,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>P_SUB pin</name>
    <source>3/251@1</source>
@@ -707,14 +707,14 @@
    <fill-color>#ff0000</fill-color>
    <frame-brightness>0</frame-brightness>
    <fill-brightness>0</fill-brightness>
-   <dither-pattern>C2</dither-pattern>
+   <dither-pattern>I1</dither-pattern>
    <line-style>I0</line-style>
    <valid>true</valid>
    <visible>true</visible>
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>Gate pin</name>
    <source>7/251@1</source>
@@ -732,7 +732,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>LISD pin</name>
    <source>17/251@1</source>
@@ -750,7 +750,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>LIG pin</name>
    <source>16/251@1</source>
@@ -768,7 +768,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>M1 pin</name>
    <source>19/251@1</source>
@@ -786,7 +786,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>M2 pin</name>
    <source>20/251@1</source>
@@ -804,7 +804,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>M3 pin</name>
    <source>30/251@1</source>
@@ -822,7 +822,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>M4 pin</name>
    <source>40/251@1</source>
@@ -840,7 +840,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>M5 pin</name>
    <source>50/251@1</source>
@@ -858,7 +858,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>M6 pin</name>
    <source>60/251@1</source>
@@ -876,7 +876,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>M7 pin</name>
    <source>70/251@1</source>
@@ -894,7 +894,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>M8 pin</name>
    <source>80/251@1</source>
@@ -912,7 +912,7 @@
    <transparent>false</transparent>
    <width>1</width>
    <marked>false</marked>
-   <xfill>false</xfill>
+   <xfill>true</xfill>
    <animation>0</animation>
    <name>M9 pin</name>
    <source>90/251@1</source>

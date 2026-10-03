@@ -48,6 +48,15 @@ class OpenLayoutBridge:
             return self.open(req["file"], req.get("cell"), bool(req.get("readonly")))
         if cmd == "status":
             return {"ok": True, "views": self.status()}
+        if cmd == "generate":  # {"schematic": path} - Layout XL style generate/update from source
+            from openlayout_kl import gui
+            report = gui.instance.generate_for(req["schematic"])
+            return {"ok": True, "report": report, "message": gui.OpenLayoutUI.describe(report)}
+        if cmd == "connectivity":  # summary of the Connectivity panel's last check
+            from openlayout_kl import connectivity, gui
+            gui.instance.nets.run_check(force=True)
+            res = gui.instance.nets.result
+            return {"ok": True, "summary": connectivity.summary(res) if res else None}
         if cmd == "screenshot":  # {"file": ..., "width": w, "height": h} - whole main window
             mw = pya.Application.instance().main_window()
             if req.get("width") and req.get("height"):

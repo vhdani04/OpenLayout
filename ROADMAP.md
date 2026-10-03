@@ -37,6 +37,14 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] Cross-tool navigation schematic <-> layout <-> Library Manager via the hub
 - [ ] Net-level cross-probing (select a net in one tool, highlight in the other) — needs LVS, Phase 6
 
+## Phase 4b — Layout XL features (from first review)
+- [x] Display classes: cut/marker layers dashed outlines, implants outlines, vias solid, pins = drawing color + X
+- [x] Single LSW (right) with All / Used tabs; NV keeps the current layer; dotted grid
+- [x] Path tool: width from the clicked edge, Manhattan only; rulers/move/stretch on the axes
+- [x] FinFET (nmos/pmos) and via PCells (OpenLayout_ASAP7)
+- [x] Generate / Update Layout from Schematic with a persistent schematic link
+- [x] Connectivity panel: open nets with flight lines, shorts, missing/extra parts (live re-check)
+
 ## Phase 5 — DRC   <- NEXT
 - [ ] KLayout DRC deck written from the ASAP7 DRM, rule by rule, with pass/fail test layouts
 - [ ] Regression: all std-cell GDS must be DRC-clean
@@ -48,7 +56,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [ ] Parasitic extraction -> post-layout ngspice simulation
 
 ## Phase 7 — Custom cell library
-- [ ] Device PCells (nfin, fingers, contacts)
+- [x] Device PCells (nfin, fingers, contacts) — done in Phase 4b; DRC-verify in Phase 5
 - [ ] INV, NAND2, NOR2, XOR, MUX2, latch, DFF — each: sch -> sim -> layout -> DRC -> LVS -> PEX sim
 - [ ] Characterize (delay/power) with ngspice
 

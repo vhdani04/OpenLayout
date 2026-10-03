@@ -25,6 +25,7 @@ LIB_META = "openlayout.lib.json"
 STATE_DIR = ".openlayout"
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 SCRIPTS = Path(__file__).resolve().parent / "klayout_scripts"
+LINK_SUFFIX = ".ol.json"  # schematic link written by schematic-driven layout generation
 
 
 class WorkareaError(Exception):
@@ -280,6 +281,9 @@ class Workarea:
             shutil.copy2(v.path, target)
             if v.type is LAYOUT and cell.name != dst_name:
                 run_klayout_script("rename_cell.py", file=target, cell=cell.name, new_name=dst_name)
+        link = cell.path / f"{cell.name}{LINK_SUFFIX}"
+        if link.is_file():
+            shutil.copy2(link, dst.path / f"{dst_name}{LINK_SUFFIX}")
         return dst
 
     def rename_cell(self, cell: Cell, new_name: str) -> Cell:
@@ -296,6 +300,9 @@ class Workarea:
             old_file.rename(new_file)
             if v.type is LAYOUT:
                 run_klayout_script("rename_cell.py", file=new_file, cell=cell.name, new_name=new_name)
+        link = new.path / f"{cell.name}{LINK_SUFFIX}"
+        if link.is_file():
+            link.rename(new.path / f"{new_name}{LINK_SUFFIX}")
         return new
 
     def delete(self, target: Cell | View) -> Path:
