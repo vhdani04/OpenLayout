@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Reproducible install of the ASAP7 open flow.
+#   setup/install.sh [all|deps|tools|pdk|models|shell]   (default: all; every step is idempotent)
+set -euo pipefail
+FLOW="$(cd "$(dirname "$0")/.." && pwd)"
+source "$FLOW/setup/versions.env"
+source "$FLOW/env/eda.sh"
+SRC="$EDA_ROOT/src"
+JOBS=$(nproc)
+mkdir -p "$SRC" "$PDK_ROOT" "$EDA_MODELS"
+
+step() { echo; echo "==== $* ($(date +%T))"; }
+have_version() { command -v "$1" >/dev/null && "$1" "${@:3}" 2>&1 | grep -q "$2"; }
+
+do_deps() {
+  step "apt dependencies"
+  sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+    build-essential git curl wget pkg-config autoconf automake libtool flex bison gawk m4 \
+    cmake ninja-build python3 python3-pip python3-venv python3-dev \
+    libx11-dev libxrender-dev libxpm-dev libxcb1-dev libx11-xcb-dev libcairo2-dev libjpeg-dev \
+    tcl-dev tk-dev tcl8.6-dev tk8.6-dev tcllib libxaw7-dev libreadline-dev libfftw3-dev \
+    libgomp1 libncurses-dev xterm gedit > /dev/null
+}
+
+do_tools() {
+  cd "$SRC"
+  step "KLayout $KLAYOUT_VERSION"
+  if have_version klayout "KLayout $KLAYOUT_VERSION" -v; then echo "already installed"; else
+    deb="klayout_${KLAYOUT_VERSION}-1_amd64.deb"
+    wget -q -N "https://www.klayout.org/downloads/Ubuntu-24/$deb"
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "./$deb" > /dev/null
+  fi
+
+  step "OpenVAF-reloaded ($OPENVAF_BUILD)"
+  if [ -f "/usr/local/share/openvaf-r.build" ] && grep -qx "$OPENVAF_BUILD" /usr/local/share/openvaf-r.build; then
+    echo "already installed"
+  else
+    wget -q -N "https://fides.fe.uni-lj.si/openvaf/download/$OPENVAF_BUILD-linux_x64.tar.gz"
+    rm -rf openvaf && mkdir openvaf && tar -xzf "$OPENVAF_BUILD-linux_x64.tar.gz" -C openvaf
+    sudo install -m 755 "$(find openvaf -type f -name 'openvaf*' -perm -u+x | head -1)" /usr/local/bin/openvaf-r
+    echo "$OPENVAF_BUILD" | sudo tee /usr/local/share/openvaf-r.build > /dev/null
+  fi
+
+  step "ngspice $NGSPICE_VERSION (with OSDI)"
+  if have_version ngspice "ngspice-$NGSPICE_VERSION" -v; then echo "already installed"; else
+    wget -q -O "ngspice-$NGSPICE_VERSION.tar.gz" \
+      "https://sourceforge.net/projects/ngspice/files/ng-spice-rework/$NGSPICE_VERSION/ngspice-$NGSPICE_VERSION.tar.gz/download"
+    rm -rf "ngspice-$NGSPICE_VERSION" && tar -xzf "ngspice-$NGSPICE_VERSION.tar.gz"
+    mkdir -p "ngspice-$NGSPICE_VERSION/release" && cd "ngspice-$NGSPICE_VERSION/release"
+    ../configure --prefix=/usr/local --with-x --enable-xspice --enable-cider --enable-osdi \
+      --enable-openmp --enable-predictor --with-readline=yes --disable-debug CFLAGS="-O2" > configure.log
+    make -j"$JOBS" > make.log 2>&1 && sudo make install > install.log
+    cd "$SRC"
+  fi
+
+  step "xschem @ $XSCHEM_REF"
+  [ -d xschem ] || git clone -q https://github.com/StefanSchippers/xschem.git
+  if [ "$(git -C xschem rev-parse --short HEAD)" = "$XSCHEM_REF" ] && command -v xschem >/dev/null; then
+    echo "already installed"
+  else
+    git -C xschem fetch -q && git -C xschem checkout -q "$XSCHEM_REF"
+    (cd xschem && ./configure --prefix=/usr/local > configure.log && make -j"$JOBS" > make.log 2>&1 \
+      && sudo make install > install.log)
+  fi
+}
+
+do_pdk() {
+  step "ASAP7 PDK + 7.5T standard cells"
+  cd "$PDK_ROOT"
+  [ -d asap7/.git ] || git clone -q --depth 1 https://github.com/The-OpenROAD-Project/asap7.git
+  cd asap7
+  for sm in asap7_pdk_r1p7 asap7sc7p5t_28; do
+    if [ -n "$(ls -A "$sm" 2>/dev/null)" ]; then echo "$sm present"; else
+      git submodule update --init --depth 1 "$sm"
+    fi
+  done
+}
+
+do_models() {
+  step "BSIM-CMG OSDI model + ASAP7 ngspice cards"
+  local d="$EDA_MODELS/bsimcmg"
+  mkdir -p "$d"
+  local base="https://raw.githubusercontent.com/$BSIMCMG_REPO/$BSIMCMG_REF/integration_tests/BSIMCMG"
+  for f in LICENSE.txt NOTICE.txt bsimcmg.va bsimcmg_body.include bsimcmg_checking.include \
+           bsimcmg_initialization.include bsimcmg_macros.include bsimcmg_noise.include \
+           bsimcmg_parameters.include bsimcmg_variables.include; do
+    [ -f "$d/$f" ] || curl -sfL -o "$d/$f" "$base/$f"
+  done
+  [ "$d/bsimcmg.osdi" -nt "$d/bsimcmg.va" ] || (cd "$d" && openvaf-r bsimcmg.va -o bsimcmg.osdi)
+  python3 "$FLOW/pdk/asap7/ngspice/convert_asap7_models.py" "$ASAP7_PDK/models/hspice" "$ASAP7_SPICE_DIR"
+}
+
+do_shell() {
+  step "shell + ngspice init"
+  local line="source \"$EDA_FLOW/env/eda.sh\""
+  grep -qxF "$line" ~/.bashrc || printf '\n# ASAP7 open flow\n%s\n' "$line" >> ~/.bashrc
+  # ngspice reads ~/.spiceinit at startup: load BSIM-CMG and make the ASAP7 cards findable.
+  local begin="* >>> eda-flow (managed by $EDA_FLOW/setup/install.sh) >>>" end="* <<< eda-flow <<<"
+  touch ~/.spiceinit
+  sed -i "/^\* >>> eda-flow/,/^\* <<< eda-flow/d" ~/.spiceinit
+  cat >> ~/.spiceinit <<EOS
+$begin
+osdi $BSIMCMG_OSDI
+set sourcepath = ( . $ASAP7_SPICE_DIR )
+set num_threads = $JOBS
+$end
+EOS
+}
+
+case "${1:-all}" in
+  all)    do_deps; do_tools; do_pdk; do_models; do_shell ;;
+  deps)   do_deps ;;
+  tools)  do_tools ;;
+  pdk)    do_pdk ;;
+  models) do_models ;;
+  shell)  do_shell ;;
+  *) echo "usage: $0 [all|deps|tools|pdk|models|shell]"; exit 1 ;;
+esac
+step "done"

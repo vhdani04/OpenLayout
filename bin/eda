@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# eda — single entry point for the ASAP7 open flow.
+set -euo pipefail
+source "$(dirname "$(readlink -f "$0")")/../env/eda.sh"
+
+usage() {
+  cat <<U
+usage: eda <command> [args]
+
+  new-workarea <dir> [lib]  create a design workarea (libs.def, xschemrc, sim/, libraries/<lib>)
+  new-lib <name>            create a design library in the current workarea
+  libs                      list libraries visible from the current workarea
+  xschem [args]             start xschem in the current workarea
+  klayout [args]            start KLayout with the flow's environment
+  sim <netlist.sp>          run ngspice in batch mode (BSIM-CMG + ASAP7 cards preloaded)
+  doctor                    check tools, PDK, models and run the smoke tests
+  env                       print the flow environment
+U
+}
+
+# Nearest directory at or above $PWD containing libs.def.
+find_workarea() {
+  local d="$PWD"
+  while [ "$d" != / ]; do [ -f "$d/libs.def" ] && { echo "$d"; return 0; }; d="$(dirname "$d")"; done
+  return 1
+}
+
+require_workarea() {
+  find_workarea || { echo "eda: not inside a workarea (no libs.def found). Use 'eda new-workarea <dir>'." >&2; exit 1; }
+}
+
+# Print "name<TAB>path" for each library in libs.def, following INCLUDE lines.
+list_libs() {
+  local file="$1" dir line kw a b
+  dir="$(dirname "$file")"
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    read -r kw a b <<< "$line" || true
+    case "$kw" in
+      DEFINE)  b="$(eval echo "$b")"; [[ "$b" = /* ]] || b="$dir/$b"; printf '%s\t%s\n' "$a" "$(readlink -m "$b")" ;;
+      INCLUDE) a="$(eval echo "$a")"; [[ "$a" = /* ]] || a="$dir/$a"; [ -f "$a" ] && list_libs "$a" ;;
+    esac
+  done < "$file"
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  new-workarea)
+    [ $# -ge 1 ] || { usage; exit 1; }
+    wa="$(readlink -m "$1")"; lib="${2:-$(basename "$wa")}"
+    [ -e "$wa/libs.def" ] && { echo "eda: $wa is already a workarea" >&2; exit 1; }
+    mkdir -p "$wa"
+    cp -r "$EDA_FLOW/templates/workarea/." "$wa/"
+    (cd "$wa" && "$0" new-lib "$lib")
+    echo "Created workarea $wa with library '$lib'"
+    ;;
+  new-lib)
+    [ $# -eq 1 ] || { usage; exit 1; }
+    wa="$(require_workarea)"; name="$1"
+    [[ "$name" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]] || { echo "eda: invalid library name '$name'" >&2; exit 1; }
+    list_libs "$wa/libs.def" | cut -f1 | grep -qx "$name" && { echo "eda: library '$name' already defined" >&2; exit 1; }
+    mkdir -p "$wa/libraries/$name"
+    printf 'DEFINE %-16s libraries/%s\n' "$name" "$name" >> "$wa/libs.def"
+    echo "Created library '$name' in $wa/libraries/$name"
+    ;;
+  libs)
+    wa="$(require_workarea)"
+    list_libs "$wa/libs.def" | while IFS=$'\t' read -r n p; do
+      printf '%-18s %s%s\n' "$n" "$p" "$([ -d "$p" ] || echo '  (missing)')"
+    done
+    ;;
+  xschem)
+    wa="$(require_workarea)"; cd "$wa"; exec xschem "$@" ;;
+  klayout)
+    exec klayout "$@" ;;
+  sim)
+    [ $# -ge 1 ] || { usage; exit 1; }
+    exec ngspice -b "$@" ;;
+  doctor)
+    ok=1
+    chk() { if eval "$2" >/dev/null 2>&1; then printf '  [ok]   %s\n' "$1"; else printf '  [FAIL] %s\n' "$1"; ok=0; fi; }
+    echo "Tools:"
+    echo "  klayout  $(klayout -v 2>/dev/null)"
+    echo "  ngspice  $(ngspice -v 2>/dev/null | grep -o 'ngspice-[0-9]*' | head -1)"
+    echo "  xschem   $(git -C "$EDA_ROOT/src/xschem" rev-parse --short HEAD 2>/dev/null)"
+    echo "  openvaf  $(cat /usr/local/share/openvaf-r.build 2>/dev/null)"
+    echo "PDK & models:"
+    chk "ASAP7 PDK"              "[ -d '$ASAP7_PDK/models' ]"
+    chk "ASAP7 7.5T std cells"   "[ -n \"\$(ls -A '$ASAP7_STDCELLS')\" ]"
+    chk "BSIM-CMG OSDI"          "[ -f '$BSIMCMG_OSDI' ]"
+    chk "ASAP7 corner lib"       "[ -f '$ASAP7_SPICE_DIR/asap7.lib' ]"
+    chk "~/.spiceinit loads OSDI" "grep -q '^osdi $BSIMCMG_OSDI' ~/.spiceinit"
+    echo "Smoke tests:"
+    for t in "$EDA_FLOW"/tests/sim/*.sp; do
+      out="$(cd "$(dirname "$t")" && ngspice -b "$t" 2>&1 || true)"
+      if grep -q "^PASS" <<< "$out"; then printf '  [ok]   %s\n' "$(basename "$t")"
+      else printf '  [FAIL] %s\n' "$(basename "$t")"; grep -E "FAIL|rror" <<< "$out" | head -3 | sed 's/^/         /'; ok=0; fi
+    done
+    [ $ok = 1 ] && echo "All good." || { echo "Problems found."; exit 1; }
+    ;;
+  env)
+    env | grep -E '^(EDA_|PDK|ASAP7_|BSIMCMG_)' | sort ;;
+  help|-h|--help) usage ;;
+  *) echo "eda: unknown command '$cmd'" >&2; usage; exit 1 ;;
+esac
