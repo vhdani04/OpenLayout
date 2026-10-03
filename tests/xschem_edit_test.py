@@ -66,4 +66,26 @@ check("symbol pin dialog adds a named pin", reply == f"{before + 1} A", reply)
 reply = send("ol_key_l .drw 300 300; set s [xschem get ui_state]; " + ESC + "; expr {($s & 65540) != 0}")
 check("l starts a line in the symbol editor", reply == "1", reply)
 
+# After drawing a line (persistent mode keeps it active), choosing the toolbar circle must not keep
+# drawing lines. Real X events (pointer warp + button press/release) go through Tk like the mouse.
+def click(x, y):
+    return (f"event generate .drw <Motion> -x {x} -y {y} -warp 1; update; after 50; "
+            f"event generate .drw <ButtonPress-1> -x {x} -y {y}; update; "
+            f"event generate .drw <ButtonRelease-1> -x {x} -y {y}; update; after 50")
+
+
+def move(x, y):
+    return f"event generate .drw <Motion> -x {x} -y {y} -warp 1; update; after 50"
+
+
+send("wm geometry . 1000x700+0+0; update; focus -force .drw; update")
+lines_before = int(send("xschem get lines 4") or 0)
+send("ol_key_l .drw 300 300; " + click(300, 300) + "; " + move(400, 380) + "; " + click(400, 380))
+top = send("xschem get top_path")
+send(f"{top}.toolbar.bToolInsertCircle invoke; " + click(600, 300) + "; " + move(650, 300) + "; "
+     + click(650, 300) + "; xschem abort_operation; xschem abort_operation")
+lines_after = int(send("xschem get lines 4") or 0)
+check("toolbar circle after a line does not keep drawing lines", lines_after == lines_before + 1,
+      f"lines {lines_before} -> {lines_after}")
+
 print("PASS xschem edit" if not failures else f"FAIL xschem edit: {', '.join(failures)}")

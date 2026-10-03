@@ -248,6 +248,48 @@ proc ol_place_pins {names dir px py} {
   set ::infix_interface $infix
 }
 
+# ---- drawing tools vs. persistent commands ----------------------------------------------------
+# With persistent commands on, xschem restarts the last line/wire on every click *before* looking at
+# a newly chosen tool - picking circle/arc/rectangle after drawing a line kept drawing lines. Every
+# tool entry point (toolbar, menus, keys) first ends the persistent command.
+proc ol_end_persistent {} {
+  # 1st call ends a line/wire in progress, 2nd clears the remembered command
+  catch {xschem abort_operation}
+  catch {xschem abort_operation}
+}
+
+proc ol_tool {args} {
+  ol_end_persistent
+  xschem {*}$args
+}
+
+proc ol_wrap_menu {m re} {
+  if {![winfo exists $m] || [catch {$m index end} last] || $last eq "none"} { return }
+  for {set i 0} {$i <= $last} {incr i} {
+    switch -- [$m type $i] {
+      cascade { ol_wrap_menu [$m entrycget $i -menu] $re }
+      command {
+        if {[regexp $re [$m entrycget $i -command] -> tool]} {
+          $m entryconfigure $i -command [list ol_tool $tool]
+        }
+      }
+    }
+  }
+}
+
+proc ol_wrap_tool_commands {} {
+  set re {^\s*xschem\s+(line|rect|polygon|arc|circle|place_text)\s*$}
+  set top [xschem get top_path]
+  if {[winfo exists $top.toolbar]} {
+    foreach b [winfo children $top.toolbar] {
+      if {![catch {$b cget -command} c] && [regexp $re $c -> tool]} {
+        $b configure -command [list ol_tool $tool]
+      }
+    }
+  }
+  ol_wrap_menu $top.menubar $re
+}
+
 # ---- context keys ------------------------------------------------------------------------------
 
 # Free-angle lines: xschem keeps one manhattan mode for lines and wires and orthogonal wiring
@@ -261,6 +303,7 @@ proc ol_free_angle {w x y} {
 
 proc ol_key_l {w x y} {
   if {[ol_in_symbol]} {
+    ol_end_persistent
     ol_free_angle $w $x $y
     xschem line
   } else {
@@ -270,7 +313,7 @@ proc ol_key_l {w x y} {
 
 proc ol_key_r {w x y} {
   if {[ol_in_symbol]} {
-    xschem rect
+    ol_tool rect
   } else {
     xschem callback $w 2 $x $y 82 0 0 1    ;# Shift+R: rotate
   }
@@ -281,8 +324,14 @@ proc ol_bind_keys {{w .drw}} {
   bind $w <KeyPress-p> {ol_pin_dialog %x %y; break}
   bind $w <KeyPress-l> {ol_key_l %W %x %y; break}
   bind $w <KeyPress-r> {ol_key_r %W %x %y; break}
+  # xschem's own shape keys: end the persistent line/wire first, then let xschem handle the key
+  bind $w <KeyPress-w> {ol_end_persistent; xschem callback %W %T %x %y 119 0 0 0; break}
+  bind $w <KeyPress-t> {ol_tool place_text; break}
+  bind $w <Shift-KeyPress-C> {ol_tool arc; break}
+  bind $w <Control-Shift-KeyPress-C> {ol_tool circle; break}
 }
 
 if {!([info exists env(OPENLAYOUT_KEYS)] && $env(OPENLAYOUT_KEYS) eq "xschem")} {
   ol_bind_keys
 }
+ol_wrap_tool_commands
