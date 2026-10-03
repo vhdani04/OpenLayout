@@ -7,7 +7,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] Ubuntu 24.04 VM, SSH, shared folder (Desktop\EDA\eda-link <-> ~/share)
 - [x] KLayout 0.30.12, xschem, ngspice 47 (OSDI), OpenVAF
 - [x] ASAP7 PDK + 7.5T std cells; BSIM-CMG compiled; model cards converted; inverter simulates
-- [ ] Make shared folder permanent (next VM power-off)
+- [x] Make shared folder permanent
 - [x] Switch login session to "Ubuntu on Xorg" (window control for the hub; better VBox behavior)
 - [x] Calibre deck request submitted to ASU
 
