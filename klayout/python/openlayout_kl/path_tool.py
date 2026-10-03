@@ -3,6 +3,8 @@
 - Start on the edge of an existing shape on the current layer: the path takes that edge's length
   as its width, starts flush at the edge's midpoint and leaves it perpendicularly - so it continues
   the wire you clicked. Anywhere else the path uses the layer's minimum width.
+- While drawing, the end of the current segment snaps onto the facing edge of another shape on the
+  same layer when the cursor comes close; a path that ends on such an edge stops flush against it.
 - Segments are horizontal or vertical only.
 - Click to add points; double-click or Enter to finish; Backspace removes the last point; Esc
   cancels.
@@ -15,7 +17,8 @@ import pya
 from .asap7 import LAYER_NAME, MIN_WIDTH
 
 TOOL_NAME = "openlayout_path"  # KLayout cuts menu names at "::"
-PICK_PIXELS = 6
+PICK_PIXELS = 6    # how close the start click must be to an edge
+SNAP_PIXELS = 12   # gravity of facing edges while drawing
 
 
 def _segment_distance(p: pya.DPoint, e: pya.DEdge) -> float:
@@ -37,7 +40,8 @@ class PathTool(pya.Plugin):
         self.points = []
         self.width = None
         self.bgn_ext = 0.0
-        self.axis = None          # forced direction of the first segment ("h"/"v") when started on an edge
+        self.axis = None           # forced direction of the first segment ("h"/"v") when started on an edge
+        self.snapped_flags = []    # per point: True if it sits on a target edge (path ends flush there)
         self.preview = None
         self.edge_marker = None
 
@@ -71,31 +75,71 @@ class PathTool(pya.Plugin):
     def default_width(self, lp) -> float:
         return MIN_WIDTH.get(LAYER_NAME.get(lp.source_layer, ""), 18) / 1000.0
 
-    def pick_edge(self, p: pya.DPoint):
-        """Closest axis-parallel edge of a shape on the current layer within a few pixels."""
+    def pixels(self, n) -> float:
+        view = self._view
+        return n * view.box().width() / max(1, view.viewport_width())
+
+    def layer_edges(self, box: pya.DBox):
+        """Axis-parallel edges of shapes on the current layer touching `box` (micrometers)."""
         t = self.target()
         if t is None:
-            return None
+            return []
         cv, cell, li, _ = t
-        view = self._view
-        tol = PICK_PIXELS * view.box().width() / max(1, view.viewport_width())
         dbu = cv.layout().dbu
-        search = pya.DBox(p.x - tol, p.y - tol, p.x + tol, p.y + tol)
-        best, best_d = None, tol
-        it = cell.begin_shapes_rec_touching(li, search)
+        edges = []
+        it = cell.begin_shapes_rec_touching(li, box)
         while not it.at_end():
             shape = it.shape()
             if shape.is_box() or shape.is_polygon() or shape.is_path():
-                poly = shape.polygon.transformed(it.trans())
-                for e in poly.each_edge():
+                for e in shape.polygon.transformed(it.trans()).each_edge():
                     de = e.to_dtype(dbu)
-                    if de.dx() != 0 and de.dy() != 0:
-                        continue
-                    d = _segment_distance(p, de)
-                    if d < best_d:
-                        best, best_d = de, d
+                    if de.dx() == 0 or de.dy() == 0:
+                        edges.append(de)
             it.next()
+        return edges
+
+    def pick_edge(self, p: pya.DPoint):
+        """Closest axis-parallel edge of a shape on the current layer within a few pixels."""
+        tol = self.pixels(PICK_PIXELS)
+        best, best_d = None, tol
+        for e in self.layer_edges(pya.DBox(p.x - tol, p.y - tol, p.x + tol, p.y + tol)):
+            d = _segment_distance(p, e)
+            if d < best_d:
+                best, best_d = e, d
         return best
+
+    def snap_to_edge(self, cand: pya.DPoint):
+        """Snap the end of the current segment onto a facing edge of another shape.
+
+        A horizontal segment snaps to vertical edges that its wire band crosses (and vice versa).
+        Returns (point, edge) - edge is None when nothing is in range."""
+        last = self.points[-1]
+        horizontal = cand.y == last.y and cand.x != last.x
+        vertical = cand.x == last.x and cand.y != last.y
+        if not (horizontal or vertical):
+            return cand, None
+        tol = self.pixels(SNAP_PIXELS)
+        half = self.width / 2
+        # Search within `tol` along the direction of travel, across the wire band sideways.
+        if horizontal:
+            box = pya.DBox(cand.x - tol, last.y - half, cand.x + tol, last.y + half)
+        else:
+            box = pya.DBox(last.x - half, cand.y - tol, last.x + half, cand.y + tol)
+        best, best_d = None, tol
+        for e in self.layer_edges(box):
+            if horizontal and e.dx() == 0:
+                lo, hi = sorted((e.p1.y, e.p2.y))
+                if lo <= last.y <= hi and e.p1.x != last.x:
+                    d = abs(e.p1.x - cand.x)
+                    if d < best_d:
+                        best, best_d = (pya.DPoint(e.p1.x, last.y), e), d
+            elif vertical and e.dy() == 0:
+                lo, hi = sorted((e.p1.x, e.p2.x))
+                if lo <= last.x <= hi and e.p1.y != last.y:
+                    d = abs(e.p1.y - cand.y)
+                    if d < best_d:
+                        best, best_d = (pya.DPoint(last.x, e.p1.y), e), d
+        return best if best else (cand, None)
 
     def snapped(self, p: pya.DPoint) -> pya.DPoint:
         last = self.points[-1] if self.points else p
@@ -111,17 +155,21 @@ class PathTool(pya.Plugin):
             "h" if abs(p.x - last.x) >= abs(p.y - last.y) else "v")
         return pya.DPoint(p.x, last.y) if axis == "h" else pya.DPoint(last.x, p.y)
 
-    def make_path(self, pts) -> pya.DPath:
-        return pya.DPath(pts, self.width, self.bgn_ext, self.width / 2)
+    def next_point(self, p: pya.DPoint):
+        """Constrained, grid-snapped and edge-snapped next vertex: (point, target edge or None)."""
+        return self.snap_to_edge(self.constrain(self.snapped(p)))
 
-    def show_preview(self, pts):
+    def make_path(self, pts, end_flush=False) -> pya.DPath:
+        return pya.DPath(pts, self.width, self.bgn_ext, 0.0 if end_flush else self.width / 2)
+
+    def show_preview(self, pts, end_flush=False):
         if self.preview is None:
             self.preview = pya.Marker(self._view)
             self.preview.color = 0xE8B04B
             self.preview.frame_color = 0xE8B04B
             self.preview.dither_pattern = 1
             self.preview.line_width = 1
-        self.preview.set(self.make_path(pts).polygon())
+        self.preview.set(self.make_path(pts, end_flush).polygon())
 
     def show_edge(self, edge):
         if edge is None:
@@ -140,8 +188,9 @@ class PathTool(pya.Plugin):
         if not self.points:
             self.show_edge(self.pick_edge(p))
             return False
-        nxt = self.constrain(self.snapped(p))
-        self.show_preview(self.points + [nxt])
+        nxt, edge = self.next_point(p)
+        self.show_edge(edge)
+        self.show_preview(self.points + [nxt], end_flush=edge is not None)
         return True
 
     def mouse_click_event(self, p, buttons, prio):
@@ -165,11 +214,15 @@ class PathTool(pya.Plugin):
                 self.axis = None
                 self.points = [self.snapped(p)]
                 self.status(f"Path: width {self.width * 1000:.0f} nm (double-click or Enter to finish)")
+            self.snapped_flags = [False]
             self.show_edge(None)
             return True
-        nxt = self.constrain(self.snapped(p))
+        nxt, edge = self.next_point(p)
         if nxt != self.points[-1]:
             self.points.append(nxt)
+            self.snapped_flags.append(edge is not None)
+            if edge is not None:
+                self.status("Path: reached a shape edge - double-click or Enter to finish here")
         return True
 
     def mouse_double_click_event(self, p, buttons, prio):
@@ -188,6 +241,7 @@ class PathTool(pya.Plugin):
             self.status("Path cancelled")
         elif key == pya.KeyCode.Backspace:
             self.points.pop()
+            self.snapped_flags.pop()
             if self.points:
                 self.show_preview(self.points)
             else:
@@ -198,10 +252,11 @@ class PathTool(pya.Plugin):
 
     def finish(self):
         t = self.target()
-        pts = [q for i, q in enumerate(self.points) if i == 0 or q != self.points[i - 1]]
+        keep = [i for i, q in enumerate(self.points) if i == 0 or q != self.points[i - 1]]
+        pts = [self.points[i] for i in keep]
         if t is not None and len(pts) >= 2:
             cv, cell, li, _ = t
-            path = self.make_path(pts)
+            path = self.make_path(pts, end_flush=self.snapped_flags[keep[-1]])
             try:
                 path = path.transformed(cv.context_dtrans().inverted())
             except Exception:

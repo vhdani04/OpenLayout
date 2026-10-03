@@ -95,11 +95,12 @@ def packet(layer, purpose):
 # OpenLayout display classes on top of the Virtuoso packets (ASAP7 DRM layer tables):
 #   cut / marker layers -> dashed outline   (gate cut, dummy-gate/diffusion-break marker, boundaries)
 #   implant / VT masks  -> solid outline    (they mark regions, they are not material)
+#   well                -> keeps its sparse dot stipple (like gpdk045 NWELL)
 #   vias                -> solid fill
 #   pins                -> the drawing layer's color, hollow with an X spanning the shape
 #   everything else (fin, active, gate, SDT, LIG, LISD, metals) keeps its stippled fill.
 OUTLINE_DASHED = {"gcut", "dummy", "boundary", "sramdrc"}
-OUTLINE_SOLID = {"well", "nselect", "pselect", "slvt", "lvt", "sramvt", "text"}
+OUTLINE_SOLID = {"nselect", "pselect", "slvt", "lvt", "sramvt", "text"}
 SOLID_FILL = {f"v{i}" for i in range(10)}
 
 
