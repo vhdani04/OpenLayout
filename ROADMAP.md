@@ -8,7 +8,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] KLayout 0.30.12, xschem, ngspice 47 (OSDI), OpenVAF
 - [x] ASAP7 PDK + 7.5T std cells; BSIM-CMG compiled; model cards converted; inverter simulates
 - [ ] Make shared folder permanent (next VM power-off)
-- [ ] Switch login session to "Ubuntu on Xorg" (window control for the hub; better VBox behavior)
+- [x] Switch login session to "Ubuntu on Xorg" (window control for the hub; better VBox behavior)
 - [x] Calibre deck request submitted to ASU
 
 ## Phase 1 — Unified environment ("one place")  [DONE]
