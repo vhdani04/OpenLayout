@@ -1,6 +1,51 @@
 # OpenLayout additions to the xschem GUI (sourced via tcl_files once the main window exists):
 # dark styling of already-built widgets, light toolbar icons, and the OpenLayout menu.
 
+# Robust replacement for xschem's TCP request handler (xschem.tcl: xschem_getdata).
+# The original redefines `puts` around each request and writes the reply with `puts`. A request
+# that arrives while another one is running (commands like `update` process events) nests inside
+# it, and the two `puts` renames collide - leaving xschem without a working `puts` (endless "puts"
+# errors). A client that already gave up makes the reply write fail with a background error.
+# This version runs one request at a time, always restores `puts`, and ignores dead clients.
+proc xschem_getdata {sock} {
+  global xschem_server_getdata tclcmd_puts ol_server_busy
+  if {$sock ni [chan names]} { return }   ;# already answered and closed
+  if {[info exists ol_server_busy] && $ol_server_busy} {
+    # Another request is running: try again once it has finished.
+    fileevent $sock readable {}
+    after 20 [list xschem_getdata $sock]
+    return
+  }
+  while {1} {
+    if {[catch {gets $sock line} n] || $n < 0} { break }
+    append xschem_server_getdata(line,$sock) $line 
+
+  }
+  if {![info exists xschem_server_getdata(line,$sock)]} { set xschem_server_getdata(line,$sock) {} }
+  fileevent $sock readable {}             ;# handle each request exactly once
+  set ol_server_busy 1
+  if {[info commands puts] eq "" && [info commands ::tcl::puts] ne ""} { rename ::tcl::puts puts }
+  redef_puts
+  uplevel #0 [list catch $xschem_server_getdata(line,$sock) tclcmd_puts]
+  catch {rename puts {}}
+  catch {rename ::tcl::puts puts}
+  set ol_server_busy 0
+  catch {puts -nonewline $sock $tclcmd_puts; flush $sock}
+  catch {close $sock}
+  foreach k {addr line res} { unset -nocomplain xschem_server_getdata($k,$sock) }
+}
+
+# Copy every background error into xschem's stderr (the hub logs it to .openlayout/logs/xschem.log)
+# before xschem shows its usual dialog. `chan puts` keeps working even if `puts` is redefined.
+if {![info exists ol_orig_bgerror]} {
+  set ol_orig_bgerror [interp bgerror {}]
+  proc ol_bgerror {msg opts} {
+    catch {chan puts stderr "xschem background error: [dict get $opts -errorinfo]"; chan flush stderr}
+    {*}$::ol_orig_bgerror $msg $opts
+  }
+  interp bgerror {} ol_bgerror
+}
+
 # Nothing to do without a GUI (xschem -x batch netlisting).
 if {[info commands winfo] eq ""} { return }
 

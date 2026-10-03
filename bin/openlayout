@@ -137,6 +137,20 @@ case "$cmd" in
 ' "$name"; grep -E "FAIL|rror" <<< "$out" | head -3 | sed 's/^/         /'; ok=0; fi
     done
     rm -rf "$tmp"
+    echo "xschem command server (hub link):"
+    if command -v xvfb-run > /dev/null; then
+      xs_home="$(mktemp -d)"; xs_wa="$(mktemp -d)/wa"; "$0" new-workarea "$xs_wa" doctor > /dev/null
+      port=$(python3 -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])")
+      out="$(cd "$xs_wa" && HOME="$xs_home" xvfb-run -a sh -c "xschem --tcl 'set xschem_listen_port $port' > /dev/null 2>&1 & sleep 4; python3 '$OPENLAYOUT_HOME/tests/xschem_server_stress.py' $port; kill %1" 2>&1 || true)"
+      if grep -q "^PASS xschem server" <<< "$out"; then printf '  [ok]   survives overlapping and abandoned requests
+'
+      else printf '  [FAIL] xschem command server
+'; grep -E "FAIL|Error" <<< "$out" | head -3 | sed 's/^/         /'; ok=0; fi
+      rm -rf "$xs_home" "$(dirname "$xs_wa")"
+    else
+      printf '  [skip] xvfb-run not installed
+'
+    fi
     echo "Smoke tests:"
     for t in "$OPENLAYOUT_HOME"/tests/sim/*.sp; do
       out="$(cd "$(dirname "$t")" && ngspice -b "$t" 2>&1 || true)"

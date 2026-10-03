@@ -47,16 +47,21 @@ class ToolBridge:
                                      stdin=subprocess.DEVNULL, env={**os.environ, **self.extra_env, **(env or {})},
                                      start_new_session=True)
 
-    def _wait_ready(self, timeout: float = 30.0) -> None:
+    def _wait_ready(self, timeout: float = 60.0) -> None:
+        # Retry only while the port refuses connections. Once a connection is accepted, wait for its
+        # answer instead of abandoning it: the tool would still process the request and fail
+        # writing to a closed socket (xschem: "puts" errors).
         end = time.time() + timeout
         while time.time() < end:
             if not self.running:
                 raise WorkareaError(f"{self.name} exited during startup (see .openlayout/logs/{self.name}.log)")
             try:
-                self.ping()
+                self.ping(max(1.0, end - time.time()))
                 return
-            except OSError:
+            except ConnectionRefusedError:
                 time.sleep(0.25)
+            except OSError:
+                break
         raise WorkareaError(f"{self.name} did not answer on port {self.port} within {timeout:.0f}s")
 
     def ensure_started(self) -> None:
@@ -66,7 +71,7 @@ class ToolBridge:
 
     # subclasses
     def start(self) -> None: ...
-    def ping(self) -> None: ...
+    def ping(self, timeout: float = 5.0) -> None: ...
     def open(self, view: View) -> str: ...
 
 
@@ -76,7 +81,7 @@ class XschemBridge(ToolBridge):
     def start(self) -> None:
         self._spawn(["xschem", "--tcl", f"set xschem_listen_port {self.port}; set tabbed_interface 1"])
 
-    def send(self, tcl: str, timeout: float = 5.0) -> str:
+    def send(self, tcl: str, timeout: float = 60.0) -> str:
         with socket.create_connection(("127.0.0.1", self.port), timeout=timeout) as s:
             s.sendall(tcl.encode() + b"\n")
             s.shutdown(socket.SHUT_WR)  # xschem runs the command once the client half-closes
@@ -85,8 +90,8 @@ class XschemBridge(ToolBridge):
                 chunks.append(chunk)
         return b"".join(chunks).decode(errors="replace")
 
-    def ping(self) -> None:
-        self.send("xschem get version", timeout=1.0)
+    def ping(self, timeout: float = 5.0) -> None:
+        self.send("xschem get version", timeout=timeout)
 
     def open(self, view: View) -> str:
         if view.type not in (SCHEMATIC, SYMBOL):
@@ -121,8 +126,8 @@ class KLayoutBridge(ToolBridge):
             raise WorkareaError(f"klayout: {reply.get('error', 'no reply')}")
         return reply
 
-    def ping(self) -> None:
-        self.request({"cmd": "ping"}, timeout=1.0)
+    def ping(self, timeout: float = 5.0) -> None:
+        self.request({"cmd": "ping"}, timeout=timeout)
 
     def open(self, view: View) -> str:
         if view.type is not LAYOUT:
