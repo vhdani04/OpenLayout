@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 MODEL_RE = re.compile(r"^\.model\s+(\S+)\s+(nmos|pmos)\s+level\s*=\s*72\s*$", re.I)
-# Parameters present in the 107 cards that the BSIM-CMG Verilog-A does not accept.
-DROP_PARAMS = {"version"}
+# Parameters in the 107 cards that BSIM-CMG 111 does not have (all at defaults or unused with geomod=1).
+DROP_PARAMS = {"version", "coremod", "capmod", "nseg"}
 
 
 def convert(text: str) -> str:

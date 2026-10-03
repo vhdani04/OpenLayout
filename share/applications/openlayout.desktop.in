@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OpenLayout
+GenericName=Custom IC Design
+Comment=Virtuoso-style custom IC design: library manager, xschem, KLayout, ngspice
+Exec=@OPENLAYOUT_HOME@/bin/openlayout hub
+Icon=openlayout
+Terminal=false
+Categories=Development;Electronics;Engineering;
+StartupWMClass=openlayout
+Keywords=EDA;IC;layout;schematic;ASAP7;KLayout;xschem;

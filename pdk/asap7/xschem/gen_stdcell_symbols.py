@@ -5,6 +5,7 @@
 Pin order follows the CDL subcircuit (so @pinlist matches the ngspice subckt); pin directions
 come from the Verilog models. Usage: gen_stdcell_symbols.py <asap7sc7p5t_28 dir> <output dir>
 """
+import json
 import sys
 from pathlib import Path
 
@@ -65,6 +66,10 @@ def main(stdcells: str, out_dir: str) -> None:
             d = lib / cell
             d.mkdir(parents=True, exist_ok=True)
             (d / f"{cell}.sym").write_text(symbol(cell, ports, dirs.get(cell, {}), flavor))
+        meta = {"readonly": True,
+                "description": f"ASAP7 7.5-track standard cells ({FLAVORS[flavor]})",
+                "layout_gds": f"$OPENLAYOUT_HOME/pdk/asap7/klayout/tech/asap7/libraries/{lib.name}.gds"}
+        (lib / "openlayout.lib.json").write_text(json.dumps(meta, indent=1) + "\n")
         missing = [c for c in cells if c not in dirs]
         print(f"wrote {lib} ({len(cells)} cells, {len(missing)} without Verilog directions)")
 

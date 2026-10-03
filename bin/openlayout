@@ -7,6 +7,7 @@ usage() {
   cat <<U
 usage: openlayout <command> [args]
 
+  hub [workarea]            start the OpenLayout hub (Library Manager + CIW)
   new-workarea <dir> [lib]  create a design workarea (libs.def, xschemrc, sim/, libraries/<lib>)
   new-lib <name>            create a design library in the current workarea
   libs                      list libraries visible from the current workarea
@@ -14,6 +15,7 @@ usage: openlayout <command> [args]
   klayout [args]            start KLayout (editor mode, ASAP7 technology)
   sim <netlist.sp>          run ngspice in batch mode (BSIM-CMG + ASAP7 cards preloaded)
   doctor                    check tools, PDK, models and run the smoke tests
+  test                      run the Python unit tests
   env                       print the flow environment
 U
 }
@@ -71,6 +73,12 @@ case "$cmd" in
     ;;
   xschem)
     wa="$(require_workarea)"; cd "$wa"; exec xschem "$@" ;;
+  hub)
+    export PYTHONPATH="$OPENLAYOUT_HOME/python${PYTHONPATH:+:$PYTHONPATH}"
+    exec "$OPENLAYOUT_ROOT/venv/bin/python" -m openlayout.hub "$@" ;;
+  test)
+    cd "$OPENLAYOUT_HOME"
+    PYTHONPATH="$OPENLAYOUT_HOME/python" exec "$OPENLAYOUT_ROOT/venv/bin/python" -m pytest -q tests/python "$@" ;;
   klayout)
     wa="$(find_workarea || true)"; [ -n "$wa" ] && cd "$wa"
     exec klayout -e -n asap7 "$@" ;;

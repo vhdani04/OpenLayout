@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reproducible install of the OpenLayout.
-#   setup/install.sh [all|deps|tools|pdk|models|views|shell]   (default: all; every step is idempotent)
+#   setup/install.sh [all|deps|tools|pdk|models|views|python|desktop|shell]   (default: all; every step is idempotent)
 set -euo pipefail
 FLOW="$(cd "$(dirname "$0")/.." && pwd)"
 source "$FLOW/setup/versions.env"
@@ -20,7 +20,8 @@ do_deps() {
     cmake ninja-build python3 python3-pip python3-venv python3-dev \
     libx11-dev libxrender-dev libxpm-dev libxcb1-dev libx11-xcb-dev libcairo2-dev libjpeg-dev \
     tcl-dev tk-dev tcl8.6-dev tk8.6-dev tcllib libxaw7-dev libreadline-dev libfftw3-dev \
-    libgomp1 libncurses-dev xterm gedit > /dev/null
+    libgomp1 libncurses-dev xterm gedit xvfb \
+    libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 > /dev/null
 }
 
 do_tools() {
@@ -103,6 +104,23 @@ do_views() {
   done
 }
 
+do_python() {
+  step "Python environment (hub)"
+  [ -x "$OPENLAYOUT_ROOT/venv/bin/python" ] || python3 -m venv "$OPENLAYOUT_ROOT/venv"
+  "$OPENLAYOUT_ROOT/venv/bin/pip" install -q --upgrade pip
+  "$OPENLAYOUT_ROOT/venv/bin/pip" install -q -r "$FLOW/python/requirements.txt"
+}
+
+do_desktop() {
+  step "Desktop entry"
+  local apps=~/.local/share/applications icons=~/.local/share/icons/hicolor/scalable/apps
+  mkdir -p "$apps" "$icons"
+  sed "s|@OPENLAYOUT_HOME@|$OPENLAYOUT_HOME|g" "$FLOW/share/applications/openlayout.desktop.in" > "$apps/openlayout.desktop"
+  cp "$FLOW/share/icons/openlayout.svg" "$icons/openlayout.svg"
+  command -v update-desktop-database > /dev/null && update-desktop-database -q "$apps" || true
+  command -v gtk-update-icon-cache > /dev/null && gtk-update-icon-cache -q ~/.local/share/icons/hicolor || true
+}
+
 do_shell() {
   step "shell + ngspice init"
   local line="source \"$OPENLAYOUT_HOME/env/openlayout.sh\""
@@ -121,13 +139,15 @@ EOS
 }
 
 case "${1:-all}" in
-  all)    do_deps; do_tools; do_pdk; do_models; do_views; do_shell ;;
+  all)    do_deps; do_tools; do_pdk; do_models; do_views; do_python; do_desktop; do_shell ;;
   deps)   do_deps ;;
   tools)  do_tools ;;
   pdk)    do_pdk ;;
   models) do_models ;;
   views)  do_views ;;
+  python) do_python ;;
+  desktop) do_desktop ;;
   shell)  do_shell ;;
-  *) echo "usage: $0 [all|deps|tools|pdk|models|views|shell]"; exit 1 ;;
+  *) echo "usage: $0 [all|deps|tools|pdk|models|views|python|desktop|shell]"; exit 1 ;;
 esac
 step "done"

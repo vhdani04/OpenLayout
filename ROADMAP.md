@@ -23,12 +23,14 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] xschem ASAP7 device symbols (nmos/pmos x rvt/lvt/slvt/sram, nfin/l params), N-prefix OSDI netlisting, model+corner include
 - [x] Std-cell import: auto-generate xschem symbols from CDL; GDS as KLayout reference library
 
-## Phase 3 — Hub app v1 (CIW + Library Manager)  [PySide6]   <- NEXT
-- [ ] Library/Cell/View browser; double-click opens view in right tool
-- [ ] New library/cell/view, copy/rename/delete (keeps sch/sym/layout in sync)
-- [ ] Console/log pane; buttons: Netlist, Simulate, DRC, LVS, PEX; per-cell status badges
+## Phase 3 — Hub app v1 (CIW + Library Manager)  [PySide6]  [DONE]
+- [x] Library/Cell/View browser; double-click opens view in right tool
+- [x] New library/cell/view, copy/rename/delete (keeps sch/sym/layout in sync)
+- [x] Console/log pane (CIW with Python `ol` API); Netlist + Simulate; per-cell status badges
+- [ ] DRC / LVS / PEX buttons are placeholders until Phases 5–6
+- [x] App-menu entry; tools run as single sessions driven over localhost
 
-## Phase 4 — Look & feel (one consistent environment)
+## Phase 4 — Look & feel (one consistent environment)   <- NEXT
 - [ ] Shared design language: palette, fonts, icons across hub / KLayout / xschem
 - [ ] xschem: colorscheme, fonts, Tk widget styling, Cadence-compat mode, Virtuoso bindkeys, custom menus/toolbar (overlay via xschemrc + Tcl, no fork)
 - [ ] KLayout: Virtuoso bindkeys, LSW dock, dark scheme, menus, toolbar, PCells

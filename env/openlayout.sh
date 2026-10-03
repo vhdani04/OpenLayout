@@ -9,4 +9,4 @@ export OPENLAYOUT_MODELS="$OPENLAYOUT_ROOT/models"
 export BSIMCMG_OSDI="$OPENLAYOUT_MODELS/bsimcmg/bsimcmg.osdi"
 export ASAP7_SPICE_DIR="$OPENLAYOUT_MODELS/asap7_ngspice"
 case ":$PATH:" in *":$OPENLAYOUT_HOME/bin:"*) ;; *) export PATH="$OPENLAYOUT_HOME/bin:$PATH" ;; esac
-export KLAYOUT_PATH="$HOME/.klayout:$OPENLAYOUT_HOME/pdk/asap7/klayout"
+export KLAYOUT_PATH="$HOME/.klayout:$OPENLAYOUT_HOME/klayout:$OPENLAYOUT_HOME/pdk/asap7/klayout"

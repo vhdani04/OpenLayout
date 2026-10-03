@@ -19,6 +19,23 @@ Pinned versions live in `setup/versions.env`.
     ~/openlayout/models    generated: bsimcmg.osdi, ngspice ASAP7 cards + asap7.lib
     ~/designs/<x>   design workareas
 
+## The hub
+
+    openlayout hub            # or "OpenLayout" in the app menu
+
+The hub is OpenLayout's Virtuoso: a **Library Manager** (Library | Cell | View, with filters;
+view chips S/Y/L and a pass/fail dot per cell) above a **CIW** (log + Python command line).
+
+- Double-click a cell or view to open it. xschem and KLayout run as one session each per
+  workarea and the hub drives them over localhost (xschem's Tcl server, KLayout's
+  `klayout/pymacros/openlayout_bridge.py`), so views open as tabs in the running tool.
+- File: new/open workarea, new library, new cell view (schematic, symbol, layout).
+- Edit: copy (also from PDK cells, e.g. a std cell into your library), rename, delete
+  (moves to `<workarea>/.trash/`).
+- Tools: Netlist (F7) and Simulate (F8) run xschem + ngspice batch; results land in
+  `sim/<lib>/<cell>/` and the cell's checks in `.openlayout/state.json`.
+- CIW: Python with an `ol` object — `help(ol)`, e.g. `ol.sim('cpu8', 'tb_inv')`.
+
 ## Using it
 
     openlayout new-workarea ~/designs/cpu8      # libs.def, xschemrc, sim/, libraries/cpu8
@@ -28,6 +45,7 @@ Pinned versions live in `setup/versions.env`.
     openlayout xschem                           # schematic editor with workarea libraries
     openlayout klayout                          # layout editor
     openlayout sim tb.sp                        # ngspice batch run
+    openlayout test                             # Python unit tests
 
 Workareas mirror Virtuoso: `libs.def` (like `cds.lib`) defines libraries; a library holds
 cells; a cell is a directory `<lib>/<cell>/` holding its views (`<cell>.sch`, `<cell>.sym`,

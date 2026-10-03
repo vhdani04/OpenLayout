@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- OpenLayout: a stylized FinFET cell — fins, gates, local interconnect and M1 -->
+  <rect x="2" y="2" width="60" height="60" rx="13" fill="#1f2329"/>
+  <rect x="2" y="2" width="60" height="60" rx="13" fill="none" stroke="#323843" stroke-width="2"/>
+  <g stroke="#4cc38a" stroke-width="3" stroke-linecap="round" opacity="0.9">
+    <line x1="12" y1="22" x2="52" y2="22"/>
+    <line x1="12" y1="30" x2="52" y2="30"/>
+    <line x1="12" y1="38" x2="52" y2="38"/>
+  </g>
+  <g fill="#ef6b6b">
+    <rect x="22" y="12" width="4" height="40" rx="1.5"/>
+    <rect x="38" y="12" width="4" height="40" rx="1.5"/>
+  </g>
+  <rect x="29" y="17" width="6" height="26" rx="2" fill="#e8b04b" opacity="0.95"/>
+  <path d="M10 48 H54 V54 H10 Z" fill="#4fa3ff"/>
+  <path d="M10 10 H54 V16 H10 Z" fill="#4fa3ff"/>
+</svg>
