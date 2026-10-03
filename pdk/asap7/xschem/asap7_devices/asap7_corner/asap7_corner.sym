@@ -1,0 +1,12 @@
+v {xschem version=3.4.8RC file_version=1.3}
+G {}
+K {type=netlist_commands
+template="name=CORNER1 corner=tt only_toplevel=true"
+format=".lib asap7.lib @corner"
+}
+V {}
+S {}
+E {}
+P 4 5 -20 -20 140 -20 140 20 -20 20 -20 -20 {}
+T {ASAP7 models} -10 -15 0 0 0.25 0.25 {}
+T {corner: @corner} -10 2.5 0 0 0.25 0.25 {layer=8}

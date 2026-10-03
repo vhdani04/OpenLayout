@@ -35,10 +35,30 @@ cells; a cell is a directory `<lib>/<cell>/` holding its views (`<cell>.sch`, `<
 
 ## Simulating ASAP7 devices
 
-    .lib asap7.lib tt                          * tt | ff | ss
-    N1 d g s b nmos_rvt l=21n nfin=3           * OSDI instances start with N, not M
+    .lib asap7.lib tt                          * tt | ff | ss  (models + all std cells)
+    N1 d g s b nmos_rvt l=20n nfin=3           * OSDI instances start with N, not M
+    X1 a vdd vss y INVx1_ASAP7_75t_R           * std cells are ordinary subcircuits
 
 `~/.spiceinit` (written by `install.sh shell`) loads BSIM-CMG and puts the cards on ngspice's
 `sourcepath`, so netlists need no absolute paths. Device flavors: `{n,p}mos_{lvt,rvt,slvt,sram}`.
+
+`l=20n` is the drawn gate length (the model adds `xl=1n`); the std-cell netlists use it too.
+
+## PDK libraries
+
+Every workarea includes `pdk/asap7/libs.def`:
+
+| Library | Contents |
+|---|---|
+| `asap7_devices` | `{n,p}mos_{rvt,lvt,slvt,sram}` (params `l nfin nf m`) and `asap7_corner` (emits `.lib asap7.lib <corner>`) |
+| `asap7sc7p5t_28_{R,L,SL,SRAM}` | 7.5T standard-cell symbols, generated from the PDK CDL + Verilog |
+
+In xschem, a schematic transistor named `M1` netlists as `NM1`. Place one `asap7_corner`
+per testbench to load models.
+
+KLayout (`openlayout klayout`) opens in editor mode with the `asap7` technology: layer colors
+and stipples converted from the PDK's Virtuoso `display.drf`, net-tracer connectivity
+(gate/SD -> LIG/LISD -> V0 -> M1 ... M9), and the four std-cell GDS libraries available for
+placement. Regenerate with `pdk/asap7/klayout/gen_asap7_{lyp,lyt}.py`.
 
 See [ROADMAP.md](ROADMAP.md) for the plan.

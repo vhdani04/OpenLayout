@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 *.raw
 *.log
+pdk/asap7/klayout/tech/asap7/libraries/

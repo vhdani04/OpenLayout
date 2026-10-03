@@ -11,7 +11,7 @@ usage: openlayout <command> [args]
   new-lib <name>            create a design library in the current workarea
   libs                      list libraries visible from the current workarea
   xschem [args]             start xschem in the current workarea
-  klayout [args]            start KLayout with the flow's environment
+  klayout [args]            start KLayout (editor mode, ASAP7 technology)
   sim <netlist.sp>          run ngspice in batch mode (BSIM-CMG + ASAP7 cards preloaded)
   doctor                    check tools, PDK, models and run the smoke tests
   env                       print the flow environment
@@ -72,7 +72,8 @@ case "$cmd" in
   xschem)
     wa="$(require_workarea)"; cd "$wa"; exec xschem "$@" ;;
   klayout)
-    exec klayout "$@" ;;
+    wa="$(find_workarea || true)"; [ -n "$wa" ] && cd "$wa"
+    exec klayout -e -n asap7 "$@" ;;
   sim)
     [ $# -ge 1 ] || { usage; exit 1; }
     exec ngspice -b "$@" ;;
@@ -90,6 +91,25 @@ case "$cmd" in
     chk "BSIM-CMG OSDI"          "[ -f '$BSIMCMG_OSDI' ]"
     chk "ASAP7 corner lib"       "[ -f '$ASAP7_SPICE_DIR/asap7.lib' ]"
     chk "~/.spiceinit loads OSDI" "grep -q '^osdi $BSIMCMG_OSDI' ~/.spiceinit"
+    echo "KLayout:"
+    out="$(klayout -b -r "$OPENLAYOUT_HOME/tests/klayout/check_tech.py" 2>&1 || true)"
+    if grep -q "^PASS" <<< "$out"; then printf '  [ok]   ASAP7 technology + std-cell libraries
+'
+    else printf '  [FAIL] ASAP7 technology + std-cell libraries
+'; tail -2 <<< "$out" | sed 's/^/         /'; ok=0; fi
+    echo "xschem netlist + simulate:"
+    tmp="$(mktemp -d)"
+    "$0" new-workarea "$tmp/wa" doctor > /dev/null
+    for sch in "$OPENLAYOUT_HOME"/tests/xschem/*/*.sch; do
+      name="$(basename "$sch" .sch)"
+      (cd "$tmp/wa" && xschem -x -q -r -n -s -o "$tmp/net" "$sch" > /dev/null 2>&1 || true)
+      out="$( [ -f "$tmp/net/$name.spice" ] && cd "$tmp/net" && ngspice -b "$name.spice" 2>&1 || echo "FAIL no netlist")"
+      if grep -q "^PASS" <<< "$out"; then printf '  [ok]   %s
+' "$name"
+      else printf '  [FAIL] %s
+' "$name"; grep -E "FAIL|rror" <<< "$out" | head -3 | sed 's/^/         /'; ok=0; fi
+    done
+    rm -rf "$tmp"
     echo "Smoke tests:"
     for t in "$OPENLAYOUT_HOME"/tests/sim/*.sp; do
       out="$(cd "$(dirname "$t")" && ngspice -b "$t" 2>&1 || true)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reproducible install of the OpenLayout.
-#   setup/install.sh [all|deps|tools|pdk|models|shell]   (default: all; every step is idempotent)
+#   setup/install.sh [all|deps|tools|pdk|models|views|shell]   (default: all; every step is idempotent)
 set -euo pipefail
 FLOW="$(cd "$(dirname "$0")/.." && pwd)"
 source "$FLOW/setup/versions.env"
@@ -89,6 +89,18 @@ do_models() {
   done
   [ "$d/bsimcmg.osdi" -nt "$d/bsimcmg.va" ] || (cd "$d" && openvaf-r bsimcmg.va -o bsimcmg.osdi)
   python3 "$FLOW/pdk/asap7/ngspice/convert_asap7_models.py" "$ASAP7_PDK/models/hspice" "$ASAP7_SPICE_DIR"
+  python3 "$FLOW/pdk/asap7/ngspice/convert_asap7_stdcells.py" "$ASAP7_STDCELLS" "$ASAP7_SPICE_DIR"
+}
+
+do_views() {
+  step "Generated PDK views (std-cell symbols)"
+  python3 "$FLOW/pdk/asap7/xschem/gen_stdcell_symbols.py" "$ASAP7_STDCELLS" "$OPENLAYOUT_ROOT/libs"
+  # KLayout loads every layout in a technology's libraries/ folder as a library for that technology.
+  local kl="$FLOW/pdk/asap7/klayout/tech/asap7/libraries"
+  mkdir -p "$kl"
+  for f in R L SL SRAM; do
+    ln -sf "$(ls "$ASAP7_STDCELLS"/GDS/asap7sc7p5t_28_${f}_*.gds | head -1)" "$kl/asap7sc7p5t_28_${f}.gds"
+  done
 }
 
 do_shell() {
@@ -109,12 +121,13 @@ EOS
 }
 
 case "${1:-all}" in
-  all)    do_deps; do_tools; do_pdk; do_models; do_shell ;;
+  all)    do_deps; do_tools; do_pdk; do_models; do_views; do_shell ;;
   deps)   do_deps ;;
   tools)  do_tools ;;
   pdk)    do_pdk ;;
   models) do_models ;;
+  views)  do_views ;;
   shell)  do_shell ;;
-  *) echo "usage: $0 [all|deps|tools|pdk|models|shell]"; exit 1 ;;
+  *) echo "usage: $0 [all|deps|tools|pdk|models|views|shell]"; exit 1 ;;
 esac
 step "done"

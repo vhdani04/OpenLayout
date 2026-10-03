@@ -41,7 +41,9 @@ def main(src_dir: str, dst_dir: str) -> None:
         print(f"wrote {dst / f'7nm_{corner}.pm'}")
     lib = ["* ASAP7 corner library (BSIM-CMG via OSDI). Usage:  .lib asap7.lib tt"]
     for corner in ("TT", "FF", "SS"):
-        lib += [f".lib {corner.lower()}", f".include 7nm_{corner}.pm", f".endl {corner.lower()}"]
+        lib += [f".lib {corner.lower()}", f".include 7nm_{corner}.pm"]
+        lib += [f".include stdcells/asap7sc7p5t_28_{f}.sp" for f in ("R", "L", "SL", "SRAM")]
+        lib += [f".endl {corner.lower()}"]
     (dst / "asap7.lib").write_text("\n".join(lib) + "\n")
     print(f"wrote {dst / 'asap7.lib'}")
 

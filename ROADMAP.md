@@ -11,19 +11,19 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [ ] Switch login session to "Ubuntu on Xorg" (window control for the hub; better VBox behavior)
 - [x] Calibre deck request submitted to ASU
 
-## Phase 1 — Unified environment ("one place")   <- NOW
+## Phase 1 — Unified environment ("one place")  [DONE]
 - [x] Single install root + one reproducible setup script (tools pinned to versions)
 - [x] `openlayout` env/launcher: sets PDK_ROOT, model paths; `openlayout xschem`, `openlayout klayout`, `openlayout sim` start tools pre-configured for ASAP7
 - [x] Git repo for everything we write (PDK configs, themes, scripts, hub, decks)
 - [x] Virtuoso-style project layout: workarea/ with libraries -> cells -> views
       (schematic .sch, symbol .sym, layout .gds, netlist, extracted, sim results), defined by a libs.def (like cds.lib)
 
-## Phase 2 — PDK integration
-- [ ] KLayout tech: ASAP7 .lyt (layer map from the DRM) + .lyp (Virtuoso-like colors/stipples)
-- [ ] xschem ASAP7 device symbols (nmos/pmos x rvt/lvt/slvt/sram, nfin/l params), N-prefix OSDI netlisting, model+corner include
-- [ ] Std-cell import: auto-generate xschem symbols from CDL; GDS as KLayout reference library
+## Phase 2 — PDK integration  [DONE]
+- [x] KLayout tech: ASAP7 .lyt (layer map from the DRM) + .lyp (Virtuoso-like colors/stipples)
+- [x] xschem ASAP7 device symbols (nmos/pmos x rvt/lvt/slvt/sram, nfin/l params), N-prefix OSDI netlisting, model+corner include
+- [x] Std-cell import: auto-generate xschem symbols from CDL; GDS as KLayout reference library
 
-## Phase 3 — Hub app v1 (CIW + Library Manager)  [PySide6]
+## Phase 3 — Hub app v1 (CIW + Library Manager)  [PySide6]   <- NEXT
 - [ ] Library/Cell/View browser; double-click opens view in right tool
 - [ ] New library/cell/view, copy/rename/delete (keeps sch/sym/layout in sync)
 - [ ] Console/log pane; buttons: Netlist, Simulate, DRC, LVS, PEX; per-cell status badges

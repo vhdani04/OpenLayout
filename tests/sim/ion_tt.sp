@@ -4,8 +4,8 @@ VG g 0 0.7
 VGP gp 0 -0.7
 VN dn 0 0.7
 VP dp 0 -0.7
-NN dn g 0 0 nmos_rvt l=21n nfin=1
-NP dp gp 0 0 pmos_rvt l=21n nfin=1
+NN dn g 0 0 nmos_rvt l=20n nfin=1
+NP dp gp 0 0 pmos_rvt l=20n nfin=1
 .control
 op
 let ion_n = -i(VN)*1e6
