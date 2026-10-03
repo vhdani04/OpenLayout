@@ -257,10 +257,12 @@ class Workarea:
         if vt is SCHEMATIC:
             path.write_text(XSCHEM_HEADER + "K {}\nV {}\nS {}\nE {}\n")
         elif vt is SYMBOL:
-            # Red symbol border (layer 7) like Cadence's selection box: a plain rectangle that can be
-            # stretched to fit the pins.
-            path.write_text(XSCHEM_HEADER + 'K {type=subcircuit\nformat="@name @pinlist @symname"\n'
-                            'template="name=x1"\n}\nV {}\nS {}\nE {}\nB 7 -60 -60 60 60 {}\n')
+            # Like Virtuoso's "from cellview": with a schematic, build the symbol from its pins;
+            # otherwise start from an empty body with the red selection box (outline only).
+            from .symbolgen import BLANK, schematic_pins, symbol_text
+            sch = cell.view("schematic")
+            pins = schematic_pins(sch.path) if sch else []
+            path.write_text(symbol_text(pins) if pins else BLANK)
         elif vt is LAYOUT:
             run_klayout_script("new_layout.py", file=path, cell=cell_name)
         else:

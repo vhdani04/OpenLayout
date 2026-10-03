@@ -118,6 +118,30 @@ proc ol_show_keys {} {
   pack $w.t -fill both -expand 1
 }
 
+# Virtuoso-style symbol from the current schematic's pins (asks before replacing a symbol).
+proc ol_make_symbol {} {
+  set sch [xschem get schname]
+  set parent [xschem get topwindow]
+  if {[file extension $sch] ne ".sch"} {
+    tk_messageBox -parent $parent -icon info -title OpenLayout -message "Open the cell's schematic first."
+    return
+  }
+  set sym "[file rootname $sch].sym"
+  set args {}
+  if {[file exists $sym]} {
+    if {[tk_messageBox -parent $parent -type yesno -icon question -title OpenLayout \
+           -message "[file tail $sym] exists. Replace it with a symbol generated from the schematic?"] ne "yes"} {
+      return
+    }
+    set args --force
+  }
+  if {[catch {exec openlayout make-symbol $sch {*}$args} msg]} {
+    tk_messageBox -parent $parent -icon warning -title OpenLayout -message $msg
+    return
+  }
+  xschem load_new_window $sym
+}
+
 proc ol_add_menu {} {
   set top [xschem get top_path]
   set mb $top.menubar
@@ -130,6 +154,7 @@ proc ol_add_menu {} {
   $m add command -label "Open Layout in KLayout" -command {ol_hubcmd open layout}
   $m add command -label "Generate Layout from Schematic" -command {ol_hubcmd generate}
   $m add command -label "Open Symbol" -command {ol_hubcmd open symbol}
+  $m add command -label "Generate Symbol from Schematic" -command ol_make_symbol
   $m add command -label "Open Schematic" -command {ol_hubcmd open schematic}
   $m add command -label "Show in Library Manager" -command {ol_hubcmd select}
   $m add separator

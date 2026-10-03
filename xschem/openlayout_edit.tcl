@@ -10,12 +10,10 @@ proc ol_in_symbol {} {
   return [expr {[file extension [xschem get schname]] eq ".sym"}]
 }
 
-# Drawing-area coordinates (pixels) -> schematic coordinates, snapped to the snap grid.
-proc ol_to_sch {px py} {
+# Drawing-area coordinates (pixels) -> schematic coordinates, snapped to `snap` (default 10: the
+# pin/connection grid, also used in the symbol editor whose drawing snap is finer).
+proc ol_to_sch {px py {snap 10}} {
   set z [xschem get zoom]
-  set snap 10
-  catch {set snap [xschem get cadsnap]}
-  if {![string is double -strict $snap] || $snap <= 0} { set snap 10 }
   set x [expr {$px * $z - [xschem get xorigin]}]
   set y [expr {$py * $z - [xschem get yorigin]}]
   return [list [expr {round($x / $snap) * $snap}] [expr {round($y / $snap) * $snap}]]
@@ -335,3 +333,27 @@ if {!([info exists env(OPENLAYOUT_KEYS)] && $env(OPENLAYOUT_KEYS) eq "xschem")} 
   ol_bind_keys
 }
 ol_wrap_tool_commands
+
+# ---- grid per editor -------------------------------------------------------------------------
+# Schematics: snap 10 / grid 20 (pins connect on the 10 grid). Symbol editor: snap 2.5 / grid 10, so
+# shapes can be placed precisely (e.g. a circle centered on a triangle tip) while pins - placed by
+# the pin dialog - stay on the 10 grid. Re-applied whenever the edited file changes kind.
+proc ol_editor_grid {} {
+  global ol_grid_kind
+  set kind [expr {[ol_in_symbol] ? "symbol" : "schematic"}]
+  if {![info exists ol_grid_kind] || $ol_grid_kind ne $kind} {
+    set ol_grid_kind $kind
+    lassign [expr {$kind eq "symbol" ? {2.5 10} : {10 20}}] snap grid
+    catch {xschem set cadsnap $snap; xschem set cadgrid $grid}
+    set ::cadsnap $snap
+    set ::cadgrid $grid
+    # The status bar SNAP/GRID entries are re-applied by xschem when the mouse leaves them, so they
+    # must show the current values (a stale "10" would silently undo the fine snap).
+    set top [xschem get top_path]
+    foreach {e v} [list $top.statusbar.3 $snap $top.statusbar.5 $grid] {
+      if {[winfo exists $e]} { $e delete 0 end; $e insert 0 $v }
+    }
+  }
+  after 300 ol_editor_grid
+}
+ol_editor_grid

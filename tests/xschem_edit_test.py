@@ -57,6 +57,10 @@ check("pin dialog places output pins that follow the mouse", reply == "OUT2 opin
 # symbol editor: border rectangle, symbol pin dialog, line key
 send(f"xschem load {{{sym}}}")
 check("new symbol has the red border rectangle", send("xschem get rects 7") == "1")
+check("border is an outline (not filled)", send("xschem getprop rect 7 0 fill") == "false")
+time.sleep(0.8)  # grid follows the editor (polled)
+check("symbol editor uses the fine snap", send("set cadsnap") == "2.5" and send(".statusbar.3 get") == "2.5",
+      (send("set cadsnap"), send(".statusbar.3 get")))
 before = int(send("xschem get rects 5") or 0)
 reply = send("after 600 {set ::ol_pin(names) A; set ::ol_pin(dir) input; .ol_pin.b.ok invoke}; "
              "ol_pin_dialog 200 200; " + ESC + "; list [xschem get rects 5] "

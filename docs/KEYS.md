@@ -19,8 +19,15 @@ it with `OPENLAYOUT_KEYS=xschem` or `OPENLAYOUT_KEYS=klayout` in the environment
 | `x` | check and save | `Ctrl+S` | save |
 
 **Symbol editor** (editing a `.sym`): `l` draws a line (any angle), `r` a rectangle, `p` adds
-symbol pins. New symbol views start with a red border rectangle, like Cadence's selection box;
-stretch it with `s` to fit the pins.
+symbol pins. The symbol editor snaps to 2.5 (grid 10) so shapes can be placed precisely, while the
+pin dialog keeps pins on the 10 grid; schematics snap to 10 (grid 20).
+
+**Symbols from schematics** (Virtuoso *From Cellview*): New Cell View → symbol, the hub's *Generate
+Symbol*, `openlayout make-symbol cell.sch` or xschem's *OpenLayout ▸ Generate Symbol from
+Schematic* build the symbol from the schematic's pins - inputs left, outputs right, supplies
+(VDD…/VSS…) top and bottom, other input-outputs right - with a green body, `@name` / `@symname`
+labels and a red outline selection box around everything. A symbol without a schematic starts as
+an empty body with the selection box.
 
 `q` (or double-click) opens a form with one field per property - instance name, then the symbol's
 parameters; *Add property* adds a new one and *Text Editor…* opens xschem's raw editor. With several

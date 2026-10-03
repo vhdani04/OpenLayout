@@ -64,6 +64,34 @@ def test_create_views(wa):
         wa.new_view(lib, "inv", SCHEMATIC)
 
 
+def test_symbol_generated_from_schematic_pins(wa):
+    import os
+    import re
+    import shutil
+    from pathlib import Path
+    lib = wa.library("mylib")
+    (lib.path / "inv").mkdir()
+    shutil.copy(Path(os.environ["OPENLAYOUT_HOME"]) / "tests/klayout/inv_pins.sch", lib.path / "inv" / "inv.sch")
+    sym = wa.new_view(lib, "inv", SYMBOL).path.read_text()
+    pins = {m[4]: (float(m[0]) + 2.5, float(m[1]) + 2.5, m[5])
+            for m in re.findall(r"^B 5 (\S+) (\S+) (\S+) (\S+) \{name=(\w+) dir=(\w+)\}", sym, re.M)}
+    assert set(pins) == {"A", "Y", "VDD", "VSS"}
+    (ax, ay, ad), (yx, yy, yd) = pins["A"], pins["Y"]
+    assert ad == "in" and yd == "out" and ax < 0 < yx           # inputs left, outputs right
+    assert pins["VDD"][1] < 0 < pins["VSS"][1]                    # supplies top and bottom
+    assert all(v % 10 == 0 for x, y, _ in pins.values() for v in (x, y))  # pins on the 10 grid
+    sel = re.search(r"^B 7 (\S+) (\S+) (\S+) (\S+) \{fill=false\}", sym, re.M)
+    assert sel, "outline-only selection box"
+    x1, y1, x2, y2 = map(float, sel.groups())
+    assert all(x1 < x < x2 and y1 < y < y2 for x, y, _ in pins.values())  # encloses the pins
+    assert "@symname" in sym and "@name" in sym
+
+
+def test_blank_symbol_without_schematic(wa):
+    sym = wa.new_view(wa.library("mylib"), "lonely", SYMBOL).path.read_text()
+    assert "B 7 -80 -50 80 50 {fill=false}" in sym and "B 5 " not in sym
+
+
 def test_readonly_library_is_protected(wa):
     with pytest.raises(WorkareaError):
         wa.new_view(wa.library("asap7_devices"), "x", SCHEMATIC)

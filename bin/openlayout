@@ -9,6 +9,7 @@ usage: openlayout <command> [args]
 
   hub [workarea]            start the OpenLayout hub (Library Manager + CIW)
   hubcmd <cmd> <file> ...   send a command to the running hub (used by the tool menus)
+  make-symbol <sch> [--force]  generate <cell>.sym from the schematic's pins (Virtuoso style)
   new-workarea <dir> [lib]  create a design workarea (libs.def, xschemrc, sim/, libraries/<lib>)
   new-lib <name>            create a design library in the current workarea
   libs                      list libraries visible from the current workarea
@@ -79,6 +80,8 @@ case "$cmd" in
     exec "$OPENLAYOUT_ROOT/venv/bin/python" -m openlayout.hub "$@" ;;
   hubcmd)
     PYTHONPATH="$OPENLAYOUT_HOME/python" exec "$OPENLAYOUT_ROOT/venv/bin/python" -m openlayout.cli "$@" ;;
+  make-symbol)
+    PYTHONPATH="$OPENLAYOUT_HOME/python" exec "$OPENLAYOUT_ROOT/venv/bin/python" -m openlayout.symbolgen "$@" ;;
   test)
     cd "$OPENLAYOUT_HOME"
     PYTHONPATH="$OPENLAYOUT_HOME/python" exec "$OPENLAYOUT_ROOT/venv/bin/python" -m pytest -q tests/python "$@" ;;

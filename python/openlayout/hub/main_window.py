@@ -167,7 +167,9 @@ class MainWindow(QMainWindow):
         self.a_generate = self._act("Generate Layout", lambda: self.generate_layout(self.lm.current_cell()),
                                     "F9", S.SP_ArrowForward,
                                     "Generate or update the cell's layout from its schematic (Layout XL style)")
-        self.a_drc = self._act("DRC", None, None, S.SP_DialogApplyButton, "Design rule check — coming in Phase 5",
+        self.a_gensym = self._act("Generate Symbol", lambda: self.generate_symbol(self.lm.current_cell()),
+                                  None, None, "Create the cell's symbol from its schematic pins (Virtuoso style)")
+        self.a_drc =self._act("DRC", None, None, S.SP_DialogApplyButton, "Design rule check — coming in Phase 5",
                                enabled=False)
         self.a_lvs = self._act("LVS", None, None, S.SP_DialogYesButton,
                                "Layout vs. schematic — coming in Phase 6", enabled=False)
@@ -186,7 +188,7 @@ class MainWindow(QMainWindow):
             ("&File", [self.a_new_wa, self.a_open_wa, None, self.a_new_lib, self.a_new_view, None,
                        self.a_refresh, None, self.a_quit]),
             ("&Edit", [self.a_open, None, self.a_copy, self.a_rename, self.a_delete]),
-            ("&Tools", [self.a_netlist, self.a_sim, self.a_generate, None, self.a_drc, self.a_lvs, self.a_pex, None,
+            ("&Tools", [self.a_netlist, self.a_sim, self.a_generate, self.a_gensym, None, self.a_drc, self.a_lvs, self.a_pex, None,
                         self.a_start_xs, self.a_start_kl]),
             ("&View", [self.a_show_pdk]),
             ("&Help", [self.a_keys, self.a_help_cmds, self.a_about]),
@@ -518,6 +520,26 @@ class MainWindow(QMainWindow):
 
         self.netlist(cell, then=sim)
 
+    # ---- symbol from schematic ------------------------------------------------------------------
+    def generate_symbol(self, cell):
+        """Virtuoso "from cellview": build <cell>.sym from the schematic's pins and open it."""
+        if not cell or cell.library.readonly or cell.view("schematic") is None:
+            return
+        from ..symbolgen import make_symbol
+        sch = cell.view("schematic").path
+        force = False
+        if cell.view("symbol") is not None:
+            if QMessageBox.question(self, "Generate Symbol",
+                                    f"{cell.key} already has a symbol. Replace it?") != QMessageBox.Yes:
+                return
+            force = True
+        sym = self._guard(lambda: make_symbol(sch, force))
+        if sym:
+            self.ciw.ok(f"generated symbol {cell.key} from {sch.name}")
+            self.lm.refresh()
+            self.lm.select(cell.library.name, cell.name, "symbol")
+            self.open_target(cell.view("symbol"))
+
     # ---- schematic-driven layout ----------------------------------------------------------------
     def generate_layout(self, cell):
         """Layout XL style: create/update <cell>.gds from the schematic inside the KLayout session."""
@@ -555,6 +577,7 @@ class MainWindow(QMainWindow):
         self.a_netlist.setEnabled(has_sch and idle)
         self.a_sim.setEnabled(has_sch and idle)
         self.a_generate.setEnabled(has_sch and writable_cell)
+        self.a_gensym.setEnabled(has_sch and writable_cell)
         self.a_start_xs.setEnabled(has_wa)
         self.a_start_kl.setEnabled(has_wa)
 
@@ -567,7 +590,7 @@ class MainWindow(QMainWindow):
             m.addSeparator()
             m.addActions([self.a_copy, self.a_rename, self.a_delete])
             m.addSeparator()
-            m.addActions([self.a_netlist, self.a_sim, self.a_generate, self.a_drc, self.a_lvs])
+            m.addActions([self.a_netlist, self.a_sim, self.a_generate, self.a_gensym, self.a_drc, self.a_lvs])
         elif kind == "view" and self.lm.current_view():
             m.addActions([self.a_open, self.a_delete])
         if not m.isEmpty():
