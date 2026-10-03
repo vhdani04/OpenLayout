@@ -156,7 +156,7 @@ case "$cmd" in
 from openlayout.workarea import Workarea, SYMBOL
 wa = Workarea('$xs_wa'); wa.new_view(wa.library('doctor'), 'box', SYMBOL)"
       out="$(cd "$xs_wa" && HOME="$xs_home" xvfb-run -a sh -c "xschem --tcl 'set xschem_listen_port $port' > /dev/null 2>&1 & sleep 4; OL_TEST_LIB=doctor python3 '$OPENLAYOUT_HOME/tests/xschem_edit_test.py' $port '$xs_wa'; kill %1" 2>&1 || true)"
-      if grep -q "^PASS xschem edit" <<< "$out"; then printf '  [ok]   property form, pin dialog, symbol border, context keys
+      if grep -q "^PASS xschem edit" <<< "$out"; then printf '  [ok]   property form, pin dialog, symbol border, edge stretch, context keys
 '
       else printf '  [FAIL] xschem editing
 '; grep -E "^FAIL|Error" <<< "$out" | head -4 | sed 's/^/         /'; ok=0; fi

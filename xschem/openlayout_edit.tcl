@@ -334,6 +334,126 @@ if {!([info exists env(OPENLAYOUT_KEYS)] && $env(OPENLAYOUT_KEYS) eq "xschem")} 
 }
 ol_wrap_tool_commands
 
+# ---- grab a rectangle edge and slide it (Virtuoso stretch) -----------------------------------
+# Press on (or within a few pixels of) an edge of a rectangle and drag: that edge follows the mouse
+# along its normal; grabbing a corner moves both of its edges. Uses xschem's own stretch machinery:
+# only the grabbed corners are selected (enable_stretch area select), then a move from the mouse
+# position, constrained to the edge's axis. Releasing the button drops the edge.
+set ol_stretch(active) 0
+set ol_stretch(pixels) 6
+
+# Bounding box {x1 y1 x2 y2} of a rectangle (any layer) with an edge within tol of (mx, my), or {}.
+proc ol_rect_edge_at {mx my tol} {
+  for {set c 0} {$c < 22} {incr c} {
+    set n [xschem get rects $c]
+    if {![string is integer -strict $n]} continue
+    for {set i 0} {$i < $n} {incr i} {
+      xschem select rect $c $i fast
+      lassign [xschem get bbox_selected] x1 y1 x2 y2
+      xschem unselect_all
+      if {$x1 eq {}} continue
+      set near_v [expr {(abs($mx - $x1) <= $tol || abs($mx - $x2) <= $tol) && $my >= $y1 - $tol && $my <= $y2 + $tol}]
+      set near_h [expr {(abs($my - $y1) <= $tol || abs($my - $y2) <= $tol) && $mx >= $x1 - $tol && $mx <= $x2 + $tol}]
+      if {$near_v || $near_h} { return [list $x1 $y1 $x2 $y2] }
+    }
+  }
+  return {}
+}
+
+proc ol_press {w x y b s} {
+  global ol_stretch
+  focus $w
+  xschem callback $w 4 $x $y 0 $b 0 $s
+  # Only when nothing else is going on. In Cadence mode xschem's press on an object selects it and
+  # starts dragging it (SELECTION 8 + STARTMOVE 32); on an edge that drag is replaced by the stretch.
+  set st [xschem get ui_state]
+  if {$b != 1 || $s != 0 || ($st & ~40) != 0} { return }
+  set z [xschem get zoom]
+  set mx [expr {$x * $z - [xschem get xorigin]}]
+  set my [expr {$y * $z - [xschem get yorigin]}]
+  set tol [expr {$ol_stretch(pixels) * $z}]
+  set sel [xschem selected_rect]
+  if {[llength $sel] == 1 && [xschem get lastsel] == 1} {
+    lassign [xschem get bbox_selected] x1 y1 x2 y2
+  } elseif {[xschem get lastsel] == 0} {
+    # xschem's hit test found nothing (it can miss an edge of an unfilled rectangle): look for a
+    # rectangle edge under the mouse ourselves
+    set hit [ol_rect_edge_at $mx $my $tol]
+    if {$hit eq {}} { return }
+    lassign $hit x1 y1 x2 y2
+  } else {
+    return
+  }
+  set left [expr {abs($mx - $x1) <= $tol}]
+  set right [expr {abs($mx - $x2) <= $tol}]
+  set top [expr {abs($my - $y1) <= $tol}]
+  set bottom [expr {abs($my - $y2) <= $tol}]
+  set inside_x [expr {$mx >= $x1 - $tol && $mx <= $x2 + $tol}]
+  set inside_y [expr {$my >= $y1 - $tol && $my <= $y2 + $tol}]
+  if {!(($left || $right) && $inside_y) && !(($top || $bottom) && $inside_x)} { return }
+  # corners of the grabbed edge(s)
+  set gx [expr {$left ? $x1 : ($right ? $x2 : {})}]
+  set gy [expr {$top ? $y1 : ($bottom ? $y2 : {})}]
+  set d [expr {$tol / 2.0}]
+  if {$gx ne {} && $gy ne {}} {
+    set area [list [expr {$gx - $d}] [expr {$gy - $d}] [expr {$gx + $d}] [expr {$gy + $d}]]
+    set constraint {}
+  } elseif {$gx ne {}} {
+    set area [list [expr {$gx - $d}] [expr {$y1 - $d}] [expr {$gx + $d}] [expr {$y2 + $d}]]
+    set constraint 104   ;# h: horizontal only
+  } else {
+    set area [list [expr {$x1 - $d}] [expr {$gy - $d}] [expr {$x2 + $d}] [expr {$gy + $d}]]
+    set constraint 118   ;# v: vertical only
+  }
+  if {$st & 32} { xschem abort_operation }   ;# cancel xschem's whole-object drag
+  set saved_stretch [expr {[info exists ::enable_stretch] ? $::enable_stretch : 0}]
+  set ::enable_stretch 1
+  xschem unselect_all
+  xschem select_inside {*}$area
+  set ::enable_stretch $saved_stretch
+  if {[xschem get lastsel] == 0} { return }
+  # start the move at the mouse (infix style) and constrain it to the edge's axis
+  set infix [expr {[info exists ::infix_interface] ? $::infix_interface : 0}]
+  set ::infix_interface 1
+  xschem callback $w 2 $x $y 109 0 0 0
+  set ::infix_interface $infix
+  if {$constraint ne {}} { xschem callback $w 2 $x $y $constraint 0 0 0 }
+  set ol_stretch(constraint) $constraint
+  set ol_stretch(active) 1
+}
+
+proc ol_release {w x y b s} {
+  global ol_stretch
+  if {$ol_stretch(active) && $b == 1} {
+    set ol_stretch(active) 0
+    # drop the edge where the button was released (a click ends xschem's move)
+    xschem callback $w 4 $x $y 0 1 0 0
+    xschem callback $w 5 $x $y 0 1 0 0
+    # clear the h/v move constraint (and the stretch selection) so later moves are free again
+    xschem abort_operation
+    return
+  }
+  xschem callback $w 5 $x $y 0 $b 0 $s
+}
+
+# While an edge is being dragged, motion goes to xschem without the button-held flag: with it,
+# xschem would turn the drag into a rubber-band selection whenever its own click hit nothing.
+proc ol_motion {w x y s} {
+  if {$::ol_stretch(active)} {
+    xschem callback $w 6 $x $y 0 0 0 0
+  } else {
+    xschem callback $w 6 $x $y 0 0 0 $s
+  }
+}
+
+proc ol_bind_stretch {{w .drw}} {
+  if {![winfo exists $w]} return
+  bind $w <ButtonPress-1> {ol_press %W %x %y %b %s; break}
+  bind $w <ButtonRelease-1> {ol_release %W %x %y %b %s; break}
+  bind $w <B1-Motion> {ol_motion %W %x %y %s; break}
+}
+ol_bind_stretch
+
 # ---- grid per editor -------------------------------------------------------------------------
 # Schematics: snap 10 / grid 20 (pins connect on the 10 grid). Symbol editor: snap 2.5 / grid 10, so
 # shapes can be placed precisely (e.g. a circle centered on a triangle tip) while pins - placed by
@@ -357,3 +477,6 @@ proc ol_editor_grid {} {
   after 300 ol_editor_grid
 }
 ol_editor_grid
+
+# Option probing above uses catch; don't leave those in errorInfo.
+set ::errorInfo ""

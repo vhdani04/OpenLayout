@@ -92,4 +92,49 @@ lines_after = int(send("xschem get lines 4") or 0)
 check("toolbar circle after a line does not keep drawing lines", lines_after == lines_before + 1,
       f"lines {lines_before} -> {lines_after}")
 
+
+# Grab an edge of the selection box and drag it (Virtuoso stretch): only that edge moves, along its
+# normal; a corner moves both of its edges; afterwards moves are unconstrained again.
+def drag(x0, y0, x1, y1):
+    cmds = [f"event generate .drw <Motion> -x {x0} -y {y0} -warp 1; update; after 30",
+            f"event generate .drw <ButtonPress-1> -x {x0} -y {y0}; update; after 30"]
+    for i in range(1, 6):
+        x, y = x0 + (x1 - x0) * i // 5, y0 + (y1 - y0) * i // 5
+        cmds.append(f"event generate .drw <Motion> -x {x} -y {y} -state 256 -warp 1; update; after 30")
+    cmds.append(f"event generate .drw <ButtonRelease-1> -x {x1} -y {y1} -state 256; update; after 50")
+    return "; ".join(cmds)
+
+
+def box():
+    r = send("xschem unselect_all; xschem select rect 7 0 fast; set r [xschem get bbox_selected]; "
+             "xschem unselect_all; set r")
+    return [float(v) for v in r.split()]
+
+
+def to_px(x, y):
+    z, xo, yo = (float(send(f"xschem get {k}")) for k in ("zoom", "xorigin", "yorigin"))
+    return int(round((x + xo) / z)), int(round((y + yo) / z))
+
+
+send("xschem zoom_box -200 -150 200 150; update")
+x1, y1, x2, y2 = box()
+px, py = to_px(x2, (y1 + y2) / 2)
+send(drag(px, py, px + 60, py + 15))
+b = box()
+check("dragging the right edge resizes only the width", b[0] == x1 and b[1] == y1 and b[3] == y2 and b[2] > x2,
+      f"{[x1, y1, x2, y2]} -> {b}")
+x1, y1, x2, y2 = b
+px, py = to_px((x1 + x2) / 2, y1)
+send(drag(px, py, px + 20, py - 40))
+b = box()
+check("dragging the top edge moves only the top", b[0] == x1 and b[2] == x2 and b[3] == y2 and b[1] < y1,
+      f"{[x1, y1, x2, y2]} -> {b}")
+x1, y1, x2, y2 = b
+px, py = to_px(x1, y2)
+send(drag(px, py, px - 30, py + 30))
+b = box()
+check("dragging a corner moves both of its edges", b[0] < x1 and b[3] > y2 and b[1] == y1 and b[2] == x2,
+      f"{[x1, y1, x2, y2]} -> {b}")
+check("moves are unconstrained after a stretch", send("set constr_mv") == "0", send("set constr_mv"))
+
 print("PASS xschem edit" if not failures else f"FAIL xschem edit: {', '.join(failures)}")
