@@ -76,6 +76,15 @@ tool.mouse_click_event(pya.DPoint(0.2005, 0.02), L, True)
 nxt, edge = tool.next_point(pya.DPoint(0.344, 0.03))
 check("end snaps onto the facing edge of the next shape", edge is not None and abs(nxt.x - 0.35) < 1e-9
       and abs(nxt.y - 0.018) < 1e-9, (str(nxt), str(edge)))
+# the front (end + half width) reaches B's edge while the cursor is still a half-width short
+nxt, edge = tool.next_point(pya.DPoint(0.33, 0.03))
+check("snaps when the path front reaches the edge", edge is not None and abs(nxt.x - 0.35) < 1e-9, str(nxt))
+nxt, edge = tool.next_point(pya.DPoint(0.37, 0.03))
+check("still snapped with the cursor slightly inside", edge is not None and abs(nxt.x - 0.35) < 1e-9, str(nxt))
+nxt, edge = tool.next_point(pya.DPoint(0.30, 0.03))
+check("no snap while the front is short of the edge", edge is None, str(nxt))
+nxt, edge = tool.next_point(pya.DPoint(0.49, 0.03))
+check("far side of the shape does not snap", edge is None, str(nxt))
 tool.mouse_moved_event(pya.DPoint(0.344, 0.03), 0, True)
 check("preview uses the layer texture", tool.preview is not None and
       tool.preview.dither_pattern == view.current_layer.current().eff_dither_pattern(True) and
@@ -96,9 +105,9 @@ cell.shapes(m1).insert(pya.DBox(0.39, 0.2, 0.46, 0.26))   # C above, facing the 
 tool.mouse_click_event(pya.DPoint(0.4, 0.0605), L, True)   # B's top edge (y=0.06): vertical path upward
 nxt, edge = tool.next_point(pya.DPoint(0.425, 0.195))
 check("vertical segment snaps to the edge above", edge is not None and abs(nxt.y - 0.2) < 1e-9, str(nxt))
-nxt, edge = tool.next_point(pya.DPoint(0.425, 0.12))
+nxt, edge = tool.next_point(pya.DPoint(0.425, 0.10))
 print(f"   (snap range {tool.pixels(12) * 1000:.1f} nm at this zoom)")
-check("no snap far from edges", edge is None and abs(nxt.y - 0.12) < 1e-6, str(nxt))
+check("no snap far from edges", edge is None and abs(nxt.y - 0.10) < 1e-6, str(nxt))
 tool.key_event(pya.KeyCode.Escape, 0)
 
 # a path started in empty space uses the layer minimum width (M1: 18 nm)

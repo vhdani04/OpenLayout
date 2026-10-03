@@ -3,9 +3,9 @@
 - Start on the edge of an existing shape on the current layer: the path takes that edge's length
   as its width, starts flush at the edge's midpoint and leaves it perpendicularly - so it continues
   the wire you clicked. Anywhere else the path uses the layer's minimum width.
-- While drawing, the end of the current segment snaps onto the facing edge of another shape on the
-  same layer when the cursor comes close; clicking while snapped places the path flush against that
-  edge and finishes it.
+- While drawing, the segment snaps onto the facing edge of the next shape on the same layer as soon
+  as the path's front reaches it (not the cursor); clicking while snapped places the path flush
+  against that edge and finishes it.
 - The preview is drawn with the current layer's colors and fill pattern.
 - Segments are horizontal or vertical only.
 - Click to add points; double-click or Enter to finish; Backspace removes the last point; Esc
@@ -112,10 +112,14 @@ class PathTool(pya.Plugin):
         return best
 
     def snap_to_edge(self, cand: pya.DPoint):
-        """Snap the end of the current segment onto a facing edge of another shape.
+        """Snap the current segment onto the facing edge of the next shape it runs into.
 
-        A horizontal segment snaps to vertical edges that its wire band crosses (and vice versa).
-        Returns (point, edge) - edge is None when nothing is in range."""
+        The snap is triggered by the path's leading front (the end plus its half-width extension),
+        not the cursor: as soon as the front comes within SNAP_PIXELS of a facing edge - or the
+        cursor is pushed up to half a width past it - the segment ends flush on that edge. Facing
+        means the shape lies ahead (polygon hulls are clockwise, so the interior is to the right of
+        each edge). A horizontal segment snaps to vertical edges its centerline crosses, and vice
+        versa; the nearest qualifying edge ahead wins. Returns (point, edge or None)."""
         last = self.points[-1]
         horizontal = cand.y == last.y and cand.x != last.x
         vertical = cand.x == last.x and cand.y != last.y
@@ -123,26 +127,39 @@ class PathTool(pya.Plugin):
             return cand, None
         tol = self.pixels(SNAP_PIXELS)
         half = self.width / 2
-        # Search within `tol` along the direction of travel, across the wire band sideways.
         if horizontal:
-            box = pya.DBox(cand.x - tol, last.y - half, cand.x + tol, last.y + half)
+            sign = 1 if cand.x > last.x else -1
+            reach = sign * (cand.x - last.x)
+            lo_u, hi_u = reach - half - tol, reach + half + tol
+            xs = sorted((last.x + sign * lo_u, last.x + sign * hi_u))
+            box = pya.DBox(xs[0], last.y - half, xs[1], last.y + half)
         else:
-            box = pya.DBox(last.x - half, cand.y - tol, last.x + half, cand.y + tol)
-        best, best_d = None, tol
+            sign = 1 if cand.y > last.y else -1
+            reach = sign * (cand.y - last.y)
+            lo_u, hi_u = reach - half - tol, reach + half + tol
+            ys = sorted((last.y + sign * lo_u, last.y + sign * hi_u))
+            box = pya.DBox(last.x - half, ys[0], last.x + half, ys[1])
+        best = None
         for e in self.layer_edges(box):
             if horizontal and e.dx() == 0:
                 lo, hi = sorted((e.p1.y, e.p2.y))
-                if lo <= last.y <= hi and e.p1.x != last.x:
-                    d = abs(e.p1.x - cand.x)
-                    if d < best_d:
-                        best, best_d = (pya.DPoint(e.p1.x, last.y), e), d
+                facing = (1 if e.dy() > 0 else -1) == sign
+                u = sign * (e.p1.x - last.x)
+                hit = pya.DPoint(e.p1.x, last.y)
+                crosses = lo <= last.y <= hi
             elif vertical and e.dy() == 0:
                 lo, hi = sorted((e.p1.x, e.p2.x))
-                if lo <= last.x <= hi and e.p1.y != last.y:
-                    d = abs(e.p1.y - cand.y)
-                    if d < best_d:
-                        best, best_d = (pya.DPoint(last.x, e.p1.y), e), d
-        return best if best else (cand, None)
+                facing = (-1 if e.dx() > 0 else 1) == sign
+                u = sign * (e.p1.y - last.y)
+                hit = pya.DPoint(last.x, e.p1.y)
+                crosses = lo <= last.x <= hi
+            else:
+                continue
+            # ahead of the start, front within reach, cursor not too far past it
+            if crosses and facing and u > 0 and reach + half >= u - tol and reach <= u + half + tol:
+                if best is None or u < best[0]:
+                    best = (u, hit, e)
+        return (best[1], best[2]) if best else (cand, None)
 
     def snapped(self, p: pya.DPoint) -> pya.DPoint:
         last = self.points[-1] if self.points else p
