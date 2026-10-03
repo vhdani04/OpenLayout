@@ -1,18 +1,19 @@
-"""OpenLayout look: dark Fusion palette, colors shared with the tool themes, generated icons."""
+"""OpenLayout look: dark Fusion palette from share/theme/openlayout.json (shared with xschem and
+KLayout), and generated icons."""
+import json
 from pathlib import Path
 
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import QApplication
 
-C = {
-    "window": "#1f2329", "panel": "#262b33", "base": "#181b20", "alt": "#1d2127", "border": "#323843",
-    "text": "#d9dee7", "dim": "#7d8696", "accent": "#4fa3ff", "select": "#2c5d94",
-    "ok": "#4cc38a", "fail": "#ef6b6b", "warn": "#e8b04b",
-}
-VIEW_COLORS = {"schematic": "#4cc38a", "symbol": "#e8b04b", "layout": "#4fa3ff", "netlist": "#9aa3b2"}
+SHARE = Path(__file__).resolve().parents[3] / "share"
+THEME = json.loads((SHARE / "theme" / "openlayout.json").read_text())
+C = THEME["ui"]
+FONT = THEME["font"]
+VIEW_COLORS = {"schematic": C["ok"], "symbol": C["warn"], "layout": C["accent"], "netlist": "#9aa3b2"}
 VIEW_LETTERS = {"schematic": "S", "symbol": "Y", "layout": "L", "netlist": "N"}
-ICON_FILE = Path(__file__).resolve().parents[3] / "share" / "icons" / "openlayout.svg"
+ICON_FILE = SHARE / "icons" / "openlayout.svg"
 
 QSS = f"""
 QToolBar {{ background: {C['panel']}; border: none; border-bottom: 1px solid {C['border']}; padding: 3px; spacing: 2px; }}
@@ -49,9 +50,9 @@ def apply(app: QApplication) -> None:
 
 
 def mono_font() -> QFont:
-    f = QFont("DejaVu Sans Mono")
+    f = QFont(FONT["mono"])
     f.setStyleHint(QFont.Monospace)
-    f.setPointSize(10)
+    f.setPointSize(FONT["mono_size"])
     return f
 
 

@@ -30,13 +30,14 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [ ] DRC / LVS / PEX buttons are placeholders until Phases 5–6
 - [x] App-menu entry; tools run as single sessions driven over localhost
 
-## Phase 4 — Look & feel (one consistent environment)   <- NEXT
-- [ ] Shared design language: palette, fonts, icons across hub / KLayout / xschem
-- [ ] xschem: colorscheme, fonts, Tk widget styling, Cadence-compat mode, Virtuoso bindkeys, custom menus/toolbar (overlay via xschemrc + Tcl, no fork)
-- [ ] KLayout: Virtuoso bindkeys, LSW dock, dark scheme, menus, toolbar, PCells
-- [ ] Cross-probing schematic <-> layout (stretch goal)
+## Phase 4 — Look & feel (one consistent environment)  [DONE]
+- [x] Shared design language: palette, fonts, icons across hub / KLayout / xschem (share/theme/openlayout.json)
+- [x] xschem: colorscheme, fonts, Tk widget styling, Cadence-compat mode, Virtuoso bindkeys, OpenLayout menu (overlay via xschemrc + Tcl, no fork)
+- [x] KLayout: Virtuoso bindkeys, LSW dock, dark scheme, OpenLayout menu (device PCells moved to Phase 7)
+- [x] Cross-tool navigation schematic <-> layout <-> Library Manager via the hub
+- [ ] Net-level cross-probing (select a net in one tool, highlight in the other) — needs LVS, Phase 6
 
-## Phase 5 — DRC
+## Phase 5 — DRC   <- NEXT
 - [ ] KLayout DRC deck written from the ASAP7 DRM, rule by rule, with pass/fail test layouts
 - [ ] Regression: all std-cell GDS must be DRC-clean
 - [ ] Cross-check against Calibre deck when it arrives; results browser in KLayout

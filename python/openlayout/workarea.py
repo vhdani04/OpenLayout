@@ -216,6 +216,20 @@ class Workarea:
     def library(self, name: str) -> Library | None:
         return next((lib for lib in self.libraries() if lib.name == name), None)
 
+    def cell_for_path(self, path: str | Path, cell_name: str | None = None) -> Cell | None:
+        """The cell a file belongs to: <lib>/<cell>/<file>, or `cell_name` inside a library's GDS."""
+        p = Path(path).expanduser().resolve()
+        for lib in self.libraries():
+            if lib.layout_gds and cell_name and p == lib.layout_gds.resolve():
+                return lib.cell(cell_name)
+            try:
+                rel = p.relative_to(lib.path.resolve())
+            except ValueError:
+                continue
+            if rel.parts:
+                return lib.cell(rel.parts[0])
+        return None
+
     def new_library(self, name: str) -> Library:
         check_name("library", name)
         if self.library(name):
@@ -319,6 +333,17 @@ class Workarea:
 
     def cell_state(self, cell: Cell) -> dict:
         return self.state().get(cell.key, {})
+
+    # ---- hub session (how the tools find the running hub) ----------------------------------
+    @property
+    def session_file(self) -> Path:
+        return self.root / STATE_DIR / "session.json"
+
+    def session(self) -> dict:
+        try:
+            return json.loads(self.session_file.read_text())
+        except (OSError, ValueError):
+            return {}
 
     # ---- derived paths --------------------------------------------------------------------
     def netlist_dir(self) -> Path:

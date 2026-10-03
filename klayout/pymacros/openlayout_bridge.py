@@ -48,6 +48,14 @@ class OpenLayoutBridge:
             return self.open(req["file"], req.get("cell"), bool(req.get("readonly")))
         if cmd == "status":
             return {"ok": True, "views": self.status()}
+        if cmd == "screenshot":  # {"file": ..., "width": w, "height": h} - whole main window
+            mw = pya.Application.instance().main_window()
+            if req.get("width") and req.get("height"):
+                mw.resize(int(req["width"]), int(req["height"]))
+            for _ in range(20):
+                pya.Application.instance().process_events()
+            mw.grab().save(req["file"])
+            return {"ok": True}
         return {"ok": False, "error": f"unknown command {cmd!r}"}
 
     def status(self):

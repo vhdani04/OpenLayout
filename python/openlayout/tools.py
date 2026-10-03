@@ -30,6 +30,7 @@ class ToolBridge:
         self.workarea = workarea
         self.port = free_port()
         self.proc: subprocess.Popen | None = None
+        self.extra_env: dict = {}  # e.g. OPENLAYOUT_HUB_PORT, set by the hub
 
     @property
     def running(self) -> bool:
@@ -43,7 +44,7 @@ class ToolBridge:
     def _spawn(self, argv: list[str], env: dict | None = None) -> None:
         log = self._log_file()
         self.proc = subprocess.Popen(argv, cwd=self.workarea.root, stdout=log, stderr=subprocess.STDOUT,
-                                     stdin=subprocess.DEVNULL, env={**os.environ, **(env or {})},
+                                     stdin=subprocess.DEVNULL, env={**os.environ, **self.extra_env, **(env or {})},
                                      start_new_session=True)
 
     def _wait_ready(self, timeout: float = 30.0) -> None:

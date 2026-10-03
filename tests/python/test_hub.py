@@ -72,6 +72,39 @@ def test_simulate_records_state(win, app):
     assert state["sim"]["detail"].startswith("PASS")
 
 
+def test_command_server(win, app):
+    """What the xschem/KLayout OpenLayout menus do: openlayout hubcmd -> hub over localhost."""
+    import threading
+    from openlayout import cli
+    port = win.workarea.session()["hub_port"]
+    assert cli.hub_port(str(win.workarea.root / "libraries" / "cpu8" / "tb_inv" / "tb_inv.sch")) == port
+
+    def call(req):
+        out = []
+        t = threading.Thread(target=lambda: out.append(cli.send(port, req)), daemon=True)
+        t.start()
+        end = time.time() + 10
+        while t.is_alive() and time.time() < end:
+            app.processEvents()
+            time.sleep(0.01)
+        return out[0]
+
+    assert call({"cmd": "ping"})["ok"]
+    sch = str(win.workarea.library("cpu8").path / "tb_inv" / "tb_inv.sch")
+    reply = call({"cmd": "select", "path": sch})
+    assert reply["ok"] and win.lm.current_cell().key == "cpu8/tb_inv"
+    reply = call({"cmd": "open", "path": sch, "view": "layout"})
+    assert not reply["ok"] and "no layout view" in reply["error"]
+    assert not call({"cmd": "select", "path": "/tmp/not/in/workarea.sch"})["ok"]
+
+
+def test_session_cleared_on_close(win):
+    session = win.workarea.session_file
+    assert session.is_file()
+    win.close()
+    assert not session.exists()
+
+
 def test_new_cell_view_rejects_readonly(win):
     from openlayout.workarea import WorkareaError
     with pytest.raises(WorkareaError):

@@ -89,6 +89,16 @@ def test_copy_stdcell_layout_into_design_library(wa):
     assert gds_cells(copy.view("layout").path) == ["my_inv"]
 
 
+def test_cell_for_path(wa):
+    lib = wa.library("mylib")
+    sch = wa.new_view(lib, "inv", SCHEMATIC)
+    assert wa.cell_for_path(sch.path).key == "mylib/inv"
+    std = wa.library("asap7sc7p5t_28_R")
+    assert wa.cell_for_path(std.layout_gds, "INVx1_ASAP7_75t_R").key == "asap7sc7p5t_28_R/INVx1_ASAP7_75t_R"
+    assert wa.cell_for_path(std.path / "INVx1_ASAP7_75t_R" / "INVx1_ASAP7_75t_R.sym").name == "INVx1_ASAP7_75t_R"
+    assert wa.cell_for_path("/tmp/elsewhere.sch") is None
+
+
 def test_state_roundtrip(wa):
     wa.new_view(wa.library("mylib"), "inv", SCHEMATIC)
     cell = wa.library("mylib").cell("inv")

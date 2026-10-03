@@ -1,12 +1,15 @@
 """OpenLayout hub main window: Library Manager on top, CIW below."""
+import json
+import os
 import re
 import threading
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, QSettings, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
-from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
-                               QSplitter, QStyle, QWidget)
+from PySide6.QtNetwork import QHostAddress, QTcpServer
+from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMenu,
+                               QMessageBox, QSplitter, QStyle, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import __version__
 from ..tools import KLayoutBridge, XschemBridge, netlist_command, simulate_command
@@ -120,6 +123,7 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(self.settings.value("geometry"))
             split.restoreState(self.settings.value("splitter"))
         self.ciw.info(f"OpenLayout {__version__} — Virtuoso-style custom IC design on KLayout, xschem and ngspice")
+        self._start_server()
         self.set_workarea(workarea)
 
     # ---- construction -----------------------------------------------------------------------
@@ -166,6 +170,7 @@ class MainWindow(QMainWindow):
         self.a_show_pdk = self._act("Show PDK Libraries", self._toggle_pdk, checkable=True)
         self.a_show_pdk.setChecked(self.lm.show_pdk)
         self.a_help_cmds = self._act("CIW Commands", lambda: self._run_ciw("help(ol)"))
+        self.a_keys = self._act("Virtuoso Keys", self.show_keys, "F1")
         self.a_about = self._act("About OpenLayout", self.about)
 
     def _build_menus(self):
@@ -177,7 +182,7 @@ class MainWindow(QMainWindow):
             ("&Tools", [self.a_netlist, self.a_sim, None, self.a_drc, self.a_lvs, self.a_pex, None,
                         self.a_start_xs, self.a_start_kl]),
             ("&View", [self.a_show_pdk]),
-            ("&Help", [self.a_help_cmds, self.a_about]),
+            ("&Help", [self.a_keys, self.a_help_cmds, self.a_about]),
         ]:
             m = mb.addMenu(title)
             for a in actions:
@@ -211,13 +216,83 @@ class MainWindow(QMainWindow):
         self._tool_timer.start()
         self._update_tool_status()
 
+    # ---- command server: lets xschem/KLayout menus (openlayout hubcmd) drive the hub ------------
+    def _start_server(self):
+        self.server = QTcpServer(self)
+        self.server.newConnection.connect(self._on_connection)
+        if not self.server.listen(QHostAddress.LocalHost, 0):
+            self.ciw.warn("cannot start the hub command server; cross-tool menus will not work")
+
+    def _on_connection(self):
+        while self.server.hasPendingConnections():
+            sock = self.server.nextPendingConnection()
+            sock.readyRead.connect(lambda s=sock: self._on_request(s))
+            sock.disconnected.connect(sock.deleteLater)
+
+    def _on_request(self, sock):
+        if not sock.canReadLine():
+            return
+        try:
+            reply = self.handle_request(json.loads(bytes(sock.readLine()).decode()))
+        except Exception as e:  # reply with the error instead of dropping the connection
+            reply = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        sock.write((json.dumps(reply) + "\n").encode())
+        sock.flush()
+        sock.disconnectFromHost()
+
+    def handle_request(self, req: dict) -> dict:
+        cmd = req.get("cmd")
+        if cmd == "ping":
+            return {"ok": True, "message": f"OpenLayout hub {__version__}"}
+        if not self.workarea:
+            return {"ok": False, "error": "the hub has no workarea open"}
+        cell = self.workarea.cell_for_path(req.get("path") or "", req.get("cell"))
+        if cell is None:
+            return {"ok": False, "error": f"{req.get('path')} is not part of workarea {self.workarea.root}"}
+        if cmd == "open":
+            view = cell.view(req.get("view") or "schematic")
+            if view is None:
+                return {"ok": False, "error": f"{cell.key} has no {req.get('view')} view"}
+            self.ciw.info(f"open {cell.key} {view.name} (requested by a tool)")
+            self.open_target(view)
+            return {"ok": True, "message": f"opening {cell.key} {view.name}"}
+        if cmd in ("select", "netlist", "simulate"):
+            self.lm.select(cell.library.name, cell.name)
+            self.raise_hub()
+            if cmd == "netlist":
+                self.netlist(cell)
+            elif cmd == "simulate":
+                self.simulate(cell)
+            return {"ok": True, "message": f"{cmd} {cell.key}"}
+        return {"ok": False, "error": f"unknown command {cmd!r}"}
+
+    def raise_hub(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _write_session(self):
+        if self.workarea and self.server.isListening():
+            f = self.workarea.session_file
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(json.dumps({"hub_port": self.server.serverPort(), "pid": os.getpid()}))
+
+    def _clear_session(self):
+        if self.workarea and self.workarea.session().get("pid") == os.getpid():
+            self.workarea.session_file.unlink(missing_ok=True)
+
     # ---- workarea ---------------------------------------------------------------------------
     def set_workarea(self, wa: Workarea | None):
+        self._clear_session()
         self.workarea = wa
         self.xschem = XschemBridge(wa) if wa else None
         self.klayout = KLayoutBridge(wa) if wa else None
+        for bridge in (self.xschem, self.klayout):
+            if bridge and self.server.isListening():
+                bridge.extra_env["OPENLAYOUT_HUB_PORT"] = str(self.server.serverPort())
         self.lm.set_workarea(wa)
         if wa:
+            self._write_session()
             self.settings.setValue("workarea", str(wa.root))
             libs = wa.libraries()
             n_design = sum(1 for lb in libs if not lb.readonly)
@@ -479,7 +554,18 @@ class MainWindow(QMainWindow):
                           f"<h3>OpenLayout {__version__}</h3><p>A Virtuoso-style open-source custom IC design "
                           "environment for the ASAP7 7nm FinFET PDK.</p><p>xschem · ngspice · KLayout</p>")
 
+    def show_keys(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Virtuoso Keys")
+        dlg.resize(720, 640)
+        view = QTextBrowser(dlg)
+        keys = Path(__file__).resolve().parents[3] / "docs" / "KEYS.md"
+        view.setMarkdown(keys.read_text() if keys.is_file() else "docs/KEYS.md not found")
+        QVBoxLayout(dlg).addWidget(view)
+        dlg.show()
+
     def closeEvent(self, e):
+        self._clear_session()
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("splitter", self.splitter.saveState())
         running = [b.name for b in (self.xschem, self.klayout) if b and b.running]

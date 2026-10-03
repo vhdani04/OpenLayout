@@ -94,7 +94,8 @@ do_models() {
 }
 
 do_views() {
-  step "Generated PDK views (std-cell symbols)"
+  step "Generated views (std-cell symbols, xschem theme)"
+  python3 "$FLOW/share/theme/gen_xschem_theme.py"
   python3 "$FLOW/pdk/asap7/xschem/gen_stdcell_symbols.py" "$ASAP7_STDCELLS" "$OPENLAYOUT_ROOT/libs"
   # KLayout loads every layout in a technology's libraries/ folder as a library for that technology.
   local kl="$FLOW/pdk/asap7/klayout/tech/asap7/libraries"

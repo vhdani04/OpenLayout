@@ -36,6 +36,20 @@ view chips S/Y/L and a pass/fail dot per cell) above a **CIW** (log + Python com
   `sim/<lib>/<cell>/` and the cell's checks in `.openlayout/state.json`.
 - CIW: Python with an `ol` object — `help(ol)`, e.g. `ol.sim('cpu8', 'tb_inv')`.
 
+## Look & feel
+
+One theme (`share/theme/openlayout.json`) drives the hub, xschem and KLayout: dark UI, near-black
+canvases, shared accent colors. Both tools use **Virtuoso bindkeys** (see [docs/KEYS.md](docs/KEYS.md),
+or F1 in the hub) and get an **OpenLayout** menu:
+
+- xschem: Open Layout in KLayout, Open Symbol/Schematic, Show in Library Manager, Netlist, Simulate
+- KLayout: Open Schematic/Symbol, Show in Library Manager, LSW (Virtuoso-style layer palette)
+
+Cross-tool menus call `openlayout hubcmd`, which talks to the hub over localhost
+(`<workarea>/.openlayout/session.json` holds its port); the hub starts the other tool if needed.
+`OPENLAYOUT_KEYS=xschem|klayout` keeps a tool's own bindings; `OPENLAYOUT_UI=0` disables the
+KLayout additions.
+
 ## Using it
 
     openlayout new-workarea ~/designs/cpu8      # libs.def, xschemrc, sim/, libraries/cpu8
