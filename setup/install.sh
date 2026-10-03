@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Reproducible install of the ASAP7 open flow.
+# Reproducible install of the OpenLayout.
 #   setup/install.sh [all|deps|tools|pdk|models|shell]   (default: all; every step is idempotent)
 set -euo pipefail
 FLOW="$(cd "$(dirname "$0")/.." && pwd)"
 source "$FLOW/setup/versions.env"
-source "$FLOW/env/eda.sh"
-SRC="$EDA_ROOT/src"
+source "$FLOW/env/openlayout.sh"
+SRC="$OPENLAYOUT_ROOT/src"
 JOBS=$(nproc)
-mkdir -p "$SRC" "$PDK_ROOT" "$EDA_MODELS"
+mkdir -p "$SRC" "$PDK_ROOT" "$OPENLAYOUT_MODELS"
 
 step() { echo; echo "==== $* ($(date +%T))"; }
 have_version() { command -v "$1" >/dev/null && "$1" "${@:3}" 2>&1 | grep -q "$2"; }
@@ -79,7 +79,7 @@ do_pdk() {
 
 do_models() {
   step "BSIM-CMG OSDI model + ASAP7 ngspice cards"
-  local d="$EDA_MODELS/bsimcmg"
+  local d="$OPENLAYOUT_MODELS/bsimcmg"
   mkdir -p "$d"
   local base="https://raw.githubusercontent.com/$BSIMCMG_REPO/$BSIMCMG_REF/integration_tests/BSIMCMG"
   for f in LICENSE.txt NOTICE.txt bsimcmg.va bsimcmg_body.include bsimcmg_checking.include \
@@ -93,12 +93,12 @@ do_models() {
 
 do_shell() {
   step "shell + ngspice init"
-  local line="source \"$EDA_FLOW/env/eda.sh\""
-  grep -qxF "$line" ~/.bashrc || printf '\n# ASAP7 open flow\n%s\n' "$line" >> ~/.bashrc
+  local line="source \"$OPENLAYOUT_HOME/env/openlayout.sh\""
+  grep -qxF "$line" ~/.bashrc || printf '\n# OpenLayout\n%s\n' "$line" >> ~/.bashrc
   # ngspice reads ~/.spiceinit at startup: load BSIM-CMG and make the ASAP7 cards findable.
-  local begin="* >>> eda-flow (managed by $EDA_FLOW/setup/install.sh) >>>" end="* <<< eda-flow <<<"
+  local begin="* >>> openlayout (managed by $OPENLAYOUT_HOME/setup/install.sh) >>>" end="* <<< openlayout <<<"
   touch ~/.spiceinit
-  sed -i "/^\* >>> eda-flow/,/^\* <<< eda-flow/d" ~/.spiceinit
+  sed -i "/^\* >>> openlayout/,/^\* <<< openlayout/d" ~/.spiceinit
   cat >> ~/.spiceinit <<EOS
 $begin
 osdi $BSIMCMG_OSDI

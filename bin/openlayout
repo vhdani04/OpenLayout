@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# eda — single entry point for the ASAP7 open flow.
+# openlayout — single entry point for the OpenLayout.
 set -euo pipefail
-source "$(dirname "$(readlink -f "$0")")/../env/eda.sh"
+source "$(dirname "$(readlink -f "$0")")/../env/openlayout.sh"
 
 usage() {
   cat <<U
-usage: eda <command> [args]
+usage: openlayout <command> [args]
 
   new-workarea <dir> [lib]  create a design workarea (libs.def, xschemrc, sim/, libraries/<lib>)
   new-lib <name>            create a design library in the current workarea
@@ -26,7 +26,7 @@ find_workarea() {
 }
 
 require_workarea() {
-  find_workarea || { echo "eda: not inside a workarea (no libs.def found). Use 'eda new-workarea <dir>'." >&2; exit 1; }
+  find_workarea || { echo "openlayout: not inside a workarea (no libs.def found). Use 'openlayout new-workarea <dir>'." >&2; exit 1; }
 }
 
 # Print "name<TAB>path" for each library in libs.def, following INCLUDE lines.
@@ -48,17 +48,17 @@ case "$cmd" in
   new-workarea)
     [ $# -ge 1 ] || { usage; exit 1; }
     wa="$(readlink -m "$1")"; lib="${2:-$(basename "$wa")}"
-    [ -e "$wa/libs.def" ] && { echo "eda: $wa is already a workarea" >&2; exit 1; }
+    [ -e "$wa/libs.def" ] && { echo "openlayout: $wa is already a workarea" >&2; exit 1; }
     mkdir -p "$wa"
-    cp -r "$EDA_FLOW/templates/workarea/." "$wa/"
+    cp -r "$OPENLAYOUT_HOME/templates/workarea/." "$wa/"
     (cd "$wa" && "$0" new-lib "$lib")
     echo "Created workarea $wa with library '$lib'"
     ;;
   new-lib)
     [ $# -eq 1 ] || { usage; exit 1; }
     wa="$(require_workarea)"; name="$1"
-    [[ "$name" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]] || { echo "eda: invalid library name '$name'" >&2; exit 1; }
-    list_libs "$wa/libs.def" | cut -f1 | grep -qx "$name" && { echo "eda: library '$name' already defined" >&2; exit 1; }
+    [[ "$name" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]] || { echo "openlayout: invalid library name '$name'" >&2; exit 1; }
+    list_libs "$wa/libs.def" | cut -f1 | grep -qx "$name" && { echo "openlayout: library '$name' already defined" >&2; exit 1; }
     mkdir -p "$wa/libraries/$name"
     printf 'DEFINE %-16s libraries/%s\n' "$name" "$name" >> "$wa/libs.def"
     echo "Created library '$name' in $wa/libraries/$name"
@@ -82,7 +82,7 @@ case "$cmd" in
     echo "Tools:"
     echo "  klayout  $(klayout -v 2>/dev/null)"
     echo "  ngspice  $(ngspice -v 2>/dev/null | grep -o 'ngspice-[0-9]*' | head -1)"
-    echo "  xschem   $(git -C "$EDA_ROOT/src/xschem" rev-parse --short HEAD 2>/dev/null)"
+    echo "  xschem   $(git -C "$OPENLAYOUT_ROOT/src/xschem" rev-parse --short HEAD 2>/dev/null)"
     echo "  openvaf  $(cat /usr/local/share/openvaf-r.build 2>/dev/null)"
     echo "PDK & models:"
     chk "ASAP7 PDK"              "[ -d '$ASAP7_PDK/models' ]"
@@ -91,7 +91,7 @@ case "$cmd" in
     chk "ASAP7 corner lib"       "[ -f '$ASAP7_SPICE_DIR/asap7.lib' ]"
     chk "~/.spiceinit loads OSDI" "grep -q '^osdi $BSIMCMG_OSDI' ~/.spiceinit"
     echo "Smoke tests:"
-    for t in "$EDA_FLOW"/tests/sim/*.sp; do
+    for t in "$OPENLAYOUT_HOME"/tests/sim/*.sp; do
       out="$(cd "$(dirname "$t")" && ngspice -b "$t" 2>&1 || true)"
       if grep -q "^PASS" <<< "$out"; then printf '  [ok]   %s\n' "$(basename "$t")"
       else printf '  [FAIL] %s\n' "$(basename "$t")"; grep -E "FAIL|rror" <<< "$out" | head -3 | sed 's/^/         /'; ok=0; fi
@@ -99,7 +99,7 @@ case "$cmd" in
     [ $ok = 1 ] && echo "All good." || { echo "Problems found."; exit 1; }
     ;;
   env)
-    env | grep -E '^(EDA_|PDK|ASAP7_|BSIMCMG_)' | sort ;;
+    env | grep -E '^(OPENLAYOUT_|PDK|ASAP7_|BSIMCMG_)' | sort ;;
   help|-h|--help) usage ;;
-  *) echo "eda: unknown command '$cmd'" >&2; usage; exit 1 ;;
+  *) echo "openlayout: unknown command '$cmd'" >&2; usage; exit 1 ;;
 esac

@@ -1,33 +1,33 @@
-# asap7-eda
+# OpenLayout
 
-A Virtuoso-style, open-source custom-IC flow for the ASAP7 7nm FinFET PDK:
+A Virtuoso-style, open-source custom IC design environment for the ASAP7 7nm FinFET PDK:
 xschem (schematics) + ngspice (simulation, BSIM-CMG via OSDI) + KLayout (layout, DRC, LVS).
 
 ## Install (Ubuntu 24.04)
 
-    git clone git@github.com:vhdani04/asap7-eda.git ~/eda/flow
-    ~/eda/flow/setup/install.sh        # tools, PDK, models, shell setup — idempotent
-    source ~/.bashrc && eda doctor
+    git clone git@github.com:vhdani04/OpenLayout.git ~/openlayout/flow
+    ~/openlayout/flow/setup/install.sh        # tools, PDK, models, shell setup — idempotent
+    source ~/.bashrc && openlayout doctor
 
 Pinned versions live in `setup/versions.env`.
 
 ## Layout on disk
 
-    ~/eda/flow      this repo
-    ~/eda/src       downloaded tool sources (not versioned)
-    ~/eda/pdk       ASAP7 PDK + 7.5T standard cells (not versioned)
-    ~/eda/models    generated: bsimcmg.osdi, ngspice ASAP7 cards + asap7.lib
+    ~/openlayout/flow      this repo
+    ~/openlayout/src       downloaded tool sources (not versioned)
+    ~/openlayout/pdk       ASAP7 PDK + 7.5T standard cells (not versioned)
+    ~/openlayout/models    generated: bsimcmg.osdi, ngspice ASAP7 cards + asap7.lib
     ~/designs/<x>   design workareas
 
 ## Using it
 
-    eda new-workarea ~/designs/cpu8      # libs.def, xschemrc, sim/, libraries/cpu8
+    openlayout new-workarea ~/designs/cpu8      # libs.def, xschemrc, sim/, libraries/cpu8
     cd ~/designs/cpu8
-    eda new-lib alu                      # add a design library
-    eda libs                             # libraries visible here (incl. PDK libraries)
-    eda xschem                           # schematic editor with workarea libraries
-    eda klayout                          # layout editor
-    eda sim tb.sp                        # ngspice batch run
+    openlayout new-lib alu                      # add a design library
+    openlayout libs                             # libraries visible here (incl. PDK libraries)
+    openlayout xschem                           # schematic editor with workarea libraries
+    openlayout klayout                          # layout editor
+    openlayout sim tb.sp                        # ngspice batch run
 
 Workareas mirror Virtuoso: `libs.def` (like `cds.lib`) defines libraries; a library holds
 cells; a cell is a directory `<lib>/<cell>/` holding its views (`<cell>.sch`, `<cell>.sym`,

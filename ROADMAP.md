@@ -1,4 +1,4 @@
-# ASAP7 Open Custom-IC Flow — Roadmap
+# OpenLayout — Roadmap
 
 Goal: Virtuoso-like full-custom environment on open tools (KLayout, xschem, ngspice)
 for ASAP7, then a full-custom 8-bit CPU.
@@ -13,7 +13,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 
 ## Phase 1 — Unified environment ("one place")   <- NOW
 - [x] Single install root + one reproducible setup script (tools pinned to versions)
-- [x] `eda` env/launcher: sets PDK_ROOT, model paths; `eda xschem`, `eda klayout`, `eda sim` start tools pre-configured for ASAP7
+- [x] `openlayout` env/launcher: sets PDK_ROOT, model paths; `openlayout xschem`, `openlayout klayout`, `openlayout sim` start tools pre-configured for ASAP7
 - [x] Git repo for everything we write (PDK configs, themes, scripts, hub, decks)
 - [x] Virtuoso-style project layout: workarea/ with libraries -> cells -> views
       (schematic .sch, symbol .sym, layout .gds, netlist, extracted, sim results), defined by a libs.def (like cds.lib)
