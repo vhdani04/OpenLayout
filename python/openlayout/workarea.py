@@ -257,8 +257,10 @@ class Workarea:
         if vt is SCHEMATIC:
             path.write_text(XSCHEM_HEADER + "K {}\nV {}\nS {}\nE {}\n")
         elif vt is SYMBOL:
+            # Red symbol border (layer 7) like Cadence's selection box: a plain rectangle that can be
+            # stretched to fit the pins.
             path.write_text(XSCHEM_HEADER + 'K {type=subcircuit\nformat="@name @pinlist @symname"\n'
-                            'template="name=x1"\n}\nV {}\nS {}\nE {}\n')
+                            'template="name=x1"\n}\nV {}\nS {}\nE {}\nB 7 -60 -60 60 60 {}\n')
         elif vt is LAYOUT:
             run_klayout_script("new_layout.py", file=path, cell=cell_name)
         else:

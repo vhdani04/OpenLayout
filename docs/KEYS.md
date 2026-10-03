@@ -8,18 +8,30 @@ it with `OPENLAYOUT_KEYS=xschem` or `OPENLAYOUT_KEYS=klayout` in the environment
 | Key | Action | Key | Action |
 |---|---|---|---|
 | `i` | create instance | `w` | wire |
-| `p` | create pin | `l` | wire name (net label) |
+| `p` | pin: name(s) + direction dialog | `l` | wire name (net label) |
 | `c` | copy | `m` | move |
 | `s` | stretch | `r` | rotate |
-| `q` | properties | `Del` | delete |
+| `q` | properties form | `Del` | delete |
 | `u` / `Shift+U` | undo / redo | `Esc` | cancel |
 | `f` | fit | `z` | zoom box |
 | `Ctrl+Z` | zoom in | `Shift+Z` | zoom out |
 | `e` | descend | `Ctrl+E` | return |
 | `x` | check and save | `Ctrl+S` | save |
 
-xschem also runs in its Cadence-compatibility mode: crosshair cursor, persistent commands
-(a command stays active until `Esc`), orthogonal wiring and a cursor that snaps to pins.
+**Symbol editor** (editing a `.sym`): `l` draws a line (any angle), `r` a rectangle, `p` adds
+symbol pins. New symbol views start with a red border rectangle, like Cadence's selection box;
+stretch it with `s` to fit the pins.
+
+`q` (or double-click) opens a form with one field per property - instance name, then the symbol's
+parameters; *Add property* adds a new one and *Text Editor…* opens xschem's raw editor. With several
+instances selected, only the fields you change are applied to all of them.
+
+`p` asks for the pin name(s) (several separated by spaces) and the direction (input, output,
+input-output); the pins then follow the mouse until you click to place them.
+
+xschem also runs in its Cadence-compatibility mode: persistent commands (a command stays active
+until `Esc`), orthogonal wiring (wires only; lines can be drawn at any angle) and a cursor that
+snaps to pins. The mouse cursor is the normal pointer.
 
 ## Layout (KLayout — like Virtuoso Layout Suite)
 
