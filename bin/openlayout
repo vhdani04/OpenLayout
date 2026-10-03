@@ -125,10 +125,11 @@ case "$cmd" in
     rm -rf "$kl_home"
     echo "xschem netlist + simulate:"
     tmp="$(mktemp -d)"
+    mkdir -p "$tmp/home"   # xschem writes ~/.xschem: keep the user's untouched
     "$0" new-workarea "$tmp/wa" doctor > /dev/null
     for sch in "$OPENLAYOUT_HOME"/tests/xschem/*/*.sch; do
       name="$(basename "$sch" .sch)"
-      (cd "$tmp/wa" && xschem -x -q -r -n -s -o "$tmp/net" "$sch" > /dev/null 2>&1 || true)
+      (cd "$tmp/wa" && HOME="$tmp/home" xschem -x -q -r -n -s -o "$tmp/net" "$sch" > /dev/null 2>&1 || true)
       out="$( [ -f "$tmp/net/$name.spice" ] && cd "$tmp/net" && ngspice -b "$name.spice" 2>&1 || echo "FAIL no netlist")"
       if grep -q "^PASS" <<< "$out"; then printf '  [ok]   %s
 ' "$name"

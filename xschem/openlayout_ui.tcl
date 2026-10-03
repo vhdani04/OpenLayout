@@ -46,7 +46,10 @@ proc ol_lighten_image {img} {
 }
 
 proc ol_lighten_toolbar {w} {
-  if {![catch {$w cget -image} img] && $img ne ""} { ol_lighten_image $img }
+  if {"-image" in [lmap o [$w configure] {lindex $o 0}]} {
+    set img [$w cget -image]
+    if {$img ne ""} { ol_lighten_image $img }
+  }
   foreach c [winfo children $w] { ol_lighten_toolbar $c }
 }
 
@@ -91,6 +94,23 @@ proc ol_add_menu {} {
   $m add command -label "Virtuoso Keys…" -command ol_show_keys
 }
 
+# xschem restores the last window size from ~/.xschem/geometry; a collapsed size (e.g. saved by a
+# session without a window manager) would leave an unusable sliver - fall back to a normal window.
+proc ol_sane_geometry {} {
+  set top [xschem get top_path]
+  if {$top eq ""} { set top . }
+  if {[regexp {^(\d+)x(\d+)} [wm geometry $top] -> w h] && ($w < 400 || $h < 300)} {
+    wm geometry $top 1280x800+80+60
+  }
+}
+
 ol_add_menu
+# xschem also restores a per-file size whenever it loads a schematic: re-check after startup and
+# whenever the main window is resized.
+after 300 ol_sane_geometry
+bind [expr {[xschem get top_path] eq "" ? "." : [xschem get top_path]}] <Configure>   {+if {"%W" eq [winfo toplevel %W]} {after idle ol_sane_geometry}}
 ol_restyle [xschem get top_path].
 if {[winfo exists [xschem get top_path].toolbar]} { ol_lighten_toolbar [xschem get top_path].toolbar }
+
+# The styling above probes options with catch; don't leave those in errorInfo.
+set ::errorInfo ""
