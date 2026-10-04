@@ -72,6 +72,12 @@ Segments are horizontal or
 vertical only; click to add points, double-click or `Enter` to finish, `Backspace` removes the last
 point, `Esc` cancels. Move, stretch and rulers are also restricted to the axes.
 
+**Moving** works like Virtuoso: press on a transistor, instance or shape and drag it - it follows
+the mouse and drops where you release the button (`u` undoes it). Pressing on empty space and
+dragging draws a selection box; a click selects. Or point at it, press `m`, and click where it
+should go (the first click places it). Clicking selects the top-level object - a whole transistor,
+not a shape inside it (descend with `x` to edit inside a cell).
+
 The **LSW** (right side) is the only layer panel. *All layers* / *Used layers* tabs (used = has
 shapes in the current cell). Click a layer to make it the current drawing layer, untick to hide it.
 **AV** shows every layer; **NV** hides every layer except the current one.

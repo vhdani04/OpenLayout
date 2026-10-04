@@ -1,5 +1,6 @@
-"""OpenLayout inside KLayout: theme and preferences, Virtuoso keys, the path tool, the ASAP7 PCell
-library, the LSW and Connectivity panels, and the OpenLayout menu (incl. schematic-driven layout)."""
+"""OpenLayout inside KLayout: theme and preferences, Virtuoso keys and drag-and-drop, the path tool,
+the ASAP7 PCell library, the LSW and Connectivity panels, and the OpenLayout menu (incl.
+schematic-driven layout)."""
 import json
 import os
 import re
@@ -9,6 +10,7 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
+from .drag_move import DragMoveFactory
 from .lsw import LSW
 from .nets_panel import NetsPanel
 from .path_tool import TOOL_NAME, PathToolFactory
@@ -53,6 +55,8 @@ PREFS = {
     # Manhattan editing: path/polygon segments and move/stretch only along the axes.
     "edit-connect-angle-mode": "ortho",
     "edit-move-angle-mode": "ortho",
+    # Like Virtuoso: clicking on a transistor/instance selects the instance, not a shape inside it.
+    "edit-top-level-selection": "true",
     # The LSW replaces KLayout's layer panel and layer toolbox (one layer panel only).
     "show-layer-panel": "false",
     "show-layer-toolbox": "false",
@@ -164,6 +168,8 @@ class OpenLayoutUI:
             except Exception as e:
                 print(f"OpenLayout: {step.__name__} failed: {e}")
         self.path_factory = PathToolFactory()
+        if os.environ.get("OPENLAYOUT_KEYS") != "klayout":
+            self.drag_factory = DragMoveFactory()   # Virtuoso drag and drop in Select mode
         try:
             bind_path_tool(mw)
         except Exception as e:
