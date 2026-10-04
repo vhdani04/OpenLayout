@@ -103,8 +103,12 @@ shape draws a selection box; a selected frame shape drags like any shape (to mov
 box-select it).
 
 Transistors go in with *Standard-cell row* on and at y = 0: nMOS sit on the bottom fins, pMOS on
-the top fins, and an nMOS and a pMOS in the same column share one gate (no strap; contact it with
-LIG + V0 near mid-cell). Row devices have at most 3 fins (use fingers for more).
+the top fins, and an nMOS and a pMOS in the same column share one gate. Each transistor has its
+gate contact - a LIG strap over its fingers at mid-cell, like the library's - which can be
+switched off in its properties (`q`, *Gate contact*; e.g. on one of an nMOS/pMOS pair). Row
+devices have at most 3 fins (use fingers for more). The transistor PCells draw no GCUT: where a
+gate is cut depends on the cell, so draw GCUT where yours needs it (the frame already cuts at the
+rails and at its edge dummy gates).
 
 **Generating from the schematic** puts the cell's boundary corner at (0, 0): a transistor-level cell
 gets the frame (sized for its transistors chained per row) unless it has one already, a cell of

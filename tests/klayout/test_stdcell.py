@@ -33,6 +33,7 @@ ly = pya.Layout()
 ly.dbu = 0.00025
 ly.technology_name = "asap7"
 FRONT = ["well", "fin", "gate", "gcut", "active", "nselect", "pselect", "sdt", "boundary"]
+FRONT_LIG = FRONT + ["lig"]
 
 
 def place(cell, name, x_nm, **params):
@@ -45,10 +46,10 @@ def region(layout, cell, layer):
     return pya.Region() if li is None else pya.Region(cell.begin_shapes_rec(li)).merged()
 
 
-def compare(cell, ref_name):
+def compare(cell, ref_name, layers=FRONT):
     ref = lib.cell(ref_name)
     bad = {}
-    for layer in FRONT:
+    for layer in layers:
         a = region(ly, cell, layer)
         b = region(lib, ref, layer)
         # the library's gates end at 275 or 275.5 nm: compare within half a nanometre
@@ -63,18 +64,25 @@ inv = ly.create_cell("INV")
 stdcell.draw_frame(inv, 3)
 place(inv, "nmos", 0, row=True, nfin=3, nf=1)
 place(inv, "pmos", 0, row=True, nfin=3, nf=1)
-bad = compare(inv, "INVx1_ASAP7_75t_R")
-check("frame + row devices reproduce INVx1 (front-end layers)", not bad, bad)
+bad = compare(inv, "INVx1_ASAP7_75t_R", FRONT_LIG)
+check("frame + row devices reproduce INVx1 (front-end layers and the gate contact)", not bad, bad)
 
-# NAND2xp33: two 2-fin nMOS chained in series (no contact on the inner node), a 1-fin pMOS with
-# two fingers in parallel
+# NAND2xp33: two 2-fin nMOS chained in series (no contact on the inner node), two 1-fin pMOS chained
+# in parallel (sharing the output in the middle)
 nand = ly.create_cell("NAND")
 stdcell.draw_frame(nand, 4)
 place(nand, "nmos", 0, row=True, nfin=2, nf=1, abut_right=True, contact_right=False)
 place(nand, "nmos", 54, row=True, nfin=2, nf=1, abut_left=True, contact_left=False)
-place(nand, "pmos", 0, row=True, nfin=1, nf=2)
+place(nand, "pmos", 0, row=True, nfin=1, nf=1, abut_right=True)
+place(nand, "pmos", 54, row=True, nfin=1, nf=1, abut_left=True)
 bad = compare(nand, "NAND2xp33_ASAP7_75t_R")
 check("chained series nMOS reproduce NAND2xp33 (front-end layers)", not bad, bad)
+lig = region(ly, nand, "lig")
+check("the two inputs' gate contacts stay apart", (lig & region(lib, lib.cell("NAND2xp33_ASAP7_75t_R"), "lig")).count() >= 4
+      and region(ly, nand, "lig").count() == 4, str(lig)[:200])
+pc = ly.create_cell("nmos", LIBRARY, {"nfin": 2, "nf": 1})
+check("no GCUT in the transistor PCells", ly.find_layer(LAYERS["gcut"], 0) is None
+      or pc.shapes(ly.find_layer(LAYERS["gcut"], 0)).is_empty())
 
 check("the comparison notices differences", bool(compare(inv, "NAND2xp33_ASAP7_75t_R")))
 check("the frame is plain shapes in the cell (no instance), tagged as frame",
