@@ -63,8 +63,8 @@ creates or updates `<cell>.gds`:
 
 - FinFETs become **OpenLayout_ASAP7** `nmos`/`pmos` PCells (vt, nfin, nf from the schematic; `m`
   copies). The PCells follow the ASAP7 std-cell geometry: 54 nm gate pitch with dummy gates, fins
-  on the 27 nm grid, SDT/LISD source/drain contacts, a LIG strap joining the gate fingers, GCUT,
-  implant and VT layers. A `via` PCell covers LISD/LIG-M1 and M1-M9 stacks.
+  on the 27 nm grid, SDT/LISD source/drain contacts, implant and VT layers (no gate contact: it
+  goes wherever the routing wants it). A `via` PCell covers LISD/LIG-M1 and M1-M9 stacks.
 - Standard cells become instances of the ASAP7 std-cell libraries; other subcircuits are copied from
   their own layout view.
 - Schematic ports become M1 pins.

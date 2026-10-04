@@ -2,18 +2,19 @@
 
 FinFET geometry follows the ASAP7 7.5-track standard cells (DRM r1p7):
   gates on a 54 nm pitch (20 nm wide) with one dummy gate on each side, fins 7 nm on a 27 nm grid,
-  ACTIVE 10 nm past the outer fins, SDT/LISD source-drain contacts (24 nm) between gates, a LIG
-  gate contact strap tying all gate fingers together (`gate_contact`), and implant/VT layers.
-  No GCUT: where gates are cut depends on the cell around the transistor (the standard-cell frame
-  cuts at the rails and its edge dummies; draw any other cut where the cell needs it).
-Source/drain columns alternate s, d, s, ... from the left (at x = 54, 108, ...); the gate strap sits
-on `gate_side`.
+  ACTIVE 10 nm past the outer fins, SDT/LISD source-drain contacts (24 nm) between gates, and
+  implant/VT layers.
+  No gate contact: the gates are left open, so a contact (LIG, and a V0 to M1) goes wherever the
+  routing wants it - draw it, or place a LIG-M1 via. No GCUT either: where gates are cut depends
+  on the cell around the transistor (the standard-cell frame cuts at the rails and its edge
+  dummies; draw any other cut where the cell needs it).
+Source/drain columns alternate s, d, s, ... from the left (at x = 54, 108, ...).
 
 Standard-cell row mode (`row`): the device is drawn in the coordinates of a 270 nm (7.5-track) cell
 placed at y = 0, exactly like the library cells - nMOS on fins 1..nfin from the bottom, pMOS on
 fins 8..9-nfin from the top, gates running to the middle of the cell (so an nMOS and a pMOS in the
-same column form one continuous gate), the gate contact strap at mid-cell like the library's
-(e.g. INVx1 / INVx2).
+same column form one continuous gate). Standalone (not row) devices extend their gates 70 nm past
+the ACTIVE on both sides, room for a gate contact above or below.
 
 Chaining (`abut_left` / `abut_right`): the dummy gate on that side is left out and the diffusion
 runs on into the neighbour's, whose outer source/drain column coincides with this one's (devices
@@ -34,15 +35,15 @@ CPP, FIN_PITCH, CELL_HEIGHT, MID = 54, 27, 270, 135
 ROW_MAX_FINS = 3
 
 
-def mos_geometry(kind: str, nfin: int, nf: int, gate_side: str = "", vt: str = "rvt", row: bool = False,
+def mos_geometry(kind: str, nfin: int, nf: int, vt: str = "rvt", row: bool = False,
                  abut_left: bool = False, abut_right: bool = False,
-                 contact_left: bool = True, contact_right: bool = True, gate_contact: bool = True) -> dict:
+                 contact_left: bool = True, contact_right: bool = True) -> dict:
     """Shapes {layer: [(x1, y1, x2, y2) nm]} and terminals {term: [(x, y, layer)]} of one FinFET."""
     w = CPP * (nf + 2)
     gates = [27 + CPP * i for i in range(nf + 2)]           # gates[0] and gates[-1] are dummies
     real = gates[1:-1]
     dummies = ([] if abut_left else [gates[0]]) + ([] if abut_right else [gates[-1]])
-    s = {name: [] for name in ("fin", "active", "gate", "lig", "lisd", "sdt")}
+    s = {name: [] for name in ("fin", "active", "gate", "lisd", "sdt")}
     terminals = {"g": [], "s": [], "d": []}
 
     if row:
@@ -59,33 +60,18 @@ def mos_geometry(kind: str, nfin: int, nf: int, gate_side: str = "", vt: str = "
         act_top = FIN_PITCH * (fins[-1] + 1)                   # 10 nm above the highest fin
         for c in real + dummies:
             s["gate"].append((c - 10, gy[0], c + 10, gy[1]))
-        strap = MID                                            # the library's gate contact height
         terminals["g"] = [(c, g_y, "gate") for c in real]
         implant = half
-        bbox = (0, min(half[1], strap - 11), w, max(half[3], strap + 11))
+        bbox = half
     else:
-        side = gate_side or ("top" if kind == "nmos" else "bottom")
         fins = range(1, nfin + 1)
         act_bot, act_top = 27, 27 * (nfin + 1)
-        if side == "top":
-            strap = act_top + 27
-            yb, yt = act_bot - 32, strap + 43
-        else:
-            strap = act_bot - 27
-            yb, yt = strap - 43, act_top + 32
+        yb, yt = act_bot - 70, act_top + 70                    # room for a gate contact either side
         for c in real + dummies:
             s["gate"].append((c - 10, yb, c + 10, yt))
         terminals["g"] = [(c, (act_bot + act_top) / 2, "gate") for c in real]
         implant = (0, yb, w, yt)
         bbox = (0, yb, w, yt)
-
-    if gate_contact:
-        # the strap reaches past the outer fingers (to the left far enough for a V0, like the
-        # library's); on a chained side only to the gate edge, clear of the neighbour's strap
-        x1 = real[0] - (10 if abut_left else 27)
-        x2 = real[-1] + (10 if abut_right else 12)
-        s["lig"].append((x1, strap - 11, x2, strap + 11))
-        terminals["g"] = [((x1 + x2) / 2, strap, "lig")]
 
     for k in fins:
         c = 13.5 + FIN_PITCH * k
@@ -108,15 +94,14 @@ def mos_geometry(kind: str, nfin: int, nf: int, gate_side: str = "", vt: str = "
     return {"shapes": s, "terminals": terminals, "bbox": bbox}
 
 
-MOS_PARAMS = ("nfin", "nf", "gate_side", "vt", "row", "abut_left", "abut_right", "contact_left", "contact_right",
-              "gate_contact")
+MOS_PARAMS = ("nfin", "nf", "vt", "row", "abut_left", "abut_right", "contact_left", "contact_right")
 
 
 def mos_geometry_from(kind: str, params: dict) -> dict:
     """mos_geometry for a PCell parameter dict (missing ones take the defaults)."""
     kw = {k: params[k] for k in MOS_PARAMS if params.get(k) is not None}
     kw["nfin"], kw["nf"] = int(kw.get("nfin", 1)), int(kw.get("nf", 1))
-    for k in ("row", "abut_left", "abut_right", "contact_left", "contact_right", "gate_contact"):
+    for k in ("row", "abut_left", "abut_right", "contact_left", "contact_right"):
         if k in kw:
             kw[k] = bool(kw[k])
     return mos_geometry(kind, **kw)
@@ -221,9 +206,6 @@ class FinFET(pya.PCellDeclarationHelper):
         self.param("nfin", self.TypeInt, "Fins per finger", default=2)
         self.param("nf", self.TypeInt, "Fingers", default=1)
         self.param("l", self.TypeDouble, "Gate length (um)", default=0.020, readonly=True)
-        self.param("gate_contact", self.TypeBoolean, "Gate contact (LIG strap over the fingers)", default=True)
-        self.param("gate_side", self.TypeString, "Gate contact side",
-                   default="top" if kind == "nmos" else "bottom", choices=[["Top", "top"], ["Bottom", "bottom"]])
         self.param("row", self.TypeBoolean, "Standard-cell row (place at cell y = 0)", default=False)
         self.param("abut_left", self.TypeBoolean, "Chained on the left (shared diffusion)", default=False)
         self.param("abut_right", self.TypeBoolean, "Chained on the right (shared diffusion)", default=False)
@@ -239,9 +221,8 @@ class FinFET(pya.PCellDeclarationHelper):
         self.l = 0.020
 
     def produce_impl(self):
-        draw(self.cell, mos_geometry(self.kind, self.nfin, self.nf, self.gate_side, self.vt, self.row,
-                                     self.abut_left, self.abut_right, self.contact_left, self.contact_right,
-                                     self.gate_contact)["shapes"])
+        draw(self.cell, mos_geometry(self.kind, self.nfin, self.nf, self.vt, self.row,
+                                     self.abut_left, self.abut_right, self.contact_left, self.contact_right)["shapes"])
 
 
 class StdCellFrame(pya.PCellDeclarationHelper):

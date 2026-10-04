@@ -117,8 +117,8 @@ check("swapped pins on the placed cell are a mismatch (net names)", r == "mismat
 r, out = lvs(ly, "top2", TOP, "-rd", "stdcells=check")
 check("stdcells=check compares the placed cell's transistors too (and they match)", r == "match", out[-300:])
 
-# a transistor PCell, 3 fins x 2 fingers, not wired: two 3-fin fingers sharing the gate and the
-# middle diffusion (fins counted from the drawn ACTIVE)
+# a transistor PCell, 3 fins x 2 fingers, not wired (no gate contact either): two 3-fin fingers
+# sharing the middle diffusion (fins counted from the drawn ACTIVE)
 register_library()
 ly = pya.Layout()
 ly.dbu = 0.00025
@@ -129,8 +129,8 @@ top.insert(pya.CellInstArray(pc.cell_index(), pya.Trans()))
 flat = ly.create_cell("t1f")             # flattened: no pins between hierarchy levels to worry about
 flat.copy_tree(top)
 flat.flatten(True)
-r, out = lvs(ly, "t1f", ".subckt t1f\nNM1 d g s1 0 nmos_rvt l=20n nfin=3 nf=1\n"
-                         "NM2 d g s2 0 nmos_rvt l=20n nfin=3 nf=1\n.ends\n")
+r, out = lvs(ly, "t1f", ".subckt t1f\nNM1 d g1 s1 0 nmos_rvt l=20n nfin=3 nf=1\n"
+                         "NM2 d g2 s2 0 nmos_rvt l=20n nfin=3 nf=1\n.ends\n")
 check("the nMOS PCell (nfin=3, nf=2) extracts as two 3-fin nmos_rvt fingers", r == "match", out[-400:])
 
 print("PASS lvs" if not failures else f"FAIL lvs: {', '.join(failures)}")

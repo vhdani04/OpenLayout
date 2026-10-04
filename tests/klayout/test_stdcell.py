@@ -33,7 +33,6 @@ ly = pya.Layout()
 ly.dbu = 0.00025
 ly.technology_name = "asap7"
 FRONT = ["well", "fin", "gate", "gcut", "active", "nselect", "pselect", "sdt", "boundary"]
-FRONT_LIG = FRONT + ["lig"]
 
 
 def place(cell, name, x_nm, **params):
@@ -64,8 +63,11 @@ inv = ly.create_cell("INV")
 stdcell.draw_frame(inv, 3)
 place(inv, "nmos", 0, row=True, nfin=3, nf=1)
 place(inv, "pmos", 0, row=True, nfin=3, nf=1)
-bad = compare(inv, "INVx1_ASAP7_75t_R", FRONT_LIG)
-check("frame + row devices reproduce INVx1 (front-end layers and the gate contact)", not bad, bad)
+bad = compare(inv, "INVx1_ASAP7_75t_R")
+check("frame + row devices reproduce INVx1 (front-end layers)", not bad, bad)
+rails_lig = region(ly, inv, "lig")
+check("the transistors bring no gate contact: the only LIG is the frame's two rails", rails_lig.count() == 2,
+      str(rails_lig)[:200])
 
 # NAND2xp33: two 2-fin nMOS chained in series (no contact on the inner node), two 1-fin pMOS chained
 # in parallel (sharing the output in the middle)
@@ -77,10 +79,9 @@ place(nand, "pmos", 0, row=True, nfin=1, nf=1, abut_right=True)
 place(nand, "pmos", 54, row=True, nfin=1, nf=1, abut_left=True)
 bad = compare(nand, "NAND2xp33_ASAP7_75t_R")
 check("chained series nMOS reproduce NAND2xp33 (front-end layers)", not bad, bad)
-lig = region(ly, nand, "lig")
-check("the two inputs' gate contacts stay apart", (lig & region(lib, lib.cell("NAND2xp33_ASAP7_75t_R"), "lig")).count() >= 4
-      and region(ly, nand, "lig").count() == 4, str(lig)[:200])
 pc = ly.create_cell("nmos", LIBRARY, {"nfin": 2, "nf": 1})
+check("no gate contact in the transistor PCells (contacts go where the routing wants them)",
+      ly.find_layer(LAYERS["lig"], 0) is None or pc.shapes(ly.find_layer(LAYERS["lig"], 0)).is_empty())
 check("no GCUT in the transistor PCells", ly.find_layer(LAYERS["gcut"], 0) is None
       or pc.shapes(ly.find_layer(LAYERS["gcut"], 0)).is_empty())
 
@@ -129,10 +130,10 @@ src.shapes(lisd_li).insert(pya.DBox(0.042, 0.0, 0.066, 0.027))       # the sourc
 check("a source's LISD run into the LIG rail is on the M1 VSS rail (LISD - LIG - V0 - M1)",
       same_net(src, (0.054, 0.05), (0.1, 0.0), "lisd", "m1"))
 lig_li = ly.layer(LAYERS["lig"], 0)
-src.shapes(lig_li).insert(pya.DBox(0.04, 0.124, 0.08, 0.146))        # LIG from the gate strap ...
+src.shapes(lig_li).insert(pya.DBox(0.04, 0.124, 0.08, 0.146))        # LIG from the gate (a contact) ...
 src.shapes(lig_li).insert(pya.DBox(0.046, 0.06, 0.062, 0.146))       # ... down onto the source contact
 check("LIG over a source contact joins it to the gate (a short the check can now see)",
-      same_net(src, (0.081, 0.135), (0.054, 0.05), "lig", "lisd"))
+      same_net(src, (0.06, 0.135), (0.054, 0.05), "lig", "lisd"))
 
 # chaining: standalone 2-fin nMOS, nets from a schematic link (s/d per instance)
 conn = {"instances": {

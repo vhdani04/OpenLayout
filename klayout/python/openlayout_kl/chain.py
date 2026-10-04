@@ -49,8 +49,7 @@ class Device:
 
     def row_key(self):
         p = self.params
-        return (self.kind, p.get("vt"), int(p.get("nfin", 1)), bool(p.get("row")),
-                None if p.get("row") else p.get("gate_side"), self.y0)
+        return (self.kind, p.get("vt"), int(p.get("nfin", 1)), bool(p.get("row")), self.y0)
 
     def column_x(self, j):
         """global x (nm) of source/drain column j"""
