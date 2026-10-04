@@ -26,8 +26,11 @@ pin dialog keeps pins on the 10 grid; schematics snap to 10 (grid 20).
 Symbol*, `openlayout make-symbol cell.sch` or xschem's *OpenLayout ▸ Generate Symbol from
 Schematic* build the symbol from the schematic's pins - inputs left, outputs right, supplies
 (VDD…/VSS…) top and bottom, other input-outputs right - with a green body, `@name` / `@symname`
-labels and a red outline selection box around everything. A symbol without a schematic starts as
-an empty body with the selection box.
+labels and a red outline selection box around the body and pins (pins on its edges). As in
+Virtuoso, the selection box only shows in the symbol editor: placed instances don't draw it, but it
+sets the area where the instance is hovered and selected (`hide=instance` on the box; needs the
+OpenLayout xschem build, see `setup/patches`). A symbol without a schematic starts as an empty body
+with the selection box.
 
 `q` (or double-click) opens a form with one field per property - instance name, then the symbol's
 parameters; *Add property* adds a new one and *Text Editor…* opens xschem's raw editor. With several

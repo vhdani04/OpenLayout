@@ -80,7 +80,7 @@ def test_symbol_generated_from_schematic_pins(wa):
     assert ad == "in" and yd == "out" and ax < 0 < yx           # inputs left, outputs right
     assert pins["VDD"][1] < 0 < pins["VSS"][1]                    # supplies top and bottom
     assert all(v % 10 == 0 for x, y, _ in pins.values() for v in (x, y))  # pins on the 10 grid
-    sel = re.search(r"^B 7 (\S+) (\S+) (\S+) (\S+) \{fill=false\}", sym, re.M)
+    sel = re.search(r"^B 7 (\S+) (\S+) (\S+) (\S+) \{fill=false hide=instance\}", sym, re.M)
     assert sel, "outline-only selection box"
     x1, y1, x2, y2 = map(float, sel.groups())
     assert all(x1 <= x <= x2 and y1 <= y <= y2 for x, y, _ in pins.values())  # encloses the pins
@@ -91,7 +91,7 @@ def test_symbol_generated_from_schematic_pins(wa):
 
 def test_blank_symbol_without_schematic(wa):
     sym = wa.new_view(wa.library("mylib"), "lonely", SYMBOL).path.read_text()
-    assert "B 7 -80 -50 80 50 {fill=false}" in sym and "B 5 " not in sym
+    assert "B 7 -80 -50 80 50 {fill=false hide=instance}" in sym and "B 5 " not in sym
 
 
 def test_readonly_library_is_protected(wa):

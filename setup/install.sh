@@ -57,10 +57,17 @@ do_tools() {
 
   step "xschem @ $XSCHEM_REF"
   [ -d xschem ] || git clone -q https://github.com/StefanSchippers/xschem.git
-  if [ "$(git -C xschem rev-parse --short HEAD)" = "$XSCHEM_REF" ] && command -v xschem >/dev/null; then
+  # OpenLayout patches (setup/patches/xschem-*.patch) go on top of the pinned release
+  xschem_patched() {
+    for p in "$FLOW"/setup/patches/xschem-*.patch; do
+      git -C xschem apply --reverse --check "$p" 2>/dev/null || return 1
+    done
+  }
+  if [ "$(git -C xschem rev-parse --short HEAD)" = "$XSCHEM_REF" ] && command -v xschem >/dev/null && xschem_patched; then
     echo "already installed"
   else
-    git -C xschem fetch -q && git -C xschem checkout -q "$XSCHEM_REF"
+    git -C xschem fetch -q && git -C xschem checkout -q -f "$XSCHEM_REF"
+    for p in "$FLOW"/setup/patches/xschem-*.patch; do git -C xschem apply "$p"; done
     (cd xschem && ./configure --prefix=/usr/local > configure.log && make -j"$JOBS" > make.log 2>&1 \
       && sudo make install > install.log)
   fi

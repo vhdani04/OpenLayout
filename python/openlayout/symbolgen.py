@@ -3,7 +3,8 @@
 Inputs go on the left, outputs on the right, supply pins (VDD/VSS/...) on top/bottom and other
 input-outputs on the right below the outputs, each on a stub with its name inside the body. The
 body is a green rectangle with @name above and @symname below it, and a red selection box (outline
-only) encloses the body and pins, with the pins on its edges.
+only) encloses the body and pins, with the pins on its edges. The box is hide=instance: it
+is not drawn where the symbol is placed, it only sets the instance's hover/selection area.
 Pins keep the schematic's top-to-bottom order.
 
   openlayout make-symbol <cell.sch> [--force]
@@ -95,19 +96,19 @@ def symbol_text(pins: list) -> str:
     texts.append(f"T {{@symname}} {x1} {cell_y} 0 0 {LABEL} {LABEL} {{}}")
 
     # red selection box (outline only) like Virtuoso's: the body plus the pin stubs, with the pins on
-    # its edges; labels stay outside. On the 10 grid, so its edges can be dragged on the grid.
+    # its edges; labels stay outside. Not drawn in instances (hide=instance, OpenLayout xschem patch). On the 10 grid, so its edges can be dragged on the grid.
     bx1 = x1 - (STUB if left else 0)
     bx2 = x2 + (STUB if right else 0)
     by1 = y1 - (STUB if top else 0)
     by2 = y2 + (STUB if bottom else 0)
-    selection = f"B 7 {bx1} {by1} {bx2} {by2} {{fill=false}}"
+    selection = f"B 7 {bx1} {by1} {bx2} {by2} {{fill=false hide=instance}}"
 
     k = 'K {type=subcircuit\nformat="@name @pinlist @symname"\ntemplate="name=x1"\n}\n'
     return HEADER + k + "V {}\nS {}\nE {}\n" + "\n".join([selection] + lines + rects + texts) + "\n"
 
 
 BLANK = HEADER + ('K {type=subcircuit\nformat="@name @pinlist @symname"\ntemplate="name=x1"\n}\n'
-                  "V {}\nS {}\nE {}\nB 7 -80 -50 80 50 {fill=false}\n")
+                  "V {}\nS {}\nE {}\nB 7 -80 -50 80 50 {fill=false hide=instance}\n")
 
 
 def make_symbol(sch: Path, force: bool = False) -> Path:

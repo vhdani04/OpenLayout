@@ -1,0 +1,76 @@
+diff --git a/src/actions.c b/src/actions.c
+index cbd2d9d5..bc764ac7 100644
+--- a/src/actions.c
++++ b/src/actions.c
+@@ -778,6 +778,7 @@ void remove_symbols(void)
+  *   private_cursor     4
+  * image             1024
+  *   unscaled        2048
++ * hide=instance     4096 (symbol rect not drawn in instances)
+  */
+ int set_rect_flags(xRect *r)
+ {
+@@ -794,6 +795,7 @@ int set_rect_flags(xRect *r)
+       f |= 1024;
+       if(strstr(flags, "unscaled")) f |= 2048;
+     }
++    if(!strcmp(get_tok_value(r->prop_ptr, "hide", 0), "instance")) f |= HIDE_RECT_INSTANTIATED;
+   }
+   r->flags = f;
+   dbg(1, ("set_rect_flags(): flags=%d\n", f));
+diff --git a/src/draw.c b/src/draw.c
+index 6f82c830..6d861838 100644
+--- a/src/draw.c
++++ b/src/draw.c
+@@ -778,6 +778,7 @@ void draw_symbol(int what,int c, int n,int layer,short tmp_flip, short rot,
+     {
+       int dash;
+       rect = &(symptr->rect[layer])[j];
++      if(rect->flags & HIDE_RECT_INSTANTIATED) continue;
+       dash = (disabled == 1) ? 3 : rect->dash;
+       ROTATION(rot, flip, 0.0, 0.0,rect->x1,rect->y1,x1,y1);
+       ROTATION(rot, flip, 0.0, 0.0,rect->x2,rect->y2,x2,y2);
+@@ -1012,6 +1013,7 @@ void draw_temp_symbol(int what, GC gc, int n,int layer,short tmp_flip, short rot
+    for(j=0;j< symptr->rects[layer]; ++j)
+    {
+     rect = &(symptr->rect[layer])[j];
++    if(rect->flags & HIDE_RECT_INSTANTIATED) continue;
+     ROTATION(rot, flip, 0.0, 0.0,rect->x1,rect->y1,x1,y1);
+     ROTATION(rot, flip, 0.0, 0.0,rect->x2,rect->y2,x2,y2);
+     RECTORDER(x1,y1,x2,y2);
+diff --git a/src/psprint.c b/src/psprint.c
+index 306ebb46..edbc592f 100644
+--- a/src/psprint.c
++++ b/src/psprint.c
+@@ -1140,6 +1140,7 @@ static void ps_draw_symbol(int c, int n,int layer, int what, short tmp_flip, sho
+     {
+        int dash;
+        rect = &(symptr->rect[layer])[j];
++       if(rect->flags & HIDE_RECT_INSTANTIATED) continue;
+        dash = (disabled == 1) ? 3 : rect->dash;
+        ROTATION(rot, flip, 0.0,0.0,rect->x1,rect->y1,x1,y1);
+        ROTATION(rot, flip, 0.0,0.0,rect->x2,rect->y2,x2,y2);
+diff --git a/src/svgdraw.c b/src/svgdraw.c
+index ae5ced39..d7b0e4db 100644
+--- a/src/svgdraw.c
++++ b/src/svgdraw.c
+@@ -831,6 +831,7 @@ static void svg_draw_symbol(int c, int n,int layer,short tmp_flip, short rot,
+     {
+       int dash;
+       rect = &(symptr->rect[layer])[j];
++      if(rect->flags & HIDE_RECT_INSTANTIATED) continue;
+       dash = (disabled == 1) ? 3 : rect->dash;
+       ROTATION(rot, flip, 0.0,0.0,rect->x1,rect->y1,x1,y1);
+       ROTATION(rot, flip, 0.0,0.0,rect->x2,rect->y2,x2,y2);
+diff --git a/src/xschem.h b/src/xschem.h
+index db34b96a..f96b89c0 100644
+--- a/src/xschem.h
++++ b/src/xschem.h
+@@ -324,6 +324,7 @@ extern char win_temp_dir[PATH_MAX];
+ #define HIDE_TEXT 8
+ #define TEXT_FLOATER 16
+ #define HIDE_TEXT_INSTANTIATED 32
++#define HIDE_RECT_INSTANTIATED 4096 /* xRect.flags: hide=instance */
+ 
+ #define S(a) (sizeof(a)/sizeof(a[0]))
+ #define BUS_WIDTH 4

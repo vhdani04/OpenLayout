@@ -166,4 +166,23 @@ check("a resize is one undo step", box() == [x1, y1, x2, y2], box())
 send(f"event generate .drw <Motion> -x 5 -y 5 -warp 1; update; after 50; update")
 check("no overlay left over", mapped() == "", mapped())
 
+# A symbol's selection box (hide=instance) is not drawn where the symbol is placed, but still sets
+# the instance's selection area (needs setup/patches/xschem-hide-rect-instance.patch).
+hid = WA / f"libraries/{LIB}/hid"
+hid.mkdir(exist_ok=True)
+(hid / "hid.sym").write_text(
+    "v {xschem version=3.4.8RC file_version=1.3}\nG {}\nK {type=subcircuit\nformat=\"@name @pinlist @symname\"\n"
+    "template=\"name=x1\"\n}\nV {}\nS {}\nE {}\nB 7 -60 -40 60 40 {fill=false hide=instance}\nL 4 -20 -10 20 -10 {}\n")
+(hid / "top.sch").write_text("v {xschem version=3.4.8RC file_version=1.3}\nG {}\nK {}\nV {}\nS {}\nE {}\n"
+                             f"C {{{LIB}/hid/hid.sym}} 0 0 0 0 {{name=x1}}\n")
+send("xschem set_modify 0")
+send(f"xschem load {{{hid / 'top.sch'}}}")
+svg = hid / "top.svg"
+send(f"xschem print svg {{{svg}}}")
+text = svg.read_text() if svg.exists() else ""
+check("selection box is not drawn in instances", 'class="l7"' not in text and 'class="l4"' in text)
+reply = send("xschem instance_bbox x1")
+check("selection box still sets the instance area", reply.splitlines()[-1].split()[1:] == ["-60", "-40", "60", "40"],
+      reply)
+
 print("PASS xschem edit" if not failures else f"FAIL xschem edit: {', '.join(failures)}")
