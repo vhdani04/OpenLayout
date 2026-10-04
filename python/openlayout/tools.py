@@ -161,6 +161,20 @@ def drc_command(wa: Workarea, cell: Cell) -> tuple[list[str], Path, Path, View]:
     return argv, wa.root, report, layout
 
 
+def lvs_command(wa: Workarea, cell: Cell) -> tuple[list[str], Path, Path, View]:
+    """`openlayout lvs` on a cell's layout against its schematic (none: the standard-cell CDL).
+    Returns (argv, cwd, report path, layout view)."""
+    layout = cell.view("layout")
+    if layout is None:
+        raise WorkareaError(f"{cell.key} has no layout")
+    report = wa.verify_dir(cell) / f"{cell.name}.lvsdb"
+    argv = ["openlayout", "lvs", str(layout.path), "--cell", layout.gds_cell or cell.name, "--report", str(report)]
+    sch = cell.view("schematic")
+    if sch is not None:
+        argv += ["--schematic", str(sch.path)]
+    return argv, wa.root, report, layout
+
+
 def simulate_command(wa: Workarea, cell: Cell, netlist: Path) -> tuple[list[str], Path]:
     run = wa.run_dir(cell)
     run.mkdir(parents=True, exist_ok=True)

@@ -8,6 +8,7 @@
 #   {"cmd": "ping"}
 #   {"cmd": "open", "file": "/path/cell.gds", "cell": "INVx1", "readonly": false}
 #   {"cmd": "drc_results", "file": "/path/cell.gds", "cell": "INVx1", "report": "/path/x.lyrdb"}
+#   {"cmd": "lvs_results", "file": "/path/cell.gds", "cell": "INVx1", "report": "/path/x.lvsdb"}
 import json
 import os
 
@@ -56,6 +57,9 @@ class OpenLayoutBridge:
         if cmd == "drc_results":  # {"file", "cell", "report"} - a batch DRC's results in the marker browser
             from openlayout_kl import drc
             return {"ok": True, "violations": drc.show_results(req["file"], req.get("cell"), req["report"])}
+        if cmd == "lvs_results":  # {"file", "cell", "report"} - a batch LVS's results in the netlist browser
+            from openlayout_kl import lvs
+            return {"ok": lvs.show_results(req["file"], req.get("cell"), req["report"])}
         if cmd == "connectivity":  # summary of the Connectivity panel's last check
             from openlayout_kl import connectivity, gui
             gui.instance.nets.run_check(force=True)

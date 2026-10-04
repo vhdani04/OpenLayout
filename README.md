@@ -44,10 +44,12 @@ or F1 in the hub) and get an **OpenLayout** menu:
 
 - xschem: Open Layout in KLayout, Open Symbol/Schematic, Show in Library Manager, Netlist, Simulate
 - KLayout: Open Schematic/Symbol, Show in Library Manager, LSW (Virtuoso-style layer palette),
-  Run DRC
+  Run DRC, Run LVS
 
 **DRC**: a KLayout deck written rule by rule from the ASAP7 DRM, run from KLayout, the hub or
 `openlayout drc` - see [docs/DRC.md](docs/DRC.md).
+**LVS**: FinFET extraction (fins, VT flavours) against the xschem schematic and the standard-cell
+CDL, run from KLayout, the hub or `openlayout lvs` - see [docs/LVS.md](docs/LVS.md).
 
 Cross-tool menus call `openlayout hubcmd`, which talks to the hub over localhost
 (`<workarea>/.openlayout/session.json` holds its port); the hub starts the other tool if needed.

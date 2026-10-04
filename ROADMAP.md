@@ -27,7 +27,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] Library/Cell/View browser; double-click opens view in right tool
 - [x] New library/cell/view, copy/rename/delete (keeps sch/sym/layout in sync)
 - [x] Console/log pane (CIW with Python `ol` API); Netlist + Simulate; per-cell status badges
-- [x] DRC button (Phase 5); LVS / PEX buttons are placeholders until Phase 6
+- [x] DRC button (Phase 5), LVS button (Phase 6); PEX is a placeholder
 - [x] App-menu entry; tools run as single sessions driven over localhost
 
 ## Phase 4 — Look & feel (one consistent environment)  [DONE]
@@ -52,9 +52,11 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] Generators DRC-clean: frame + transistor PCells, via PCells (pads enlarged to the DRM where the LEF's are smaller)
 - [ ] Cross-check against the Calibre deck if it arrives
 
-## Phase 6 — LVS + extraction   <- NEXT
-- [ ] FinFET device extractor (fin counting -> nfin), VT flavor recognition
-- [ ] Regression: every std cell passes LVS vs its CDL
+## Phase 6 — LVS + extraction   <- NEXT: PEX
+- [x] FinFET device extractor (ACTIVE height -> W = 27 nm per fin), VT flavour recognition, split gates (docs/LVS.md)
+- [x] Regression: every std cell against its CDL (199 / 208 exact; 9 with reordered series stacks checked device by device)
+- [x] LVS from KLayout (netlist browser), the hub (LVS button) and `openlayout lvs`; net names and bulk ties checked
+- [ ] Net-level cross-probing schematic <-> layout from the LVS cross-reference
 - [ ] Parasitic extraction -> post-layout ngspice simulation
 
 ## Phase 7 — Custom cell library

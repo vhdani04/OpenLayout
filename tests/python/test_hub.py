@@ -109,6 +109,18 @@ def test_drc_records_state(win, app):
     assert "M1.W.1" in win.ciw.log.toPlainText()
 
 
+def test_lvs_records_state(win, app):
+    # a library cell without a schematic: checked against the CDL
+    nand = win.workarea.library("asap7sc7p5t_28_R").cell("NAND2xp33_ASAP7_75t_R")
+    win.lm.select("asap7sc7p5t_28_R", "NAND2xp33_ASAP7_75t_R")
+    assert win.a_lvs.isEnabled()
+    win.lvs(nand)
+    state = wait_state(win, app, nand, "lvs")
+    assert state and state["ok"] and state["detail"] == "match"
+    assert (win.workarea.verify_dir(nand) / "NAND2xp33_ASAP7_75t_R.lvsdb").is_file()
+    assert "layout matches the schematic" in win.ciw.log.toPlainText()
+
+
 def test_command_server(win, app):
     """What the xschem/KLayout OpenLayout menus do: openlayout hubcmd -> hub over localhost."""
     import threading

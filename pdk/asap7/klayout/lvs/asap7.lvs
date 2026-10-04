@@ -1,0 +1,235 @@
+# ASAP7 layout versus schematic for KLayout (OpenLayout).
+#
+# Batch:  klayout -b -r asap7.lvs -rd input=cell.gds -rd topcell=NAME -rd schematic=cell.spice
+#         [-rd report=out.lvsdb] [-rd cdl=a.cdl,b.cdl] [-rd stdcells=check]
+# In the GUI (OpenLayout > Run LVS) $schematic is set by the caller; the results open in the
+# netlist browser.
+#
+# Devices: nMOS / pMOS FinFETs in four threshold-voltage flavours (rvt, lvt, slvt, sram: no VT
+# layer, LVT, SLVT, SRAMVT) - the ASAP7 model names. A transistor is GATE (not cut by GCUT) over
+# ACTIVE; its width W is the ACTIVE height under the gate, 27 nm per fin, and is compared with the
+# schematic's nfin x nf x m x 27 nm (the library CDL's w); L is the gate length (20 nm). Parallel
+# fingers are combined before comparing. Bulk terminals are not drawn in ASAP7 (taps are cells):
+# devices are compared with three terminals and the schematic's bulk must be VSS (nMOS) / VDD
+# (pMOS) - anything else is reported.
+#
+# The reference netlist is the schematic (an xschem netlist, `N` FinFET elements) plus the
+# standard-cell library CDL, so placed standard cells are compared as subcircuits.
+
+$topcell ? source($input, $topcell) : (source($input) if $input)
+deep
+threads(($threads || 4).to_i)
+verbose(false)
+$report ? report_lvs($report) : report_lvs
+
+require "tmpdir"
+
+FIN_PITCH = 27e-9
+SI = { "f" => 1e-15, "p" => 1e-12, "n" => 1e-9, "u" => 1e-6, "m" => 1e-3, "k" => 1e3, "meg" => 1e6, "g" => 1e9 }
+
+# Reads xschem netlists (N elements: d g s b model params) and CDL (M elements) into 3-terminal
+# FinFETs with W / L in micrometers.
+class ASAP7Reader < RBA::NetlistSpiceReaderDelegate
+  attr_reader :bulk_warnings, :classes
+
+  def initialize
+    super
+    @bulk_warnings = []
+    @classes = {}
+  end
+
+  def parse_element(s, element)
+    return super unless element == "N"
+    tok = s.split
+    data = RBA::ParseElementData.new
+    data.net_names = tok[0, 4]
+    data.model_name = tok[4].to_s
+    params = {}
+    tok[5..-1].to_a.each do |t|
+      k, v = t.split("=", 2)
+      params[k.upcase] = si(v) if v && si(v)
+    end
+    data.parameters = params
+    data
+  end
+
+  def element(circuit, el, name, model, value, nets, params)
+    if (el == "M" || el == "N") && nets.size == 4
+      mname = model.downcase
+      cls = @classes[mname]
+      unless cls          # one class per model (the netlist's name lookup is case-normalised)
+        cls = @classes[mname] = RBA::DeviceClassMOS3Transistor.new
+        cls.name = mname
+        circuit.netlist.add(cls)
+      end
+      d = circuit.create_device(cls, name)
+      d.connect_terminal("D", nets[0])
+      d.connect_terminal("G", nets[1])
+      d.connect_terminal("S", nets[2])
+      mult = (params["M"] || 1.0) * (params["NF"] || 1.0)
+      w = params["NFIN"] ? params["NFIN"] * FIN_PITCH : (params["W"] || 0.0)
+      d.set_parameter("W", w * mult * 1e6)
+      d.set_parameter("L", (params["L"] || 20e-9) * 1e6)
+      want = mname.start_with?("p") ? "VDD" : "VSS"
+      got = ground(nets[3].name.to_s)
+      @bulk_warnings << [circuit.name, "#{circuit.name}: #{name} (#{mname}) bulk on #{nets[3].name}, expected #{want}"] if got.upcase != want
+      return true
+    end
+    return true if %w(V I).include?(el)      # sources of testbench-like schematics: not layout
+    super
+  end
+
+  # "20n" -> 2e-8
+  def si(text)
+    m = text.to_s.strip.downcase.match(/\A([-+]?[0-9.]+(?:e[-+]?\d+)?)(meg|[fpnumkg])?/)
+    m ? m[1].to_f * (m[2] ? SI[m[2]] : 1.0) : nil
+  end
+
+  def ground(n)
+    %w(0 gnd gnd! vss!).include?(n.downcase) ? "VSS" : n
+  end
+end
+
+# ---- layers ------------------------------------------------------------------------------------
+gate    = input(7, 0)
+gcut    = input(10, 0)
+active  = input(11, 0)
+nsel    = input(12, 0)
+psel    = input(13, 0)
+lig     = input(16, 0)
+lisd    = input(17, 0)
+v0      = input(18, 0)
+sdt     = input(88, 0)
+slvt    = input(97, 0)
+lvt     = input(98, 0)
+sramvt  = input(110, 0)
+# metals with their pin shapes (pin purpose 251) and labels (pin 251 / label 2)
+metal_nums = [19, 20, 30, 40, 50, 60, 70, 80, 90]
+metals = metal_nums.map { |n| input(n, 0) + polygons(n, 251) }
+texts = metal_nums.map { |n| labels(n, 251) + labels(n, 2) }
+vias = [21, 25, 35, 45, 55, 65, 75, 85].map { |n| input(n, 0) }
+
+gate_nc = gate - gcut
+channel = gate_nc & active
+sd = active - gate
+vt_any = lvt + slvt + sramvt
+flavours = { "rvt" => nil, "lvt" => lvt, "slvt" => slvt, "sram" => sramvt }
+
+# ---- devices -----------------------------------------------------------------------------------
+{ "nmos" => nsel, "pmos" => psel }.each do |type, implant|
+  ch = channel & implant
+  flavours.each do |vt, layer|
+    g = layer ? ch & layer : ch - vt_any
+    extract_devices(mos3("#{type}_#{vt}"), { "SD" => sd, "G" => g, "tS" => sd, "tD" => sd, "tG" => gate_nc })
+  end
+end
+
+# ---- connectivity ------------------------------------------------------------------------------
+connect(sd, sdt)
+connect(sdt, lisd)
+connect(gate_nc, lig)
+connect(lig, lisd)
+connect(lig, v0)
+connect(lisd, v0)
+connect(v0, metals[0])
+metals.each_with_index do |m, i|
+  connect(m, texts[i])
+  if i < vias.size
+    connect(m, vias[i])
+    connect(vias[i], metals[i + 1])
+  end
+end
+
+# ---- reference netlist ---------------------------------------------------------------------------
+reader = ASAP7Reader.new
+cdls = ($cdl ? $cdl.split(",") : Dir.glob(File.join(ENV["ASAP7_STDCELLS"] || "", "CDL", "LVS", "*.cdl")).sort)
+ref_file = File.join(Dir.tmpdir, "ol_lvs_#{Process.pid}.sp")
+File.write(ref_file, ([$schematic] + cdls).compact.map { |f| ".include \"#{File.expand_path(f)}\"\n" }.join)
+schematic(ref_file, RBA::NetlistSpiceReader.new(reader))
+ref = schematic
+# xschem's ground (0 / GND) is the ASAP7 ground net VSS
+ref.each_circuit { |c| c.each_net { |net| net.name = "VSS" if %w(0 gnd gnd! vss!).include?(net.name.to_s.downcase) } }
+# split gates in the reference too (split_gates below does it for the layout)
+ref.each_circuit { |c| reader.classes.each_value { |cls| cls.join_split_gates(c) } }
+# keep the circuits the top cell uses (the library CDL defines all 832 standard cells)
+top_name = ($topcell || source.cell_name).upcase
+used = {}
+walk = lambda do |c|
+  next if used[c.name]
+  used[c.name] = true
+  c.each_subcircuit { |sc| walk.call(sc.circuit_ref) }
+end
+top_ref = ref.circuit_by_name(top_name)
+if top_ref
+  walk.call(top_ref)
+  ref.each_circuit.to_a.each { |c| ref.remove(c) unless used[c.name] }
+end
+
+# ---- compare -------------------------------------------------------------------------------------
+%w(nmos pmos).product(flavours.keys).each do |t, vt|
+  tolerance("#{t}_#{vt}", "W", :absolute => 0.0005)
+  tolerance("#{t}_#{vt}", "L", :absolute => 0.0005)
+  # a wide series stack drawn as parallel stacks whose inner nodes are not joined (as the library
+  # does for x4, x6 ... strengths) is the same circuit: "split gates" (Calibre's REDUCE SPLIT GATES)
+  split_gates("#{t}_#{vt}")
+end
+netlist.make_top_level_pins
+netlist.purge
+netlist.combine_devices
+schematic.purge
+schematic.combine_devices
+same_circuits(source.cell_name, top_name) if top_ref
+# Placed library standard cells are compared as black boxes (pins only, like Calibre's LVS BOX for a
+# verified library) - unless -rd stdcells=check compares their transistors too. (Nine library cells
+# order series transistors differently from their CDL, which a strict topological compare reports.)
+unless $stdcells == "check" || source.cell_name =~ /_ASAP7_75t_/i
+  blank_circuit("*_ASAP7_75t_*")       # layout names
+  blank_circuit("*_ASAP7_75T_*")       # SPICE names are upper case
+end
+align
+ok = compare
+
+# ---- summary (the CIW / shell; the details are in the netlist browser) ------------------------------
+bulk = reader.bulk_warnings.select { |c, _| top_ref.nil? || used[c] }.map { |_, w| w }
+bulk.each { |w| puts "LVS bulk: #{w}" }
+xref = lvs_data.xref
+name = lambda { |o| o ? o.expanded_name : "-" }
+bad = 0
+xref.each_circuit_pair do |p|
+  next if p.status == RBA::NetlistCrossReference::Match
+  bad += 1
+  puts "LVS circuit #{p.first ? p.first.name : '-'} (layout) / #{p.second ? p.second.name : '-'} (schematic): #{p.status}"
+  next if p.status == RBA::NetlistCrossReference::Skipped
+  shown = 0
+  xref.each_net_pair(p) do |np|
+    next if np.status == RBA::NetlistCrossReference::Match || (shown += 1) > 8
+    puts "  net #{name.call(np.first)} / #{name.call(np.second)}: #{np.status}"
+  end
+  shown = 0
+  xref.each_device_pair(p) do |dp|
+    next if dp.status == RBA::NetlistCrossReference::Match || (shown += 1) > 8
+    d = dp.first || dp.second
+    w = d.parameter("W") * 1000
+    puts "  device #{name.call(dp.first)} / #{name.call(dp.second)} (#{d.device_class.name}, W #{w.round(1)} nm = #{(w / 27).round(1)} fins): #{dp.status}"
+  end
+  xref.each_subcircuit_pair(p) do |sp|
+    next if sp.status == RBA::NetlistCrossReference::Match
+    puts "  instance #{name.call(sp.first)} / #{name.call(sp.second)}: #{sp.status}"
+  end
+end
+# Net names: the comparison pairs nets by topology, so a labelled layout net must also carry the
+# schematic net's name (a swapped pair of labels, or pins swapped on a black-box cell, would
+# otherwise pass). Unlabelled layout nets ($...) are not checked.
+names = 0
+xref.each_circuit_pair do |p|
+  next unless p.first && p.second
+  xref.each_net_pair(p) do |np|
+    a, b = np.first, np.second
+    next unless a && b && !a.name.to_s.empty? && !b.name.to_s.empty?
+    next if a.name.upcase == b.name.upcase
+    names += 1
+    puts "LVS net name: #{p.first.name}: layout net #{a.name} is schematic net #{b.name}"
+  end
+end
+puts "RESULT LVS #{source.cell_name} #{ok && bulk.empty? && names == 0 ? 'match' : 'mismatch'} circuits=#{bad} bulk=#{bulk.size} names=#{names}"
+File.delete(ref_file) rescue nil

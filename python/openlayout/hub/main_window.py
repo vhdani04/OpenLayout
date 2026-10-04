@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QInputDialog, 
                                QMessageBox, QSplitter, QStyle, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import __version__
-from ..tools import KLayoutBridge, XschemBridge, drc_command, netlist_command, simulate_command
+from ..tools import KLayoutBridge, XschemBridge, drc_command, lvs_command, netlist_command, simulate_command
 from ..workarea import Cell, View, Workarea, WorkareaError, view_type
 from . import theme
 from .ciw import CIW
@@ -22,6 +22,7 @@ from .library_manager import LibraryManager
 SIM_FAIL_RE = re.compile(r"^(Error\b|.*\bFAIL\b)", re.M)
 SIM_RESULT_RE = re.compile(r"^(PASS|FAIL)\b.*$", re.M)
 DRC_RESULT_RE = re.compile(r"^RESULT DRC \S+ violations=(\d+) rules=(\d+)", re.M)
+LVS_RESULT_RE = re.compile(r"^RESULT LVS \S+ (\w+) circuits=(\d+) bulk=(\d+) names=(\d+)", re.M)
 
 
 class HubAPI:
@@ -37,6 +38,7 @@ class HubAPI:
     ol.netlist(lib, cell)             netlist the schematic into sim/netlist/
     ol.sim(lib, cell)                 netlist + ngspice batch run in sim/<lib>/<cell>/
     ol.drc(lib, cell)                 design rule check of the layout (results in verify/<lib>/<cell>/)
+    ol.lvs(lib, cell)                 layout versus schematic (results in verify/<lib>/<cell>/)
     ol.xschem(tcl)                    send a Tcl command to the running xschem
     ol.klayout(cmd, **args)           send a request to the running KLayout bridge
     ol.wa                             the Workarea object (full Python API)
@@ -81,6 +83,7 @@ class HubAPI:
     def netlist(self, lib, cell): self._win.netlist(self._cell(lib, cell))
     def sim(self, lib, cell): self._win.simulate(self._cell(lib, cell))
     def drc(self, lib, cell): self._win.drc(self._cell(lib, cell))
+    def lvs(self, lib, cell): self._win.lvs(self._cell(lib, cell))
     def xschem(self, tcl): return self._win.xschem.send(tcl)
     def klayout(self, cmd, **args): return self._win.klayout.request({"cmd": cmd, **args})
 
@@ -169,8 +172,9 @@ class MainWindow(QMainWindow):
                                   None, None, "Create the cell's symbol from its schematic pins (Virtuoso style)")
         self.a_drc = self._act("DRC", lambda: self.drc(self.lm.current_cell()), None, S.SP_DialogApplyButton,
                                "Design rule check of the cell's layout (ASAP7 deck); results in KLayout")
-        self.a_lvs = self._act("LVS", None, None, S.SP_DialogYesButton,
-                               "Layout vs. schematic — coming in Phase 6", enabled=False)
+        self.a_lvs = self._act("LVS", lambda: self.lvs(self.lm.current_cell()), None, S.SP_DialogYesButton,
+                               "Layout versus schematic (ASAP7 deck; the schematic, or the library CDL); "
+                               "results in KLayout")
         self.a_pex = self._act("PEX", None, None, None, "Parasitic extraction — coming in Phase 6", enabled=False)
         self.a_start_xs = self._act("Start xschem", lambda: self._start_tool("xschem"))
         self.a_start_kl = self._act("Start KLayout", lambda: self._start_tool("klayout"))
@@ -548,6 +552,45 @@ class MainWindow(QMainWindow):
 
         self._run(argv, cwd, f"DRC {cell.key}", done)
 
+    # ---- layout versus schematic -----------------------------------------------------------------
+    def lvs(self, cell):
+        """Batch LVS of the cell's saved layout against its schematic (a standard cell without one:
+        the library CDL); the summary goes to the CIW, the cross-reference to KLayout's netlist
+        browser when they differ."""
+        if not cell:
+            return
+        try:
+            argv, cwd, report, layout = lvs_command(self.workarea, cell)
+        except WorkareaError as e:
+            self.ciw.error(str(e))
+            return
+
+        def done(code, text):
+            m = LVS_RESULT_RE.search(text)
+            if code != 0 or not m:
+                self.workarea.set_state(cell, "lvs", False, f"run failed (exit {code})")
+                self.ciw.error(f"LVS {cell.key}: the run failed")
+                self.lm.refresh()
+                return
+            match = m.group(1) == "match"
+            circuits, bulk, names = (int(m.group(i)) for i in (2, 3, 4))
+            detail = "match" if match else ", ".join(
+                p for p in (f"{circuits} circuit(s) differ" if circuits else "",
+                            f"{names} net name(s)" if names else "", f"{bulk} bulk" if bulk else "") if p)
+            self.workarea.set_state(cell, "lvs", match, detail)
+            if match:
+                self.ciw.ok(f"LVS {cell.key}: layout matches the schematic")
+            else:
+                self.ciw.warn(f"LVS {cell.key}: MISMATCH ({detail}) — opening the results in KLayout")
+                self._in_thread(self.klayout, lambda: (
+                    self.klayout.ensure_started(),
+                    self.klayout.request({"cmd": "lvs_results", "file": str(layout.path),
+                                          "cell": layout.gds_cell or cell.name, "report": str(report)}, timeout=60),
+                    f"LVS results of {cell.key} in KLayout's netlist browser")[2])
+            self.lm.refresh()
+
+        self._run(argv, cwd, f"LVS {cell.key}", done)
+
     # ---- symbol from schematic ------------------------------------------------------------------
     def generate_symbol(self, cell):
         """Virtuoso "from cellview": build <cell>.sym from the schematic's pins and open it."""
@@ -585,6 +628,7 @@ class MainWindow(QMainWindow):
         self.a_sim.setEnabled(has_sch and idle)
         self.a_gensym.setEnabled(has_sch and writable_cell)
         self.a_drc.setEnabled(bool(cell and cell.view("layout")) and idle and self.klayout is not None)
+        self.a_lvs.setEnabled(bool(cell and cell.view("layout")) and idle and self.klayout is not None)
         self.a_start_xs.setEnabled(has_wa)
         self.a_start_kl.setEnabled(has_wa)
 
