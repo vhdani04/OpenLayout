@@ -15,6 +15,10 @@ GCUT-ACTIVE (channel), ACTIVE-WELL.
 Shapes that touch or overlap the edited shape are taken as connected to it (same net, or a
 contact / cut on purpose) and are not checked - the interactive check knows no netlist, so LIG
 and LISD on the same net but not touching are reported (the DRC deck knows better).
+
+Minimum width (WIDTH, horizontal / vertical where the DRM distinguishes) and minimum area (AREA)
+are checked on the shape as it will be: merged with the shapes of its layer it touches (a stub
+joined to a wire has the wire's area). A width is reported only where the edited shape is.
 """
 import math
 
@@ -65,6 +69,19 @@ INTER = [
     ("gcut", "active", None, 4, None),       # GCUT.ACTIVE.S.1 (to the channel)
     ("active", "well", 27, 27, None),        # ACTIVE.WELL.S.4 (ACTIVE outside the WELL)
 ]
+# minimum width: (horizontal width - between vertical edges, vertical width) in nm
+WIDTH = {
+    "well": (108, 54), "fin": (108, 7), "gate": (20, 40), "active": (16, 27), "gcut": (None, 17),
+    "sdt": (24, 27), "lisd": (24, 24), "lig": (16, 16),
+    "nselect": (108, 54), "pselect": (108, 54), "slvt": (108, 54), "lvt": (108, 54), "sramvt": (108, 54),
+    "m1": (18, 18), "m2": (18, 18), "m3": (18, 18), "m4": (44, 24), "m5": (24, 44), "m6": (44, 32),
+    "m7": (32, 44), "m8": (40, 40), "m9": (40, 40),
+    "v0": (18, 18), "v1": (18, 18), "v2": (18, 18), "v3": (18, 18), "v4": (24, 24), "v5": (24, 24),
+    "v6": (32, 32), "v7": (32, 32), "v8": (40, 40),
+}
+# minimum area in nm2
+AREA = {"well": 5832, "active": 864, "lisd": 648, "lig": 324, "m1": 504, "m2": 504, "m3": 504,
+        "m8": 7520, "m9": 7520}
 MAX_RULE = 120          # nm: how far around the edited shape to look
 MAX_HINTS = 12
 COLOR = 0xFF3B30        # the gap outline
@@ -84,7 +101,8 @@ def rule_for(layout, li):
 def checked(layout, li):
     """the layer takes part in a same-layer or a between-layer rule"""
     name = layer_name(layout, li)
-    return name is not None and (name in RULES or any(name in (a, b) for a, b, *_ in INTER))
+    return name is not None and (name in RULES or name in WIDTH or name in AREA
+                                 or any(name in (a, b) for a, b, *_ in INTER))
 
 
 def required(spec, len_a, len_b, horizontal_gap):
@@ -163,7 +181,7 @@ def violations(moving, static, spec):
                     out.append((box, p1, p2, req, gap * 1000))
             if corner:
                 out += _corner_violations(mp, sp, corner)
-    out.sort(key=lambda v: v[4] - v[3])
+    out.sort(key=lambda v: v[4] / v[3])
     return out
 
 
@@ -203,16 +221,61 @@ def static_polygons(cell, li, window, skip=None):
     return [p.to_dtype(dbu) for p in reg.merged().each()]
 
 
+def _split(cell, other_li, mreg, window, skip, dbu):
+    """the layer's shapes near the moving ones: (not touching them, touching them)"""
+    apart, touching = [], []
+    for sp in static_polygons(cell, other_li, window, skip):
+        (touching if pya.Region(sp.to_itype(dbu)).interacting(mreg).count() else apart).append(sp)
+    return apart, touching
+
+
 def _against(cell, other_li, mreg, window, skip, dbu):
     """the other layer's shapes near the moving ones, minus those touching them"""
-    return [sp for sp in static_polygons(cell, other_li, window, skip)
-            if not pya.Region(sp.to_itype(dbu)).interacting(mreg).count()]
+    return _split(cell, other_li, mreg, window, skip, dbu)[0]
+
+
+def width_area(name, mreg, touching, dbu):
+    """Minimum width and area of the edited shapes merged with the shapes of their layer that
+    they touch: [(box, p1, p2, required, actual, label, now)]"""
+    out = []
+    merged = (mreg + pya.Region([p.to_itype(dbu) for p in touching])).merged()
+    nm = dbu * 1000
+    wh = WIDTH.get(name)
+    if wh:
+        dmax = max(v for v in wh if v)
+        pairs = merged.width_check(int(round(dmax / nm)), False, pya.Region.Projection)
+        for ep in pairs.each():
+            box = ep.bbox()
+            if box.width() <= 0 or box.height() <= 0 or not mreg.interacting(pya.Region(box)).count():
+                continue                                    # not where the edited shape is
+            vertical = ep.first.dx() == 0
+            req = wh[0] if vertical else wh[1]
+            dist = ep.distance() * nm
+            if req is None or dist >= req - 1e-6:
+                continue
+            c1 = ep.first.bbox().center()
+            p2 = pya.Point(ep.second.p1.x, c1.y) if vertical else pya.Point(c1.x, ep.second.p1.y)
+            out.append((box.to_dtype(dbu), c1.to_dtype(dbu), p2.to_dtype(dbu), req, dist,
+                        f"width {req:g} nm min", f"{dist:.1f} nm"))
+    amin = AREA.get(name)
+    if amin:
+        for poly in merged.each():
+            if not pya.Region(poly).interacting(mreg).count():
+                continue
+            area = poly.area() * nm * nm
+            if area >= amin - 1e-6:
+                continue
+            b = poly.bbox().to_dtype(dbu)
+            y = b.center().y
+            out.append((b, pya.DPoint(b.left, y), pya.DPoint(b.right, y), amin, area,
+                        f"area {amin:g} nm\u00b2 min", f"{area:.0f} nm\u00b2"))
+    return out
 
 
 def check(cell, li, moving, skip=None):
     """Violations of the moving polygons (DPolygon, um, cell coordinates) on layer li, against the
     shapes of the same layer and of the layers with between-layer rules. Returns
-    [(gap DBox, p1, p2, required nm, actual nm, label)]."""
+    [(DBox, p1, p2, required, actual, label, actual as text)]."""
     layout = cell.layout()
     name = layer_name(layout, li)
     if name is None or not moving:
@@ -222,10 +285,12 @@ def check(cell, li, moving, skip=None):
     mpolys = [p.to_dtype(dbu) for p in mreg.each()]
     window = mreg.bbox().to_dtype(dbu).enlarged(MAX_RULE / 1000, MAX_RULE / 1000)
     out = []
+    apart, touching = _split(cell, li, mreg, window, skip, dbu)
     spec = RULES.get(name)
     if spec is not None:
-        for h in violations(mpolys, _against(cell, li, mreg, window, skip, dbu), spec):
-            out.append(h + (f"{h[3]:g} nm min",))
+        for h in violations(mpolys, apart, spec):
+            out.append(h + (f"{h[3]:g} nm min", f"{h[4]:.1f} nm"))
+    out += width_area(name, mreg, touching, dbu)
     for a, b, hs, vs, corner in INTER:
         if name not in (a, b):
             continue
@@ -234,7 +299,7 @@ def check(cell, li, moving, skip=None):
         if oli is None:
             continue
         for h in violations(mpolys, _against(cell, oli, mreg, window, skip, dbu), ("hv", hs, vs, corner)):
-            out.append(h + (f"{h[3]:g} nm min to {other.upper()}",))
+            out.append(h + (f"{h[3]:g} nm min to {other.upper()}", f"{h[4]:.1f} nm"))
     return out
 
 
@@ -259,7 +324,7 @@ class Display:
     def show(self, hits, trans=None):
         self.clear()
         t = trans or pya.DCplxTrans()
-        for box, p1, p2, req, actual, label in hits[:MAX_HINTS]:
+        for box, p1, p2, req, actual, label, now in hits[:MAX_HINTS]:
             m = pya.Marker(self.view)
             m.color = COLOR
             m.frame_color = COLOR
@@ -306,14 +371,13 @@ def show_layers(view, cell, moving, skip=None, trans=None):
     except Exception as e:          # a hint must never break editing
         print(f"OpenLayout DRD: {e}")
         hits = []
-    hits.sort(key=lambda v: v[4] - v[3])
+    hits.sort(key=lambda v: v[4] / v[3])
     d.show(hits, trans)
     if hits:
         mw = pya.Application.instance().main_window()
         if mw is not None:
             worst = hits[0]
-            mw.message(f"DRD: {len(hits)} spacing(s) under the minimum - {worst[4]:.1f} nm where "
-                       f"{worst[5]} is needed", 2000)
+            mw.message(f"DRD: {len(hits)} rule(s) not met - {worst[5]}, now {worst[6]}", 2000)
     return hits
 
 

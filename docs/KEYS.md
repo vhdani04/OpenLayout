@@ -177,7 +177,10 @@ dimension line labelled with the minimum: "18 nm min" on the same layer, "14 nm 
 between layers. The values are the DRC deck's: line-end vs. side spacing for LISD / LIG / M1-M3 /
 M8-M9, the horizontal / vertical values for WELL, ACTIVE, GATE, SDT, GCUT and the track metals
 M4-M7, the via spacings, corner-to-corner where the DRM has it, and between layers GATE-ACTIVE,
-LIG-LISD / SDT / GATE / GCUT, SDT-GATE, GCUT-GATE, GCUT-ACTIVE and ACTIVE-WELL. Shapes touching the
+LIG-LISD / SDT / GATE / GCUT, SDT-GATE, GCUT-GATE, GCUT-ACTIVE and ACTIVE-WELL. **Minimum width**
+("width 18 nm min"; horizontal / vertical where the DRM differs, e.g. M4 44 nm along the track, 24
+across) and **minimum area** ("area 504 nm² min") are shown too, for the shape as it will be -
+merged with what it touches on its layer, so a stub joined to a wire is fine. Shapes touching the
 edited one count as connected to it and are not checked (the hints know no netlist: LIG and LISD
 of the same net that do not touch are reported; Run DRC knows better). Instance placement covers
 cells of the layout and standard cells (not PCells, whose parameters KLayout's instance tool keeps

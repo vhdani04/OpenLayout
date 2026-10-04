@@ -53,7 +53,7 @@ check("M4 across the tracks 24 nm, along them 40 nm",
 check("V1 vias: 18 nm", hits(21, [(0, 0, 18, 18)], [(33, 0, 51, 18)]) == [(18, 15)])
 check("gates: 34 nm", hits(7, [(17, 0, 37, 300)], [(67, 0, 87, 300)]) == [(34, 30)])
 check("a touching shape is the same net: no hint", hits(19, [(0, 0, 18, 100)], [(18, 40, 60, 58)]) == [])
-check("layers without spacing rules: no hint", hits(12, [(0, 0, 100, 100)], [(105, 0, 200, 100)]) == [])
+check("layers without rules (BOUNDARY): no hint", hits(100, [(0, 0, 100, 100)], [(105, 0, 200, 100)]) == [])
 
 
 def hits2(layer, static, moving):
@@ -67,6 +67,25 @@ def hits2(layer, static, moving):
             drd.check(c, ly.layer(layer, 0), [pya.DPolygon(pya.DBox(*[v / 1000 for v in b])) for b in moving])]
 
 
+def labels_of(layer, static, moving):
+    return sorted(h[2] for h in hits2(layer, static, moving))
+
+
+check("width: a 16 nm M1 wire needs 18", labels_of(19, {}, [(0, 0, 16, 100)]) == ["width 18 nm min"])
+check("width: an M4 wire 40 nm long needs 44 along the track (24 across is fine)",
+      labels_of(40, {}, [(0, 0, 40, 24)]) == ["width 44 nm min"])
+check("width: a gate 30 nm tall needs 40 (the 20 nm gate width is fine)",
+      labels_of(7, {}, [(17, 0, 37, 30)]) == ["width 40 nm min"])
+check("area: an 18 x 20 nm M1 stub needs 504 nm2", labels_of(19, {}, [(0, 0, 18, 20)]) == ["area 504 nm² min"])
+check("area: the same stub joined to a wire is fine", labels_of(19, {19: [(0, 20, 18, 200)]}, [(0, 0, 18, 20)]) == [])
+check("width: a narrow neck where the stub joins the wire is reported",
+      labels_of(19, {19: [(0, 20, 18, 200)]}, [(0, 0, 18, 21), (5, 20, 13, 21)]) == []
+      and labels_of(19, {19: [(0, 30, 18, 200)]}, [(0, 0, 18, 22), (5, 22, 13, 30)]) == ["width 18 nm min"])
+check("width: an existing narrow wire elsewhere is not reported (only the edited shape)",
+      labels_of(19, {19: [(300, 0, 316, 100)]}, [(0, 0, 18, 100)]) == [])
+check("area: LIG 16 x 18 needs 324 nm2, LISD 24 x 24 needs 648 nm2",
+      labels_of(16, {}, [(0, 0, 16, 18)]) == ["area 324 nm² min"]
+      and labels_of(17, {}, [(0, 0, 24, 24)]) == ["area 648 nm² min"])
 check("between layers: LIG 10 nm from LISD needs 14", hits2(16, {17: [(26, 0, 50, 100)]}, [(0, 0, 16, 100)])
       == [(14, 10, "14 nm min to LISD")])
 check("between layers: LIG overlapping LISD (connected): no hint",
@@ -133,6 +152,16 @@ check("further away: the hint goes", not shown.markers and not labels(), labels(
 tool.key_event(pya.KeyCode.Escape, 0)
 check("the path cancelled: no hints left", not shown.markers)
 
+canvas = [w for w in view.widget().children() if type(w).__name__ == "QWidget_Native"][0]
+
+
+def esc():
+    pya.QCoreApplication.sendEvent(canvas, pya.QKeyEvent(pya.QEvent.KeyPress, pya.Qt.Key_Escape.to_i(),
+                                                         pya.Qt.NoModifier))
+    for _ in range(5):
+        pya.Application.instance().process_events()
+
+
 # a box drawn in Box mode, 15 nm right of A (click - move - click)
 view.switch_mode("box")
 q = px(0.115, 0.0)
@@ -155,19 +184,35 @@ for s in list(cell.shapes(m1).each()):
         s.delete()
 view.commit()
 
-# Esc while drawing a box: the hint goes with it
+# a small box: area and width hints until it is big enough
+q = px(0.3, 0.2)
+view.send_mouse_move_event(q, 0)
+view.send_mouse_press_event(q, L)
+view.send_mouse_release_event(q, L)
+view.send_mouse_move_event(px(0.31, 0.21), 0)
+small = labels()
+view.send_mouse_move_event(px(0.33, 0.25), 0)
+big = labels()
+check("drawing a 10 x 10 nm M1 box: width and area hints; at 30 x 50 nm: none",
+      "width 18 nm min" in small and "area 504 nm² min" in small and not big, (small, big))
+esc()
+
+# Esc while drawing a box: the hint goes with it (Esc also went back to Select mode)
+view.switch_mode("box")
 q = px(0.115, 0.0)
 view.send_mouse_move_event(q, 0)
 view.send_mouse_press_event(q, L)
 view.send_mouse_release_event(q, L)
 view.send_mouse_move_event(px(0.15, 0.1), 0)
 had = bool(shown.markers)
+had_labels = labels()
 canvas = [w for w in view.widget().children() if type(w).__name__ == "QWidget_Native"][0]
 pya.QCoreApplication.sendEvent(canvas, pya.QKeyEvent(pya.QEvent.KeyPress, pya.Qt.Key_Escape.to_i(), pya.Qt.NoModifier))
 for _ in range(5):
     pya.Application.instance().process_events()
 view.send_mouse_move_event(px(0.16, 0.1), 0)
-check("Esc while drawing a box clears the hint", had and not shown.markers and not labels(), labels())
+check("Esc while drawing a box clears the hint", had and not shown.markers and not labels(),
+      (had_labels, labels(), [str(x.dbbox()) for x in cell.shapes(m1).each()]))
 
 # moving B towards A: the hint follows the drag, the drop clears it
 view.switch_mode("select")
@@ -204,13 +249,6 @@ def click(x, y):
     view.send_mouse_move_event(q, 0)
     view.send_mouse_press_event(q, L)
     view.send_mouse_release_event(q, L)
-
-
-def esc():
-    pya.QCoreApplication.sendEvent(canvas, pya.QKeyEvent(pya.QEvent.KeyPress, pya.Qt.Key_Escape.to_i(),
-                                                         pya.Qt.NoModifier))
-    for _ in range(5):
-        pya.Application.instance().process_events()
 
 
 restore()
