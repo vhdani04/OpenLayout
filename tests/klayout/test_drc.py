@@ -435,9 +435,10 @@ for i, (expect, _, extra) in enumerate(cases):
         check(f"{name} fires" + (f" (and not {' '.join(sorted(extra))})" if extra else ""), not missing and not wrong,
               f"missing {sorted(missing)}" if missing else f"also {sorted(wrong)}" if wrong else "")
 
-# every rule of the deck is exercised by a case (or listed as checked only on the library)
-deck_rules = {rdb.category_by_id(c.rdb_id()).name() for c in rdb.each_category()}
+# the report holds only the rules that fired (no empty categories in the marker browser)
+fired = {rdb.category_by_id(c.rdb_id()).name(): c.num_items() for c in rdb.each_category()}
+check("the report lists only rules with violations", fired and all(n > 0 for n in fired.values()),
+      [k for k, n in fired.items() if n == 0][:5])
 tested = set().union(*(e for e, _, _ in cases if e))
-print(f"rules with seeded cases: {len(tested)} of {len(deck_rules)} in the deck")
-print("without a case of their own:", " ".join(sorted(deck_rules - tested)))
+print(f"rules with seeded cases: {len(tested)}")
 print("PASS drc" if not failures else f"FAIL drc: {', '.join(failures)}")

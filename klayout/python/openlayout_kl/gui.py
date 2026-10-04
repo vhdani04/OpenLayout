@@ -66,6 +66,20 @@ PREFS = {
     "show-layer-toolbox": "false",
     # Rulers: a dark halo around line and text keeps the (vivid orange) ruler readable over any layer.
     "ruler-halo": "true",
+    # DRC results: clicking a violation in the marker browser zooms to it and
+    # draws it bold - thick yellow outline, hatched, with a halo - so it stands out on the dark canvas
+    "rdb-window-mode": "fit-marker",
+    "rdb-marker-color": "#ffd60a",
+    "rdb-marker-line-width": "3",
+    "rdb-marker-vertex-size": "0",
+    "rdb-marker-halo": "1",
+    "rdb-marker-dither-pattern": "5",
+    # LVS results: a net / device picked in the netlist browser, highlighted the same way
+    "l2ndb-window-mode": "fit-net",
+    "l2ndb-marker-color": "#ffd60a",
+    "l2ndb-marker-line-width": "3",
+    "l2ndb-marker-halo": "1",
+    "l2ndb-marker-intensity": "60",
 }
 
 

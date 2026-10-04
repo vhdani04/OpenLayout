@@ -86,6 +86,36 @@ check("width: an existing narrow wire elsewhere is not reported (only the edited
 check("area: LIG 16 x 18 needs 324 nm2, LISD 24 x 24 needs 648 nm2",
       labels_of(16, {}, [(0, 0, 16, 18)]) == ["area 324 nm² min"]
       and labels_of(17, {}, [(0, 0, 24, 24)]) == ["area 648 nm² min"])
+def encl(static, moving):
+    """enclosure hints: static {layer: [boxes]}, moving {layer: [boxes]} (nm) -> sorted labels"""
+    for li in c.layout().layer_indexes():
+        c.shapes(li).clear()
+    for num, boxes in static.items():
+        for b in boxes:
+            c.shapes(ly.layer(num, 0)).insert(pya.DBox(*[v / 1000 for v in b]))
+    mv = {ly.layer(num, 0): [pya.DPolygon(pya.DBox(*[v / 1000 for v in b])) for b in boxes]
+          for num, boxes in moving.items()}
+    return sorted(h[5] for h in drd.enclosures(c, mv))
+
+
+check("enclosure: V1 on an M1 pad 3 nm past both ends needs 5 / 2",
+      encl({20: [(-50, 0, 100, 18)], 19: [(0, -3, 18, 21)]}, {21: [(0, 0, 18, 18)]}) == ["M1 enclosure 5 / 2 nm min"])
+check("enclosure: V1 on a 5 / 2 nm M1 pad (and M2 past it): fine",
+      encl({20: [(-50, 0, 100, 18)], 19: [(0, -5, 18, 20)]}, {21: [(0, 0, 18, 18)]}) == [])
+check("enclosure: moving the M1 pad off the via is reported too (the metal is the edited shape)",
+      encl({20: [(-50, 0, 100, 18)], 21: [(0, 0, 18, 18)]}, {19: [(0, -3, 18, 21)]}) == ["M1 enclosure 5 / 2 nm min"])
+check("enclosure: V4 needs M4 11 nm past it on two sides",
+      encl({40: [(-5, 0, 49, 24)], 50: [(0, -11, 24, 35)]}, {45: [(0, 0, 24, 24)]}) == ["M4 enclosure 11 nm min"])
+check("enclosure: ACTIVE 40 nm inside NSELECT needs 46",
+      encl({12: [(0, 0, 300, 162)]}, {11: [(40, 27, 200, 108)]}) == ["NSELECT past ACTIVE 46 nm min"])
+check("extension: a gate 2 nm past ACTIVE needs 4",
+      encl({11: [(46, 27, 116, 108)]}, {7: [(71, -50, 91, 110)]}) == ["GATE past ACTIVE 4 nm min"])
+check("extension: ACTIVE 20 nm past a gate needs 25",
+      encl({7: [(71, -50, 91, 200)]}, {11: [(51, 27, 116, 108)]}) == ["ACTIVE past GATE 25 nm min"])
+check("extension: GCUT 10 nm past a gate (both sides) needs 17",
+      encl({7: [(17, -50, 37, 300)]}, {10: [(7, 200, 47, 240)]}) == ["GCUT past GATE 17 nm min"] * 2)
+check("enclosures far from the edit are not shown", encl({12: [(0, 0, 300, 162)], 11: [(40, 27, 200, 108)]},
+                                                        {19: [(1000, 0, 1018, 100)]}) == [])
 check("between layers: LIG 10 nm from LISD needs 14", hits2(16, {17: [(26, 0, 50, 100)]}, [(0, 0, 16, 100)])
       == [(14, 10, "14 nm min to LISD")])
 check("between layers: LIG overlapping LISD (connected): no hint",
@@ -101,6 +131,46 @@ check("between layers: ACTIVE 20 nm from WELL needs 27", hits2(11, {1: [(0, 0, 3
       == [(27, 20, "27 nm min to WELL")])
 check("between layers: LIG and LISD corner to corner, 15 nm", hits2(16, {17: [(26, 110, 50, 210)]}, [(0, 0, 16, 100)])
       == [(15, 14.1, "15 nm min to LISD")])
+
+# a correct cell moved as a whole gives no hints: an inverter from the frame + row PCells, and the
+# library's INVx1, each its own instance (all its layers are the "moving" shapes)
+from openlayout_kl import stdcell  # noqa: E402
+from openlayout_kl.pcells import LIBRARY, register_library  # noqa: E402
+
+register_library()
+ly2 = pya.Layout()
+ly2.dbu = 0.00025
+ly2.technology_name = "asap7"
+inv = ly2.create_cell("INV")
+stdcell.draw_frame(inv, 3)
+for kind in ("nmos", "pmos"):
+    inv.insert(pya.CellInstArray(ly2.create_cell(kind, LIBRARY, {"row": True, "nfin": 3, "nf": 1}).cell_index(),
+                                 pya.Trans()))
+std = pya.Layout()
+std.read(str(Path(os.environ.get("ASAP7_STDCELLS", HOME.parent / "pdk/asap7/asap7sc7p5t_28"))
+             / "GDS" / "asap7sc7p5t_28_R_220121a.gds"))
+lib_inv = ly2.create_cell("INVx1_ASAP7_75t_R")
+lib_inv.copy_tree(std.cell("INVx1_ASAP7_75t_R"))
+top2 = ly2.create_cell("T2")
+for cellx, x in ((inv, 0), (lib_inv, 2000)):
+    top2.insert(pya.CellInstArray(cellx.cell_index(), pya.Trans(x, 0)))
+for inst in top2.each_inst():
+    moving = {}
+    for li in ly2.layer_indexes():
+        if not drd.checked(ly2, li):
+            continue
+        it = inst.cell.begin_shapes_rec(li)
+        while not it.at_end():
+            sh = it.shape()
+            if sh.is_box() or sh.is_polygon() or sh.is_path():
+                moving.setdefault(li, []).append(sh.polygon.transformed(it.trans()).to_dtype(ly2.dbu)
+                                                 .transformed(inst.dcplx_trans))
+            it.next()
+    found = []
+    for li, polys in moving.items():
+        found += drd.check(top2, li, polys)
+    found += drd.enclosures(top2, moving)
+    check(f"moving a correct {inst.cell.name}: no hints", not found, sorted({h[5] for h in found}))
 
 # ---- in the editor ----------------------------------------------------------------------------
 mw = pya.Application.instance().main_window()

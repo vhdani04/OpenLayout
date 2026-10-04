@@ -180,7 +180,12 @@ M4-M7, the via spacings, corner-to-corner where the DRM has it, and between laye
 LIG-LISD / SDT / GATE / GCUT, SDT-GATE, GCUT-GATE, GCUT-ACTIVE and ACTIVE-WELL. **Minimum width**
 ("width 18 nm min"; horizontal / vertical where the DRM differs, e.g. M4 44 nm along the track, 24
 across) and **minimum area** ("area 504 nm² min") are shown too, for the shape as it will be -
-merged with what it touches on its layer, so a stub joined to a wire is fine. Shapes touching the
+merged with what it touches on its layer, so a stub joined to a wire is fine. **Enclosures**: a
+via cut on its metal needs the metal past it on two opposite sides ("M1 enclosure 5 / 0 nm min",
+the DRM's end caps; V4-V7 11 nm, V8 20 nm, V0 by LISD 3 nm), and the extension rules NSELECT /
+PSELECT / WELL around ACTIVE, GATE past ACTIVE (4 nm), ACTIVE past GATE (25 nm), GCUT past GATE
+(17 nm), ACTIVE past FIN (10 nm), LIG past GATE (1 nm) and WELL / implants past GATE (7 nm) - shown
+whether you edit the inner shape or the outer one. Shapes touching the
 edited one count as connected to it and are not checked (the hints know no netlist: LIG and LISD
 of the same net that do not touch are reported; Run DRC knows better). Instance placement covers
 cells of the layout and standard cells (not PCells, whose parameters KLayout's instance tool keeps

@@ -18,6 +18,10 @@ the manual directly.
 The hub keeps its results in `verify/<lib>/<cell>/<cell>.drc.lyrdb` in the workarea (library
 directories stay untouched; the PDK libraries are read-only).
 
+The report lists only the rules with violations. Clicking a violation in the marker browser zooms
+the layout to it and draws it bold (thick yellow outline, hatched, with a halo); a net or device
+picked in the LVS netlist browser is highlighted the same way.
+
 The layout is checked **flat**. The grid rules (fins, gates, M4-M7 routing tracks) use absolute
 coordinates: cells must sit on the ASAP7 placement grid - x on the 54 nm gate pitch, rows at
 multiples of 270 nm - as the standard cells and the frame do.

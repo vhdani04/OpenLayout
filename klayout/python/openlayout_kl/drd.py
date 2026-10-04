@@ -19,6 +19,13 @@ and LISD on the same net but not touching are reported (the DRC deck knows bette
 Minimum width (WIDTH, horizontal / vertical where the DRM distinguishes) and minimum area (AREA)
 are checked on the shape as it will be: merged with the shapes of its layer it touches (a stub
 joined to a wire has the wire's area). A width is reported only where the edited shape is.
+
+Enclosures (ENCLOSE_VIA, ENCLOSE): a via cut sitting on its metal needs the metal past it on two
+opposite sides (the DRM's end caps, e.g. M1 5 & 0 nm around V0), and the extension rules -
+NSELECT / PSELECT / WELL around ACTIVE, GATE past ACTIVE, ACTIVE past GATE, GCUT past GATE, ACTIVE
+past FIN, LIG past GATE, WELL / implants past GATE - are checked with KLayout's region checks on
+the neighbourhood of the edit (the edited shapes merged into their layers), as the DRC deck does;
+only results touching the edited shapes are shown.
 """
 import math
 
@@ -82,6 +89,25 @@ WIDTH = {
 # minimum area in nm2
 AREA = {"well": 5832, "active": 864, "lisd": 648, "lig": 324, "m1": 504, "m2": 504, "m3": 504,
         "m8": 7520, "m9": 7520}
+# via cut by metal: the metal past the cut on two opposite sides, (one side, the other) in nm
+ENCLOSE_VIA = [
+    ("v0", "m1", 5, 0), ("v0", "lisd", 3, 3),
+    ("v1", "m1", 5, 2), ("v1", "m2", 5, 0), ("v2", "m2", 5, 5), ("v2", "m3", 5, 0),
+    ("v3", "m3", 5, 5), ("v3", "m4", 11, 11), ("v4", "m4", 11, 11), ("v4", "m5", 11, 11),
+    ("v5", "m5", 11, 11), ("v5", "m6", 11, 11), ("v6", "m6", 11, 11), ("v6", "m7", 11, 11),
+    ("v7", "m7", 11, 11), ("v7", "m8", 11, 11), ("v8", "m8", 20, 20), ("v8", "m9", 20, 20),
+]
+# outer past inner: (outer, inner, horizontal, vertical) in nm; "channel" = GATE (not cut by GCUT)
+# over ACTIVE, "gate" = GATE not cut by GCUT
+ENCLOSE = [
+    ("nselect", "active", 46, 27), ("pselect", "active", 46, 27), ("well", "active", 27, 27),
+    ("gate", "channel", None, 4),            # GATE.ACTIVE.EX.1
+    ("active", "channel", 25, None),         # GATE.ACTIVE.EX.2
+    ("gcut", "gate_cut", 17, None),          # GCUT.GATE.EX.1
+    ("active", "fin", None, 10),             # ACTIVE.FIN.EX.1
+    ("lig", "gate", 1, None),                # LIG.GATE.EX.1
+    ("well", "gate", 7, 7), ("nselect", "gate", 7, 7), ("pselect", "gate", 7, 7),
+]
 MAX_RULE = 120          # nm: how far around the edited shape to look
 MAX_HINTS = 12
 COLOR = 0xFF3B30        # the gap outline
@@ -303,6 +329,99 @@ def check(cell, li, moving, skip=None):
     return out
 
 
+def _end_caps(via, metal, d, d2):
+    """the vias (Region, dbu) enclosed by `metal` by d on one side and d2 on the opposite one"""
+    ok = pya.Region()
+    for a, b in (((d, 0), (-d2, 0)), ((-d, 0), (d2, 0)), ((0, d), (0, -d2)), ((0, -d), (0, d2))):
+        ok += (via + via.moved(*a) + via.moved(*b)).merged().inside(metal)
+    return via.inside(ok.merged())
+
+
+def enclosures(cell, moving, skip=None):
+    """Enclosure / extension rules around the edited shapes ({layer index: [DPolygon]}, um)."""
+    layout = cell.layout()
+    dbu = layout.dbu
+    nm = dbu * 1000
+    by_name = {}
+    for li, polys in moving.items():
+        name = layer_name(layout, li)
+        if name:
+            by_name.setdefault(name, []).extend(polys)
+    if not by_name:
+        return []
+    involved = set(by_name)
+    rules_via = [r for r in ENCLOSE_VIA if r[0] in involved or r[1] in involved]
+    base = {"channel": ("gate", "active", "gcut"), "gate": ("gate", "gcut"), "gate_cut": ("gate", "gcut")}
+    rules_hv = [r for r in ENCLOSE if r[0] in involved or any(x in involved for x in base.get(r[1], (r[1],)))]
+    if not rules_via and not rules_hv:
+        return []
+    names = {x for r in rules_via for x in r[:2]} | {r[0] for r in rules_hv}
+    for r in rules_hv:
+        names |= set(base.get(r[1], (r[1],)))
+    box = pya.DBox()
+    for polys in by_name.values():
+        for poly in polys:
+            box += poly.bbox()
+    window = box.enlarged(0.2, 0.2)
+    regions, edited = {}, {}
+    for name in names:
+        li = layout.find_layer(LAYERS[name], 0)
+        reg = pya.Region()
+        if li is not None:
+            for sp in static_polygons(cell, li, window, skip):
+                reg.insert(sp.to_itype(dbu))
+        mine = pya.Region([poly.to_itype(dbu) for poly in by_name.get(name, [])])
+        edited[name] = mine
+        regions[name] = (reg + mine).merged()
+    gate_nc = regions["gate"] - regions["gcut"] if "gate" in regions and "gcut" in regions else None
+    derived = {}
+    if gate_nc is not None:
+        derived["gate"] = gate_nc
+        derived["gate_cut"] = regions["gate"] & regions["gcut"]
+        if "active" in regions:
+            derived["channel"] = gate_nc & regions["active"]
+    near = pya.Region()
+    for mine in edited.values():
+        near += mine
+    near = near.merged().sized(1)                 # results must touch the edited shapes
+    out = []
+    for cut, metal, d, d2 in rules_via:
+        vias, met = regions[cut], regions[metal]
+        if cut == "v0" and metal == "lisd" and "lig" in regions:
+            vias = vias.not_interacting(regions["lig"])  # V0 on LIG has its own rules
+        on = vias.overlapping(met)
+        bad = on - _end_caps(on, met, int(round(d / nm)), int(round(d2 / nm)))
+        for poly in bad.interacting(near).each():
+            b = poly.bbox().to_dtype(dbu)
+            y = b.center().y
+            need = f"{d:g} nm" if d == d2 else f"{d:g} / {d2:g} nm"
+            out.append((b, pya.DPoint(b.left, y), pya.DPoint(b.right, y), d, 0.0,
+                        f"{metal.upper()} enclosure {need} min", "too little"))
+    for outer, inner, hs, vs in rules_hv:
+        inner_reg = derived.get(inner) if inner in ("channel", "gate", "gate_cut") else regions.get(inner)
+        outer_reg = regions.get(outer)
+        if inner_reg is None or outer_reg is None or inner_reg.is_empty() or outer_reg.is_empty():
+            continue
+        oe, ie = outer_reg.edges(), inner_reg.edges() & outer_reg
+        label_inner = {"channel": "GATE" if outer == "active" else "ACTIVE", "gate_cut": "GATE"}.get(inner, inner.upper())
+        for d, angle in ((hs, 90), (vs, 0)):
+            if not d:
+                continue
+            pairs = oe.with_angle(angle, False).enclosing_check(ie.with_angle(angle, False), int(round(d / nm)),
+                                                                False, pya.Edges.Projection)
+            for ep in pairs.each():
+                bb = ep.bbox()
+                if not near.interacting(pya.Region(bb.enlarged(1))).count():
+                    continue
+                dist = ep.distance() * nm
+                c1 = ep.first.bbox().center()
+                p2 = pya.Point(ep.second.p1.x, c1.y) if angle == 90 else pya.Point(c1.x, ep.second.p1.y)
+                region_box = bb if bb.width() > 0 and bb.height() > 0 else bb.enlarged(2)
+                out.append((region_box.to_dtype(dbu), c1.to_dtype(dbu), p2.to_dtype(dbu), d, dist,
+                            f"{outer.upper()} past {label_inner} {d:g} nm min", f"{dist:.1f} nm"))
+    return out
+
+
 class Display:
     """The hints of one view: gap outlines (markers) and labelled dimension lines (rulers)."""
 
@@ -368,8 +487,9 @@ def show_layers(view, cell, moving, skip=None, trans=None):
     try:
         for li, polys in moving.items():
             hits += check(cell, li, polys, skip)
+        hits += enclosures(cell, moving, skip)
     except Exception as e:          # a hint must never break editing
-        print(f"OpenLayout DRD: {e}")
+        print(f"OpenLayout DRD: {type(e).__name__}: {e}")
         hits = []
     hits.sort(key=lambda v: v[4] / v[3])
     d.show(hits, trans)
