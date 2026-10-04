@@ -1,0 +1,83 @@
+diff -ru a/src/lay/lay/layLogViewerDialog.cc b/src/lay/lay/layLogViewerDialog.cc
+--- a/src/lay/lay/layLogViewerDialog.cc	2026-10-04 16:17:15.506054532 +0000
++++ b/src/lay/lay/layLogViewerDialog.cc	2026-10-04 16:17:15.595583516 +0000
+@@ -31,6 +31,8 @@
+ #include <QFrame>
+ #include <QThread>
+ #include <QAbstractEventDispatcher>
++#include <QApplication>
++#include <QPalette>
+ 
+ #include <stdio.h>
+ 
+@@ -324,7 +326,7 @@
+       } else if (mode == LogFileEntry::Error || mode == LogFileEntry::ErrorContinued) {
+         return QColor (255, 0, 0);
+       } else if (mode == LogFileEntry::Warning || mode == LogFileEntry::WarningContinued) {
+-        return QColor (0, 0, 255);
++        return QApplication::palette ().color (QPalette::Link);
+       }
+     } 
+ 
+diff -ru a/src/layui/layui/layNetlistLogModel.cc b/src/layui/layui/layNetlistLogModel.cc
+--- a/src/layui/layui/layNetlistLogModel.cc	2026-10-04 16:17:15.455095667 +0000
++++ b/src/layui/layui/layNetlistLogModel.cc	2026-10-04 16:17:15.591523429 +0000
+@@ -28,6 +28,8 @@
+ #include <QFont>
+ #include <QColor>
+ #include <QWidget>
++#include <QApplication>
++#include <QPalette>
+ 
+ namespace lay
+ {
+@@ -251,7 +253,7 @@
+     } else if (le->severity () == db::Error) {
+       return QColor (255, 0, 0);
+     } else if (le->severity () == db::Warning) {
+-      return QColor (0, 0, 255);
++      return QApplication::palette ().color (QPalette::Link);
+     }
+ 
+   }
+diff -ru a/src/layui/layui/rdbMarkerBrowserPage.cc b/src/layui/layui/rdbMarkerBrowserPage.cc
+--- a/src/layui/layui/rdbMarkerBrowserPage.cc	2026-10-04 16:17:15.404198980 +0000
++++ b/src/layui/layui/rdbMarkerBrowserPage.cc	2026-10-04 16:17:15.587273145 +0000
+@@ -40,6 +40,8 @@
+ #include <QHeaderView>
+ #include <QKeyEvent>
+ #include <QInputDialog>
++#include <QApplication>
++#include <QPalette>
+ 
+ namespace rdb
+ {
+@@ -616,8 +618,8 @@
+ 
+       MarkerBrowserTreeViewModelCacheEntry *node = (MarkerBrowserTreeViewModelCacheEntry *)(index.internalPointer ());
+       if (node && node->id () == 0) {
+-        // blue color for the top level nodes
+-        return QVariant (QColor (0, 0, 255));
++        // the palette's link color (blue by default) for the top level nodes - readable on dark themes too
++        return QVariant (QApplication::palette ().color (QPalette::Link));
+       }
+ 
+       //  Green color if no errors are present
+@@ -2265,7 +2267,7 @@
+     info += "</h3>";
+ 
+     if (category && n_category == 1 && ! category->description ().empty ()) {
+-      info += "<p style=\"color:blue; font-weight: bold\">";
++      info += "<p style=\"color:" + tl::to_string (QApplication::palette ().color (QPalette::Link).name ()) + "; font-weight: bold\">";
+       tl::escape_to_html (info, category->description ());
+       info += "</p>";
+     }
+@@ -2318,7 +2320,7 @@
+ 
+       QImage image = item->image ();
+       if (! image.isNull ()) {
+-        info += "<table border=\"1\" cellspacing=\"0\" cellpadding=\"5\" style=\"border-color:blue; border-style:solid\"><tr><td><p>Snapshot image<br/>(click to enlarge)</p><p><a href=\"show-snapshot\"><img src=\"item.overview-image\"/></a></p></td></tr></table>";
++        info += "<table border=\"1\" cellspacing=\"0\" cellpadding=\"5\" style=\"border-color:" + tl::to_string (QApplication::palette ().color (QPalette::Link).name ()) + "; border-style:solid\"><tr><td><p>Snapshot image<br/>(click to enlarge)</p><p><a href=\"show-snapshot\"><img src=\"item.overview-image\"/></a></p></td></tr></table>";
+         info_text->set_image (image);
+       }
+ 

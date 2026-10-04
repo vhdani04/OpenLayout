@@ -20,17 +20,32 @@ do_deps() {
     cmake ninja-build python3 python3-pip python3-venv python3-dev \
     libx11-dev libxrender-dev libxpm-dev libxcb1-dev libx11-xcb-dev libcairo2-dev libjpeg-dev \
     tcl-dev tk-dev tcl8.6-dev tk8.6-dev tcllib libxaw7-dev libreadline-dev libfftw3-dev \
-    libgomp1 libncurses-dev xterm gedit xvfb \
+    libgomp1 libncurses-dev xterm gedit xvfb fakeroot     qtbase5-dev qttools5-dev libqt5svg5-dev libqt5xmlpatterns5-dev qtmultimedia5-dev libqt5opengl5-dev     ruby-dev libgit2-dev zlib1g-dev libcurl4-openssl-dev libexpat1-dev \
     libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 > /dev/null
 }
 
 do_tools() {
   cd "$SRC"
-  step "KLayout $KLAYOUT_VERSION"
-  if have_version klayout "KLayout $KLAYOUT_VERSION" -v; then echo "already installed"; else
-    deb="klayout_${KLAYOUT_VERSION}-1_amd64.deb"
-    wget -q -N "https://www.klayout.org/downloads/Ubuntu-24/$deb"
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "./$deb" > /dev/null
+  step "KLayout $KLAYOUT_VERSION (+ setup/patches/klayout-*.patch)"
+  # The release's own Debian package, built from source with OpenLayout's patches on top (KLayout's
+  # scripts/makedeb.sh: the same build options as the official .deb). A stamp records the patches.
+  stamp=/usr/local/share/openlayout-klayout.patches
+  want="$KLAYOUT_VERSION $(cat "$FLOW"/setup/patches/klayout-*.patch | sha256sum | cut -c1-16)"
+  if have_version klayout "KLayout $KLAYOUT_VERSION" -v && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
+    echo "already installed"
+  else
+    wget -q -N -O "klayout-$KLAYOUT_VERSION.tar.gz" "https://github.com/KLayout/klayout/archive/refs/tags/v$KLAYOUT_VERSION.tar.gz"
+    rm -rf "klayout-$KLAYOUT_VERSION" && tar -xzf "klayout-$KLAYOUT_VERSION.tar.gz"
+    (cd "klayout-$KLAYOUT_VERSION"
+     for p in "$FLOW"/setup/patches/klayout-*.patch; do patch -s -p1 < "$p"; done
+     # makedeb wants a git checkout (version.sh / build.sh read the revision)
+     git init -q && git add -A && git -c user.name=openlayout -c user.email=openlayout@localhost commit -q -m patched
+     echo "building (about 30-60 minutes) ..."
+     deb="klayout_${KLAYOUT_VERSION}-1_amd64.deb"
+     scripts/makedeb.sh ubuntu24 > makedeb.log 2>&1 || true     # its last step (lintian) is optional
+     [ -f "$deb" ] || { tail -20 makedeb.log; exit 1; }
+     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --allow-downgrades --reinstall "./$deb" > /dev/null)
+    echo "$want" | sudo tee "$stamp" > /dev/null
   fi
 
   step "OpenVAF-reloaded ($OPENVAF_BUILD)"
