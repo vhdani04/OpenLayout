@@ -10,8 +10,8 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from . import align_tool
-from .drag_move import DragMoveFactory, move_under_mouse, stretch_under_mouse
+from . import align_tool, stdcell
+from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
 from .path_tool import TOOL_NAME, PathToolFactory
@@ -176,6 +176,7 @@ class OpenLayoutUI:
         if os.environ.get("OPENLAYOUT_KEYS") != "klayout":
             self.drag_factory = DragMoveFactory()   # Virtuoso drag and drop in Select mode
         self.align_factory = align_tool.AlignToolFactory()
+        after_move_hooks.append(self.after_move)
         try:
             bind_path_tool(mw)
         except Exception as e:
@@ -237,6 +238,8 @@ class OpenLayoutUI:
             parts.append(f"not in schematic: {', '.join(report['extra'])}")
         if report["skipped"]:
             parts.append(f"skipped: {', '.join(report['skipped'])}")
+        if report.get("warnings"):
+            parts.append("; ".join(report["warnings"]))
         return f"{report['cell']}: " + ", ".join(parts)
 
     def update_layout_file(self, layout_path):
@@ -286,12 +289,50 @@ class OpenLayoutUI:
             ("move", self.action("Move (object under the mouse)", move_under_mouse)),
             ("stretch", self.action("Stretch (edge under the mouse)", stretch_under_mouse)),
             ("align", self.action("Align (edge to edge)", align_tool.start)),
+            (None, None),
+            ("stdcell_frame", self.action("Standard-Cell Frame…", self.frame_dialog)),
+            ("chain", self.action("Chain Selected Transistors", self.chain_selected)),
         ]
         for i, (name, action) in enumerate(items):
             if name is None:
                 menu.insert_separator("openlayout_menu.end", f"sep{i}")
             else:
                 menu.insert_item("openlayout_menu.end", name, action)
+
+    # ---- custom standard cells ------------------------------------------------------------------
+    def frame_dialog(self):
+        view = self.mw.current_view()
+        cv = view.active_cellview() if view else None
+        if cv is None or not cv.is_valid() or not view.is_editable():
+            pya.MessageBox.info("OpenLayout", "Open the (editable) layout of the cell first.", pya.MessageBox.Ok)
+            return
+        frame = stdcell.find_frame(cv.cell)
+        cur = frame.pcell_parameters_by_name() if frame is not None else {}
+        cpp = pya.InputDialog.ask_int("Standard-cell frame",
+                                      "Width in gate pitches (54 nm each; 7.5-track cell, 270 nm high):",
+                                      int(cur.get("cpp") or stdcell.default_width(cv.cell)), 1, 400, 1)
+        if cpp is None:
+            return
+        vts = ["rvt", "lvt", "slvt"]
+        vt = pya.InputDialog.ask_item("Standard-cell frame", "Threshold voltage:", vts,
+                                      vts.index(cur.get("vt", "rvt")) if cur.get("vt") in vts else 0)
+        if vt is None:
+            return
+        stdcell.insert_frame(view, cpp, vt)
+        self.mw.message(f"Standard-cell frame: {cpp} gate pitches ({cpp * 54} nm) x 270 nm, {vt.upper()} - "
+                        "place transistors with 'Standard-cell row' on, at y = 0", 10000)
+
+    def chain_selected(self):
+        view = self.mw.current_view()
+        if view is None or not view.is_editable():
+            return
+        messages = stdcell.chain_selected(view)
+        self.mw.message("; ".join(messages) if messages else "Transistors chained", 10000)
+
+    def after_move(self, view):
+        messages = stdcell.after_move(view)
+        if messages:
+            self.mw.message("; ".join(messages), 10000)
 
     def show_keys(self):
         keys = FLOW / "docs" / "KEYS.md"

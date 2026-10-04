@@ -11,6 +11,8 @@ Not a KLayout mode: while aligning, this service holds the mouse grab, so it see
 """
 import pya
 
+from .drag_move import notify_moved
+
 NAME = "openlayout_align"
 PICK_PIXELS = 8
 REF_COLOR, HOVER_COLOR = 0xE8B04B, 0x4FA3FF
@@ -211,6 +213,7 @@ class AlignTool(pya.Plugin):
             view.commit()
         self.finish()
         view.object_selection = objs
+        notify_moved(view)
         dist = abs(d.x if axis == "v" else d.y) * 1000
         self.status(f"Aligned: moved {dist:.1f} nm {'sideways' if axis == 'v' else 'up/down'}")
 

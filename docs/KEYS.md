@@ -91,6 +91,24 @@ up - sideways for vertical edges, up/down for horizontal ones. Edges are instanc
 shapes, also inside instances (e.g. a transistor's diffusion or gate; near an outline the outline
 wins). The edge under the mouse is highlighted; `Esc` or a right click cancels; `u` undoes.
 
+**Custom standard cells.** *OpenLayout ▸ Standard-Cell Frame…* puts the cell template at the origin
+of the open cell (asked again, it resizes it): a 7.5-track frame (270 nm high, a whole number of
+54 nm gate pitches wide) with the boundary, n-well / implant split, VT layer, all ten fin rows, the
+VDD / VSS rails on M1 (labelled as pins) and dummy gates at both cell edges - like the ASAP7 library
+cells. Transistors go in with *Standard-cell row* on and at y = 0: nMOS sit on the bottom fins, pMOS
+on the top fins, and an nMOS and a pMOS in the same column share one gate (no strap; contact it with
+LIG + V0 near mid-cell). Generating the layout from the schematic into a cell that has a frame
+places the transistors this way by itself. Row devices have at most 3 fins (use fingers for more).
+
+**Chaining** (shared diffusion, like Virtuoso's abutment): drop a transistor next to another of the
+same type and row - touching, or overlapping by up to a gate pitch - and it snaps into the chain:
+the dummy gates between them go and the diffusion runs through. With a schematic link it only
+chains when the touching source/drain nets match, flipping the dropped transistor if that makes
+them match. Moving a transistor away again restores its dummy gates. *OpenLayout ▸ Chain Selected
+Transistors* packs the selection into chains left to right. In a transistor's properties (`q`)
+*Contact on the shared left/right diffusion* can be switched off for the inner node of a series
+stack (as in the library's NAND2).
+
 The **LSW** (right side) is the only layer panel. *All layers* / *Used layers* tabs (used = has
 shapes in the current cell). Click a layer to make it the current drawing layer, untick to hide it.
 **AV** shows every layer; **NV** hides every layer except the current one.

@@ -13,7 +13,7 @@ from pathlib import Path
 import pya
 
 from .asap7 import CONNECTIONS, LABEL, LAYERS, METALS, PIN
-from .pcells import mos_geometry
+from .pcells import mos_geometry_from
 
 PROP = 1
 PREFIX = "ol:"
@@ -85,9 +85,7 @@ def terminals(layout, top, conn):
         found.add(name)
         trans = inst.dcplx_trans
         if spec["kind"] == "mos":
-            p = inst.pcell_parameters_by_name()
-            geo = mos_geometry(spec["type"], int(p.get("nfin", 1)), int(p.get("nf", 1)),
-                               p.get("gate_side", ""), p.get("vt", "rvt"))
+            geo = mos_geometry_from(spec["type"], inst.pcell_parameters_by_name())
             for term, net in spec["terminals"].items():
                 if term in SKIP_TERMINALS:
                     continue

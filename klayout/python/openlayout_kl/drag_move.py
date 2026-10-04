@@ -18,6 +18,10 @@ Stretch is KLayout's Partial mode, which has the same click-to-pick-up / click-t
 and a click places it - and the editor returns to Select mode afterwards; in Partial mode a
 press-drag on an edge drops it on release.
 
+When a move (drag, m) is done, the functions in after_move_hooks are called with the view - the
+standard-cell code snaps moved transistors into chains there. A press-drag that would only pick up
+the standard-cell frame draws a selection box instead (the frame covers the whole cell).
+
 The move itself is KLayout's (move-angle constraint, snapping, dx/dy display, one undo step): this
 service only selects the object under the press, starts KLayout's interactive move there and ends
 it on release. It takes no mode of its own; it holds a mouse grab so it sees the press before the
@@ -29,6 +33,26 @@ NAME = "openlayout_drag_move"
 MODES = ("select", "move")
 MOVE_ACTION = "@secrets.sel_move_interactive"
 _under_mouse = None   # the DragMove of the view the mouse was last over, and where
+after_move_hooks = []  # f(view), called when a move is done
+
+
+def notify_moved(view):
+    for hook in list(after_move_hooks):
+        try:
+            hook(view)
+        except Exception as e:
+            print(f"OpenLayout: after-move hook failed: {e}")
+
+
+def _frame_only(view):
+    objs = list(view.each_object_selected())
+    if not objs or not all(o.is_cell_inst() for o in objs):
+        return False
+    for o in objs:
+        decl = o.inst().pcell_declaration() if o.inst().is_pcell() else None
+        if decl is None or decl.name() != "stdcell":
+            return False
+    return True
 
 
 def _start_move():
@@ -98,7 +122,7 @@ class DragMove(pya.Plugin):
         """True where a press-drag moves the current selection"""
         view = self._view
         return (view.mode_name() in MODES and view.is_editable() and view.has_object_selection()
-                and view.selection_bbox().contains(p))
+                and view.selection_bbox().contains(p) and not _frame_only(view))
 
     def pixel(self, p):
         """micrometers -> widget pixels (y down)"""
@@ -106,13 +130,16 @@ class DragMove(pya.Plugin):
         return pya.DPoint(q.x, self._view.viewport_height() - q.y)
 
     def _back_to_select(self):
-        if self.stretch_once or self._view.mode_name() == "partial":
+        stretched = self.stretch_once or self._view.mode_name() == "partial"
+        if stretched:
             # KLayout keeps the stretched edge selected, and in stretch mode the next press would
             # move it again wherever it happens - a stretch leaves nothing selected
             self._view.clear_selection()
         self.moving = False
         self.stretch_once = False
         self._view.switch_mode("select")
+        if not stretched:
+            notify_moved(self._view)
 
     def _move_in_progress(self):
         """KLayout's move service is dragging: while it does, it is first in line for mouse events
@@ -154,8 +181,9 @@ class DragMove(pya.Plugin):
             return False
         if not self.over_selection(p):
             view.select_from(p, pya.LayoutView.SelectionMode.Replace)
-            if not view.has_object_selection():
-                return False      # empty space: let the selection box start
+            if not view.has_object_selection() or _frame_only(view):
+                view.clear_selection()
+                return False      # empty space (or only the cell frame): let the selection box start
         if not _start_move():
             return False
         self.dragging = True
@@ -179,6 +207,7 @@ class DragMove(pya.Plugin):
         self.moving = False
         if self._view.mode_name() == "move":
             self._view.switch_mode("select")
+        notify_moved(self._view)
         return True
 
     def deactivated(self):

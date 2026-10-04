@@ -22,7 +22,7 @@ import pya
 
 from .asap7 import DBU, LAYERS, PIN
 from .connectivity import PREFIX, PROP, conn_file, instance_name
-from .pcells import LIBRARY, register_library
+from .pcells import LIBRARY, ROW_MAX_FINS, register_library
 
 STDCELL_RE = re.compile(r"_ASAP7_75t_(R|L|SL|SRAM)$")
 GATE_PITCH, ROW_GAP, PIN_SIZE = 0.054, 0.108, 0.054
@@ -110,13 +110,19 @@ def _snap(v: float, grid: float) -> float:
 
 
 class Placer:
-    """Simple rows: pmos above nmos, cells below, new parts above existing layout when updating."""
+    """Simple rows: pmos above nmos, cells below, new parts above existing layout when updating.
+    In a standard-cell frame (row mode) transistors are placed at y = 0 - their row geometry puts
+    nMOS in the bottom and pMOS in the top half - left to right, new ones right of the cell."""
 
-    def __init__(self, top: pya.Cell, staging: bool):
+    def __init__(self, top: pya.Cell, staging: bool, row: bool = False):
         bbox = top.dbbox()
         self.base_y = _snap(bbox.top + 0.27, 0.027) if staging and not bbox.empty() else 0.0
         self.x = {"nmos": 0.0, "pmos": 0.0, "cell": 0.0}
         self.row_y = {"nmos": self.base_y, "pmos": self.base_y + 0.54, "cell": self.base_y - 0.54}
+        if row:
+            x0 = _snap(bbox.right + 0.108, GATE_PITCH) if staging and not bbox.empty() else 0.0
+            self.x = {"nmos": x0, "pmos": x0, "cell": x0}
+            self.row_y = {"nmos": 0.0, "pmos": 0.0, "cell": -0.54}
 
     def place(self, row: str, width: float) -> pya.DTrans:
         x = self.x[row]
@@ -191,8 +197,11 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
     top = layout.cell(cell.name) or (layout.top_cell() if layout.cells() else None) or layout.create_cell(cell.name)
     existing = {instance_name(i): i for i in top.each_inst()}
     existing.pop(None, None)
-    placer = Placer(top, staging=bool(existing))
-    report = {"added": [], "updated": [], "unchanged": [], "extra": [], "skipped": [], "pins_added": []}
+    row = any(i.is_pcell() and i.pcell_declaration() is not None and i.pcell_declaration().name() == "stdcell"
+              for i in top.each_inst())
+    placer = Placer(top, staging=bool(existing), row=row)
+    report = {"added": [], "updated": [], "unchanged": [], "extra": [], "skipped": [], "pins_added": [],
+              "warnings": []}
     conn = {"version": 1, "schematic": sch.name, "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
             "ports": net["ports"], "pins": {p: net["dirs"].get(p, "B") for p in net["ports"]}, "instances": {}}
     seen = set()
@@ -204,6 +213,11 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
             continue
         params = {"vt": vt or "rvt", "nfin": int(float(dev["params"].get("nfin", 1))),
                   "nf": int(float(dev["params"].get("nf", 1)))}
+        if row:
+            if params["nfin"] > ROW_MAX_FINS:
+                report["warnings"].append(f"{dev['name']}: nfin {params['nfin']} > {ROW_MAX_FINS} fits no "
+                                          f"7.5-track row - drawn with {ROW_MAX_FINS} (use more fingers)")
+            params["row"] = True
         m = int(float(dev["params"].get("m", 1)))
         terms = dict(zip(("d", "g", "s", "b"), dev["nets"]))
         for k in range(m):
