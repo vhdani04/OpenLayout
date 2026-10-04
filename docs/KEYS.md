@@ -72,18 +72,20 @@ finishes. The preview is drawn in the layer's own texture.
 Segments are horizontal or
 vertical only; click to add points, double-click or `Enter` to finish, `Backspace` removes the last
 point, `Esc` cancels. Move, stretch and rulers are also restricted to the axes.
-The cursor is the path's end edge (flush). A click turns the path: the new segment starts half a
-width back from that end edge, so the outside of the corner stays where you clicked; the last
-click (double-click / Enter) is the end. Edges the path could turn into (parallel to the current
-segment, same layer, within ~150 pixels) get a dashed orange guide from their centre to the path;
-near the spot where a turn would hit that centre the end snaps there and the guide turns solid.
+The path is drawn along its centre line, its end flush with the cursor; a click is a corner,
+centred on the click, and the last click (double-click / `Enter`) is the end. **Alignment guides**
+(as in Virtuoso): when the path's leading edge lines up with a corner or an edge centre of a nearby
+shape on the same layer, the end snaps to it and a dashed orange line joins that point to the
+nearest corner of the leading edge - lined up with the centre of a shape's edge, the next corner
+turns the path into that shape centred on it.
 
-**Moving** works like Virtuoso: click a transistor, instance or shape to select it, click it again
-to pick it up - it follows the mouse - and click where it should go (`u` undoes it). Over a
-selection the cursor is the four-way move arrow. A press-drag draws a selection box (it never moves
-anything); a click selects. Or point at an object (or the selection), press `m`, and click where it
-should go. After a move the editor is back in select mode. Clicking selects the top-level object -
-a whole transistor, not a shape inside it (descend with `x` to edit inside a cell).
+**Moving** works like Virtuoso. With something selected, the cursor is the four-way move arrow over
+it: press and drag to move it, release to drop it (`u` undoes). A press-drag anywhere else draws a
+selection box; a click selects. **Move (`m`)**: the selection - or, with nothing selected, the object
+under the mouse - follows the mouse from where `m` was pressed (infix); a click places it. The
+command then repeats: click the next object (it follows from that click) and click to place it,
+until `Esc` or a right click. Clicking selects the top-level object - a whole transistor, not a
+shape inside it (descend with `x` to edit inside a cell).
 
 **Stretch (`s`)**: point at an edge (or a corner) of a shape and press `s` - it follows the mouse and a
 click places it; afterwards the editor is back in select mode. In stretch mode (toolbar *Partial*) a

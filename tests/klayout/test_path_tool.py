@@ -112,35 +112,41 @@ print(f"   (snap range {tool.pixels(12) * 1000:.1f} nm at this zoom)")
 check("no snap far from edges", edge is None and abs(nxt.y - 0.10) < 1e-6, str(nxt))
 tool.key_event(pya.KeyCode.Escape, 0)
 
-# a turn: the cursor was the end edge, the next segment starts half a width back from it
+# a corner is centred on the click; the path's end is flush with the last click
 cell.shapes(m1).clear()
 tool.mouse_click_event(pya.DPoint(0.0, -0.1), L, True)              # empty space: M1 18 nm
-tool.mouse_click_event(pya.DPoint(0.2, -0.1), L, True)              # turn here
-check("a turn's vertex is half a width back from the clicked end", abs(tool.points[-1].x - 0.191) < 1e-9,
-      str(tool.points[-1]))
-tool.mouse_click_event(pya.DPoint(0.19, 0.1), L, True)
+tool.mouse_click_event(pya.DPoint(0.2, -0.1), L, True)              # corner here
+check("a corner's centre sits on the click", abs(tool.points[-1].x - 0.2) < 1e-9, str(tool.points[-1]))
+tool.mouse_click_event(pya.DPoint(0.2, 0.1), L, True)
 tool.key_event(pya.KeyCode.Return, 0)
 paths = [s.dpath for s in cell.shapes(m1).each() if s.is_path()]
 bb = paths[0].bbox() if paths else None
-check("the corner's outside stays at the click, the end at the last click",
-      bb is not None and abs(bb.right - 0.2) < 1e-9 and abs(bb.top - 0.1) < 1e-9, str(bb))
+check("the corner reaches half a width past the click, the end is flush at the last click",
+      bb is not None and abs(bb.right - 0.209) < 1e-9 and abs(bb.top - 0.1) < 1e-9, str(bb))
 
-# guide: an M1 shape above the path; its bottom edge's centre gets a dashed line to the path, and
-# near the spot where a turn would hit that centre, the end snaps there
+# alignment guides (the user's example): an 18 nm M1 square centred on (0, 0.2), a path drawn from
+# (0.2, 0.1) to the left
 cell.shapes(m1).clear()
-cell.shapes(m1).insert(pya.DBox(0.25, 0.04, 0.31, 0.08))
-tool.mouse_click_event(pya.DPoint(0.0, 0.0), L, True)
-nxt, edge = tool.next_point(pya.DPoint(0.27, 0.0))
-check("a dashed guide runs from the nearby edge centre to the path", tool.guide is not None and not tool.guide[1]
-      and str(tool.guide[0]) == "(0.28,0.04;0.28,0)" and abs(nxt.x - 0.27) < 1e-9, (tool.guide, str(nxt)))
-nxt, edge = tool.next_point(pya.DPoint(0.295, 0.0))
-check("near the spot the end snaps so that turning hits the edge centre", tool.guide is not None and tool.guide[1]
-      and abs(nxt.x - 0.289) < 1e-9, (tool.guide, str(nxt)))
-tool.mouse_moved_event(pya.DPoint(0.295, 0.0), 0, True)
-tool.mouse_click_event(pya.DPoint(0.295, 0.0), L, True)
-check("the turn then sits on the edge centre", abs(tool.points[-1].x - 0.28) < 1e-9, str(tool.points[-1]))
+cell.shapes(m1).insert(pya.DBox(-0.009, 0.191, 0.009, 0.209))
+view.zoom_box(pya.DBox(-0.1, -0.05, 0.3, 0.3))
+tool.mouse_click_event(pya.DPoint(0.2, 0.1), L, True)
+half = tool.width / 2
+nxt, edge = tool.next_point(pya.DPoint(0.05, 0.1))
+check("no guide while nothing lines up", tool.guide is None and abs(nxt.x - 0.05) < 1e-9, str(nxt))
+nxt, edge = tool.next_point(pya.DPoint(0.0105, 0.1))
+check("the leading edge at the square's right side: the end snaps there and a dashed guide joins it "
+      "to the square's bottom right corner", abs(nxt.x - 0.009) < 1e-9 and tool.guide is not None
+      and str(tool.guide) == f"(0.009,0.191;0.009,{0.1 + half:g})", (str(nxt), str(tool.guide)))
+nxt, edge = tool.next_point(pya.DPoint(0.0012, 0.1))
+check("at the square's centre: the guide joins the centre of its bottom edge to the path's corner",
+      abs(nxt.x) < 1e-9 and str(tool.guide) == f"(0,0.191;0,{0.1 + half:g})", (str(nxt), str(tool.guide)))
+tool.mouse_moved_event(pya.DPoint(0.0012, 0.1), 0, True)
+tool.mouse_click_event(pya.DPoint(0.0012, 0.1), L, True)
+check("turning there puts the corner on the square's centre line", abs(tool.points[-1].x) < 1e-9, str(tool.points[-1]))
+nxt, edge = tool.next_point(pya.DPoint(0.0, 0.188))
+check("going up, the path then meets the square's bottom edge centred", edge is not None
+      and abs(nxt.x) < 1e-9 and abs(nxt.y - 0.191) < 1e-9, (str(nxt), str(edge)))
 tool.key_event(pya.KeyCode.Escape, 0)
-nxt = None
 
 # a path started in empty space uses the layer minimum width (M1: 18 nm)
 tool.mouse_click_event(pya.DPoint(0.0, -0.1), L, True)

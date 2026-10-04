@@ -89,17 +89,12 @@ def click_at(x, y):
 
 
 def carry(a, b, steps=5):
-    """with the object at a selected: click to pick it up, move the mouse to b, click to drop"""
-    click_at(*a)
-    pa, pb = px(*a), px(*b)
-    for i in range(1, steps + 1):
-        view.send_mouse_move_event(pa + (pb - pa) * (i / steps), 0)
-    click_at(*b)
-    view.send_mouse_move_event(pb + pya.DVector(40, 40), 0)
+    """with the object at a selected: drag it to b"""
+    drag(a, b, steps)
 
 
 def move(a, b):
-    """click to select, then carry"""
+    """click to select, then drag it"""
     view.clear_selection()
     click_at(*a)
     carry(a, b)

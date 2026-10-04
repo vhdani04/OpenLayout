@@ -1,5 +1,5 @@
-# Virtuoso-style move (click to pick up, click to drop) and stretch, run in KLayout with a main
-# window (headless):
+# Virtuoso-style moving (drag-move of the selection, the repeating Move command) and stretch, run in
+# KLayout with a main window (headless):
 #   klayout -e -z -nc -r tests/klayout/test_drag_move.py
 # Mouse input goes through LayoutView.send_mouse_* - the same dispatch as real mouse events.
 import os
@@ -56,13 +56,14 @@ def px(x, y):
 
 
 def drag(a, b, steps=6):
-    """press, move with the button down, release (no further mouse move)"""
+    """press, move with the button down, release, then move the mouse away"""
     pa, pb = px(*a), px(*b)
     view.send_mouse_move_event(pa, 0)
     view.send_mouse_press_event(pa, L)
     for i in range(1, steps + 1):
         view.send_mouse_move_event(pa + (pb - pa) * (i / steps), L)
     view.send_mouse_release_event(pb, L)
+    view.send_mouse_move_event(pb + pya.DVector(40, 40), 0)
 
 
 def click(x, y):
@@ -78,14 +79,11 @@ def glide(a, b, steps=5):
         view.send_mouse_move_event(pa + (pb - pa) * (i / steps), 0)
 
 
-def move(a, b):
-    """click to select, click again to pick up, move the mouse, click to drop"""
+def drag_selected(a, b):
+    """click to select, then drag it"""
     view.clear_selection()
     click(*a)
-    click(*a)
-    glide(a, b)
-    click(*b)
-    view.send_mouse_move_event(px(*b) + pya.DVector(40, 40), 0)   # a dropped object no longer follows
+    drag(a, b)
 
 
 def m2_box():
@@ -96,16 +94,16 @@ def inst_pos():
     return [i.dcplx_trans.disp for i in cell.each_inst()][0]
 
 
-move((0.35, 0.05), (0.45, 0.05))
+drag_selected((0.35, 0.05), (0.45, 0.05))
 b = m2_box()
-check("click, click again: the shape follows the mouse, a click drops it", abs(b.left - 0.4) < 1e-6
+check("a selected shape drags with the mouse, the release drops it", abs(b.left - 0.4) < 1e-6
       and abs(b.bottom) < 1e-6, b)
 check("the moved shape stays selected", view.has_object_selection())
 check("still in Select mode after a move", view.mode_name() == "select", view.mode_name())
 
-move((0.05, 0.05), (0.05, -0.15))
+drag_selected((0.05, 0.05), (0.05, -0.15))
 d = inst_pos()
-check("an instance moves the same way", abs(d.x) < 1e-6 and abs(d.y + 0.2) < 1e-6, d)
+check("a selected instance drags the same way", abs(d.x) < 1e-6 and abs(d.y + 0.2) < 1e-6, d)
 
 mw.cm_undo()
 check("a move is one undo step", inst_pos().y == 0 and abs(m2_box().left - 0.4) < 1e-6, (str(inst_pos()), str(m2_box())))
@@ -113,15 +111,16 @@ check("a move is one undo step", inst_pos().y == 0 and abs(m2_box().left - 0.4) 
 view.clear_selection()
 before = (m2_box(), inst_pos())
 drag((0.45, 0.05), (0.55, 0.05))
-view.send_mouse_move_event(px(0.6, 0.1), 0)
-check("a press-drag on an object does not move it (it draws a selection box)", (m2_box(), inst_pos()) == before)
+check("dragging an unselected object does not move it (it draws a selection box)", (m2_box(), inst_pos()) == before)
 drag((-0.15, 0.3), (0.2, 0.2))
 check("a drag on empty space moves nothing", (m2_box(), inst_pos()) == before)
 
 view.clear_selection()
 click(0.45, 0.05)
-view.send_mouse_move_event(px(0.5, 0.05), 0)
-check("a first click selects without moving", view.has_object_selection() and m2_box() == before[0])
+click(0.45, 0.05)
+glide((0.45, 0.05), (0.55, 0.05))
+check("clicks select; they do not pick anything up", view.has_object_selection() and m2_box() == before[0])
+view.send_mouse_move_event(px(0.45, 0.05), 0)
 
 
 
@@ -135,22 +134,30 @@ check("four-way move cursor over the selection", "SizeAllCursor" in canvas_curso
 view.send_mouse_move_event(px(-0.15, 0.3), 0)                 # empty space
 check("normal cursor away from the selection", "SizeAllCursor" not in canvas_cursor(), canvas_cursor())
 
-# m over a shape: it follows the mouse, a click drops it, and the editor is back in Select mode
+# the Move command (m, infix): the object under the mouse follows from where m was pressed, a click
+# places it; then the next clicked object follows from that click, and so on until Esc
 view.clear_selection()
-start = m2_box()
+start, istart = m2_box(), inst_pos()
 view.send_mouse_move_event(px(0.45, 0.05), 0)
 mw.menu().action("openlayout_menu.move").trigger()               # the m key
 glide((0.45, 0.05), (0.55, 0.05))
 click(0.55, 0.05)
-view.send_mouse_move_event(px(-0.15, 0.3), 0)
 moved = m2_box()
 check("m moves the shape under the mouse", abs(moved.left - start.left - 0.1) < 1e-6, (str(start), str(moved)))
-check("back in Select mode after an m move", view.mode_name() == "select", view.mode_name())
+click(0.05, 0.05)                                               # the next object: the instance
+glide((0.05, 0.05), (0.05, 0.15))
+click(0.05, 0.15)
+view.send_mouse_move_event(px(-0.15, 0.3), 0)
+check("the Move command repeats: the next clicked object follows and is placed",
+      abs(inst_pos().y - istart.y - 0.1) < 1e-6, (str(istart), str(inst_pos())))
+check("back in Select mode after a move", view.mode_name() == "select", view.mode_name())
+mw.menu().action("edit_menu.cancel").trigger()                  # Esc ends the command
+click(0.05, 0.15)
+glide((0.05, 0.15), (0.05, 0.25))
+view.send_mouse_move_event(px(-0.15, 0.3), 0)
+check("after Esc a click only selects", abs(inst_pos().y - istart.y - 0.1) < 1e-6 and view.has_object_selection(),
+      str(inst_pos()))
 view.clear_selection()
-click(-0.15, 0.3)
-view.send_mouse_move_event(px(-0.1, 0.25), 0)
-check("a click on empty space afterwards picks nothing up", m2_box() == moved and "SizeAllCursor" not in canvas_cursor(),
-      (str(m2_box()), canvas_cursor()))
 
 check("m is bound to the OpenLayout move", mw.get_key_bindings().get("openlayout_menu.move") == "M",
       mw.get_key_bindings().get("openlayout_menu.move"))
