@@ -72,18 +72,22 @@ finishes. The preview is drawn in the layer's own texture.
 Segments are horizontal or
 vertical only; click to add points, double-click or `Enter` to finish, `Backspace` removes the last
 point, `Esc` cancels. Move, stretch and rulers are also restricted to the axes.
+The cursor is the path's end edge (flush). A click turns the path: the new segment starts half a
+width back from that end edge, so the outside of the corner stays where you clicked; the last
+click (double-click / Enter) is the end. Edges the path could turn into (parallel to the current
+segment, same layer, within ~150 pixels) get a dashed orange guide from their centre to the path;
+near the spot where a turn would hit that centre the end snaps there and the guide turns solid.
 
-**Moving** works like Virtuoso: press on a transistor, instance or shape and drag it - it follows
-the mouse and drops where you release the button (`u` undoes it). Pressing on empty space and
-dragging draws a selection box; a click selects. Over a selection the cursor turns into the
-four-way move arrow. Or point at it (or at the selection), press `m`, and click where it should go
-(the first click places it). After a move the editor is back in select mode. Clicking selects the
-top-level object - a whole transistor, not a shape inside it (descend with `x` to edit inside a
-cell).
+**Moving** works like Virtuoso: click a transistor, instance or shape to select it, click it again
+to pick it up - it follows the mouse - and click where it should go (`u` undoes it). Over a
+selection the cursor is the four-way move arrow. A press-drag draws a selection box (it never moves
+anything); a click selects. Or point at an object (or the selection), press `m`, and click where it
+should go. After a move the editor is back in select mode. Clicking selects the top-level object -
+a whole transistor, not a shape inside it (descend with `x` to edit inside a cell).
 
 **Stretch (`s`)**: point at an edge (or a corner) of a shape and press `s` - it follows the mouse and a
-click places it; afterwards the editor is back in select mode. In stretch mode (toolbar *Partial*)
-an edge can also be dragged and is placed where the button is released.
+click places it; afterwards the editor is back in select mode. In stretch mode (toolbar *Partial*) a
+pressed edge follows the mouse the same way until a click places it.
 
 **Align (`a`)**: select what should move (or just point at it), press `a`, click an edge of it (the
 reference), then click a parallel edge of anything else: the selection moves so the two edges line

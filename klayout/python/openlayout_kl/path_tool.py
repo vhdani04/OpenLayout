@@ -3,9 +3,15 @@
 - Start on the edge of an existing shape on the current layer: the path takes that edge's length
   as its width, starts flush at the edge's midpoint and leaves it perpendicularly - so it continues
   the wire you clicked. Anywhere else the path uses the layer's minimum width.
+- The cursor is the end edge of the path being drawn (flush). A click turns the path: the new
+  segment starts half a width back from that end edge, so the outside of the corner stays where you
+  clicked.
 - While drawing, the segment snaps onto the facing edge of the next shape on the same layer as soon
-  as the path's front reaches it (not the cursor); clicking while snapped places the path flush
-  against that edge and finishes it.
+  as the path's end reaches it; clicking while snapped places the path flush against that edge and
+  finishes it.
+- Edges the path could turn into - parallel to the current segment, on the same layer, within a
+  wide radius of the cursor - are found as in Virtuoso: a dashed line runs from the nearest one's
+  centre to the path, and near that spot the end snaps so that turning there hits the edge centre.
 - The preview is drawn with the current layer's colors and fill pattern.
 - Segments are horizontal or vertical only.
 - Click to add points; double-click or Enter to finish; Backspace removes the last point; Esc
@@ -21,6 +27,8 @@ from .asap7 import LAYER_NAME, MIN_WIDTH
 TOOL_NAME = "openlayout_path"  # KLayout cuts menu names at "::"
 PICK_PIXELS = 6    # how close the start click must be to an edge
 SNAP_PIXELS = 12   # gravity of facing edges while drawing
+GUIDE_PIXELS = 150  # how far around the cursor edges are looked for to turn into (guide lines)
+GUIDE_COLOR = 0xFFA31A
 
 
 def _segment_distance(p: pya.DPoint, e: pya.DEdge) -> float:
@@ -47,6 +55,9 @@ class PathTool(pya.Plugin):
         self.hover = None          # (point, edge) of the last mouse move while drawing
         self.preview = None
         self.edge_marker = None
+        self.guide = None          # (DEdge, locked) - dashed line from an edge centre to the path
+        self.guide_marker = None
+        self.clicked_end = None    # where the last turn was clicked (its vertex is half a width back)
 
     def activated(self):
         self.reset()
@@ -155,8 +166,8 @@ class PathTool(pya.Plugin):
                 crosses = lo <= last.x <= hi
             else:
                 continue
-            # ahead of the start, front within reach, cursor not too far past it
-            if crosses and facing and u > 0 and reach + half >= u - tol and reach <= u + half + tol:
+            # ahead of the start, the end (at the cursor) within reach, not too far past it
+            if crosses and facing and u > 0 and reach >= u - tol and reach <= u + half + tol:
                 if best is None or u < best[0]:
                     best = (u, hit, e)
         return (best[1], best[2]) if best else (cand, None)
@@ -175,12 +186,69 @@ class PathTool(pya.Plugin):
             "h" if abs(p.x - last.x) >= abs(p.y - last.y) else "v")
         return pya.DPoint(p.x, last.y) if axis == "h" else pya.DPoint(last.x, p.y)
 
-    def next_point(self, p: pya.DPoint):
-        """Constrained, grid-snapped and edge-snapped next vertex: (point, target edge or None)."""
-        return self.snap_to_edge(self.constrain(self.snapped(p)))
+    def find_guide(self, cand: pya.DPoint):
+        """The nearest edge the path could turn into: parallel to the current segment, beside it, its
+        centre within GUIDE_PIXELS of the cursor. Returns (end point, (DEdge guide, locked)) - the
+        guide runs from the edge centre to the path; locked when the end snapped to the spot where a
+        turn (half a width back) hits the edge centre."""
+        last = self.points[-1]
+        horizontal = cand.y == last.y and cand.x != last.x
+        vertical = cand.x == last.x and cand.y != last.y
+        if not (horizontal or vertical):
+            return cand, None
+        r = self.pixels(GUIDE_PIXELS)
+        half = self.width / 2
+        best = None
+        for e in self.layer_edges(pya.DBox(cand.x - r, cand.y - r, cand.x + r, cand.y + r)):
+            c = pya.DPoint((e.p1.x + e.p2.x) / 2, (e.p1.y + e.p2.y) / 2)
+            if horizontal and e.dy() == 0 and abs(c.y - last.y) > half:
+                d = c.distance(cand)
+            elif vertical and e.dx() == 0 and abs(c.x - last.x) > half:
+                d = c.distance(cand)
+            else:
+                continue
+            if d <= r and (best is None or d < best[0]):
+                best = (d, c)
+        if best is None:
+            return cand, None
+        c = best[1]
+        tol = self.pixels(SNAP_PIXELS)
+        if horizontal:
+            sign = 1 if cand.x > last.x else -1
+            spot = c.x + sign * half                   # end edge here -> the turn's centreline on c.x
+            locked = abs(cand.x - spot) <= tol and sign * (spot - last.x) > half
+            end = pya.DPoint(spot, cand.y) if locked else cand
+            return end, (pya.DEdge(c.x, c.y, c.x, last.y), locked)
+        sign = 1 if cand.y > last.y else -1
+        spot = c.y + sign * half
+        locked = abs(cand.y - spot) <= tol and sign * (spot - last.y) > half
+        end = pya.DPoint(cand.x, spot) if locked else cand
+        return end, (pya.DEdge(c.x, c.y, last.x, c.y), locked)
 
-    def make_path(self, pts, end_flush=False) -> pya.DPath:
-        return pya.DPath(pts, self.width, self.bgn_ext, 0.0 if end_flush else self.width / 2)
+    def next_point(self, p: pya.DPoint):
+        """Constrained, grid-snapped and edge-snapped next vertex: (point, target edge or None).
+        Also sets self.guide (see find_guide)."""
+        cand = self.constrain(self.snapped(p))
+        nxt, edge = self.snap_to_edge(cand)
+        if edge is not None:
+            self.guide = None
+            return nxt, edge
+        nxt, self.guide = self.find_guide(cand)
+        return nxt, None
+
+    def turn_vertex(self, end: pya.DPoint) -> pya.DPoint:
+        """The vertex for a turn at a clicked end edge: half a width back along the segment."""
+        last = self.points[-1]
+        d = end - last
+        length = d.abs()
+        half = self.width / 2
+        if length <= half:
+            return end
+        return end - d * (half / length)
+
+    def make_path(self, pts, end_flush=True) -> pya.DPath:
+        # the end is flush: the cursor / last click is the path's end edge
+        return pya.DPath(pts, self.width, self.bgn_ext, 0.0)
 
     def show_preview(self, pts, end_flush=False):
         if self.preview is None:
@@ -194,6 +262,20 @@ class PathTool(pya.Plugin):
                 self.preview.frame_color = lp.eff_frame_color(True) & 0xFFFFFF
                 self.preview.dither_pattern = lp.eff_dither_pattern(True)
         self.preview.set(self.make_path(pts, end_flush).polygon())
+
+    def show_guide(self):
+        if self.guide is None:
+            self.guide_marker = None
+            return
+        if self.guide_marker is None:
+            self.guide_marker = pya.Marker(self._view)
+            self.guide_marker.vertex_size = 0
+        edge, locked = self.guide
+        self.guide_marker.color = GUIDE_COLOR
+        self.guide_marker.frame_color = GUIDE_COLOR
+        self.guide_marker.line_width = 2 if locked else 1
+        self.guide_marker.line_style = 0 if locked else 2      # dashed until it snaps
+        self.guide_marker.set(edge)
 
     def show_edge(self, edge):
         if edge is None:
@@ -215,6 +297,7 @@ class PathTool(pya.Plugin):
         nxt, edge = self.next_point(p)
         self.hover = (nxt, edge)
         self.show_edge(edge)
+        self.show_guide()
         self.show_preview(self.points + [nxt], end_flush=edge is not None)
         return True
 
@@ -242,15 +325,23 @@ class PathTool(pya.Plugin):
             self.snapped_flags = [False]
             self.show_edge(None)
             return True
-        if self.hover is not None and self.hover[1] is not None:
+        if self.hover is not None and (self.hover[1] is not None or self.guide is not None):
             nxt, edge = self.hover   # click into the snapped position shown in the preview
         else:
             nxt, edge = self.next_point(p)
-        if nxt != self.points[-1]:
-            self.points.append(nxt)
-            self.snapped_flags.append(edge is not None)
         if edge is not None:
+            if nxt != self.points[-1]:
+                self.points.append(nxt)
+                self.snapped_flags.append(True)
             self.finish()             # snapped onto a shape: the path is placed
+            return True
+        vertex = self.turn_vertex(nxt)   # a turn: the next segment starts half a width back
+        if vertex != self.points[-1]:
+            self.points.append(vertex)
+            self.snapped_flags.append(False)
+            self.clicked_end = nxt
+        self.guide = None
+        self.show_guide()
         return True
 
     def mouse_double_click_event(self, p, buttons, prio):
@@ -271,6 +362,7 @@ class PathTool(pya.Plugin):
             self.points.pop()
             self.snapped_flags.pop()
             self.hover = None
+            self.clicked_end = None
             if self.points:
                 self.show_preview(self.points)
             else:
@@ -281,6 +373,9 @@ class PathTool(pya.Plugin):
 
     def finish(self):
         t = self.target()
+        if self.clicked_end is not None and self.snapped_flags and not self.snapped_flags[-1]:
+            # the path ends where it was last clicked, not half a width back like a turn
+            self.points[-1] = self.clicked_end
         keep = [i for i, q in enumerate(self.points) if i == 0 or q != self.points[i - 1]]
         pts = [self.points[i] for i in keep]
         if t is not None and len(pts) >= 2:

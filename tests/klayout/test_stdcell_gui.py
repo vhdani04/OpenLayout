@@ -81,6 +81,30 @@ def drag(a, b, steps=6):
     view.send_mouse_move_event(pb + pya.DVector(40, 40), 0)
 
 
+def click_at(x, y):
+    q = px(x, y)
+    view.send_mouse_move_event(q, 0)
+    view.send_mouse_press_event(q, L)
+    view.send_mouse_release_event(q, L)
+
+
+def carry(a, b, steps=5):
+    """with the object at a selected: click to pick it up, move the mouse to b, click to drop"""
+    click_at(*a)
+    pa, pb = px(*a), px(*b)
+    for i in range(1, steps + 1):
+        view.send_mouse_move_event(pa + (pb - pa) * (i / steps), 0)
+    click_at(*b)
+    view.send_mouse_move_event(pb + pya.DVector(40, 40), 0)
+
+
+def move(a, b):
+    """click to select, then carry"""
+    view.clear_selection()
+    click_at(*a)
+    carry(a, b)
+
+
 def devs(kind):
     out = []
     for i in cell.each_inst():
@@ -91,7 +115,7 @@ def devs(kind):
 
 
 # drop the second nMOS a little further left (still with both dummy gates): it snaps into the chain
-drag((0.27, 0.05), (0.26, 0.05))
+move((0.27, 0.05), (0.26, 0.05))
 check("a transistor dropped next to another chains (shared diffusion)", devs("nmos") == [(0, False, True), (54, True, False)],
       devs("nmos"))
 check("still in Select mode after the drop", view.mode_name() == "select", view.mode_name())
@@ -121,16 +145,19 @@ view.clear_selection()
 click_at(0.7, 0.2)
 check("a click on empty space in the cell selects a frame shape", stdcell.is_frame_selection(view))
 nmos_before = devs("nmos")
-drag((0.17, 0.05), (0.37, 0.05))                    # on the chained nMOS: moves that one, not the frame
-check("with a frame shape selected, dragging a transistor moves the transistor",
-      frame_boxes() == fb and devs("nmos") != nmos_before, (devs("nmos"), nmos_before))
+click_at(0.17, 0.05)                                # on the chained nMOS: selects it, not the frame
+check("with a frame shape selected, a click on a transistor selects the transistor",
+      [o.inst().pcell_declaration().name() for o in view.each_object_selected() if o.is_cell_inst()] == ["nmos"])
+carry((0.17, 0.05), (0.37, 0.05))
+check("... which then moves, not the frame", frame_boxes() == fb and devs("nmos") != nmos_before,
+      (devs("nmos"), nmos_before))
 mw.cm_undo()
 view.clear_selection()
 click_at(0.7, 0.2)
 picked = [str(o.shape.dbbox()) for o in view.each_object_selected()]
-drag((0.7, 0.2), (0.7 + 0.108, 0.2))
+carry((0.7, 0.2), (0.7 + 0.108, 0.2))
 moved = [b for b in frame_boxes() if b not in fb]
-check("a selected frame shape drags like any shape", len(picked) == 1 and len(moved) == 1, (picked, moved))
+check("a selected frame shape moves like any shape", len(picked) == 1 and len(moved) == 1, (picked, moved))
 mw.cm_undo()
 
 # Chain Selected: the two pMOS, far apart

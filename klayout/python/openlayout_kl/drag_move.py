@@ -1,10 +1,10 @@
-"""Virtuoso-style move and stretch: drag and drop in KLayout's Select, Move and Partial modes.
+"""Virtuoso-style move and stretch in KLayout: click to pick up, click to drop.
 
-KLayout's own move is click-to-pick-up, click-to-drop: the mouse release is ignored, and in Select
-mode a press-drag on an object draws a selection box instead. Here, like in Virtuoso, pressing on an
-object (or inside the current selection) and dragging moves it with the mouse, and releasing the
-button drops it. A press-drag on empty space still draws a selection box; plain clicks still select.
-Over a selection the cursor is the four-way move arrow.
+Moving: a click selects; a second click on the selected object (the cursor is the four-way move
+arrow over a selection) picks it up - it follows the mouse - and the next click drops it. A
+press-drag always draws a selection box (plain clicks still select). This is KLayout's own
+interactive move (move-angle constraint, snapping, dx/dy display, one undo step), started at the
+click.
 
 KLayout's interactive move (also behind `m`) switches the editor into Move mode and stays there, so
 the next plain click would pick an object up again. Like Virtuoso, the editor returns to Select
@@ -15,19 +15,18 @@ move key only sees it once the hover highlight has appeared.
 
 Stretch is KLayout's Partial mode, which has the same click-to-pick-up / click-to-drop move. `s`
 (stretch_under_mouse) picks up the edge or corner under the mouse right away - it follows the mouse
-and a click places it - and the editor returns to Select mode afterwards; in Partial mode a
-press-drag on an edge drops it on release.
+and a click places it - and the editor returns to Select mode afterwards.
 
-When a move (drag, m) is done, the functions in after_move_hooks are called with the view - the
-standard-cell code snaps moved transistors into chains there. The standard-cell frame's shapes cover
-the whole cell, so picking (clicks too) prefers anything else under the mouse (stdcell.pick); a
-press-drag that would pick up only an unselected frame shape draws a selection box, a selected
-frame shape drags like anything else.
+When a move (click-click, m) is done - noticed when the selection lands (KLayout's move takes the
+dropping click itself), or else at the next mouse move - the functions in after_move_hooks are
+called with the view -
+the standard-cell code snaps moved transistors onto their row and into chains there. The
+standard-cell frame's shapes cover the whole cell, so picking (clicks too) prefers anything else
+under the mouse (stdcell.pick); with a frame shape selected, a click on a transistor selects the
+transistor rather than picking up the frame shape.
 
-The move itself is KLayout's (move-angle constraint, snapping, dx/dy display, one undo step): this
-service only selects the object under the press, starts KLayout's interactive move there and ends
-it on release. It takes no mode of its own; it holds a mouse grab so it sees the press before the
-selection box starts.
+This service takes no mode of its own; it holds a mouse grab so it sees clicks before KLayout's
+selection does.
 """
 import pya
 
@@ -69,6 +68,9 @@ def move_under_mouse():
         view = plugin._view
         if view.is_editable() and not plugin.over_selection(p):
             stdcell.pick(view, p)
+        if _start_move():
+            plugin.watch_drop()
+        return
     _start_move()
 
 
@@ -125,6 +127,28 @@ class DragMove(pya.Plugin):
         tol = CATCH_PIXELS / view.viewport_trans().mag
         return view.selection_bbox().enlarged(tol, tol).contains(p)
 
+    def watch_drop(self):
+        """After a pick-up: notice the drop as soon as the selection has moved."""
+        view = self._view
+        self.watch_box = view.selection_bbox() if view.has_object_selection() else None
+        if self.watch_box is None:
+            return
+        if getattr(self, "timer", None) is None:
+            self.timer = pya.QTimer()
+            self.timer.interval = 80
+            self.timer.timeout = self._check_drop
+        self.timer.start()
+
+    def _check_drop(self):
+        view = self._view
+        if self.destroyed() or view.mode_name() != "move" or self.watch_box is None:
+            self.timer.stop()
+            return
+        if not view.has_object_selection() or view.selection_bbox() != self.watch_box:
+            self.timer.stop()
+            self.watch_box = None
+            self._back_to_select()
+
     def pixel(self, p):
         """micrometers -> widget pixels (y down)"""
         q = self._view.viewport_trans() * p
@@ -173,63 +197,30 @@ class DragMove(pya.Plugin):
         return False
 
     def mouse_button_pressed_event(self, p, buttons, prio):
-        # Only called when the mouse moved with the button down (a plain click never gets here).
         self._grab()
-        if not prio or self.dragging or not self._plain_left(buttons):
-            return False
-        view = self._view
-        if view.mode_name() not in MODES or not view.is_editable():
-            return False
-        if self.over_selection(p) and _frame_only(view):
-            # selected frame shapes drag - unless there is something else (a transistor) under the press
-            frame = list(view.each_object_selected())
-            stdcell.pick(view, p)
-            if not view.has_object_selection() or _frame_only(view):
-                view.object_selection = frame
-        elif not self.over_selection(p):
-            stdcell.pick(view, p)
-            if not view.has_object_selection() or _frame_only(view):
-                view.clear_selection()
-                return False      # empty space (or only an unselected frame shape): selection box
-        if not _start_move():
-            return False
-        self.dragging = True
-        return True
-
-    def mouse_button_released_event(self, p, buttons, prio):
-        if prio and self._view.mode_name() == "partial" and self._move_in_progress():
-            # a dragged edge: Partial mode ends its stretch on Return too
-            self._view.send_key_press_event(pya.KeyCode.Return, 0)
-            if self.stretch_once:
-                self._back_to_select()
-            else:
-                self._view.clear_selection()   # see _back_to_select
-            self.moving = False
-            return True
-        if not (prio and self.dragging):
-            return False
-        self.dragging = False
-        # KLayout's move ends on Return (at the last mouse position) - drop it where it was released
-        self._view.send_key_press_event(pya.KeyCode.Return, 0)
-        self.moving = False
-        if self._view.mode_name() == "move":
-            self._view.switch_mode("select")
-        notify_moved(self._view)
-        return True
+        return False             # press-drags are KLayout's: a selection box
 
     def mouse_click_event(self, p, buttons, prio):
-        # Around KLayout's own click selection: this service sees the click first (prio, as it holds
-        # a grab) and again after it (non-priority round). If the click picked only a frame shape
-        # where something else lies (e.g. the transistor), that is taken instead - for a plain click
-        # and for Shift (add to the selection).
+        # This service sees a click first (prio, as it holds a grab) and again after KLayout's own
+        # click selection (non-priority round).
         view = self._view
         left = buttons & pya.ButtonState.LeftButton
         other = buttons & (pya.ButtonState.ControlKey | pya.ButtonState.AltKey)
-        if self.dragging or not left or other or view.mode_name() not in MODES:
+        if not left or other or view.mode_name() != "select" or not view.is_editable():
             return False
         if prio:
+            # a plain click on the selection picks it up (unless it is only a frame shape with a
+            # transistor or other object under the click: that one gets selected instead)
+            if not (buttons & pya.ButtonState.ShiftKey) and self.over_selection(p) \
+                    and not (_frame_only(view) and stdcell.pick_non_frame(view, p) is not None):
+                if _start_move():
+                    self.watch_drop()
+                    return True
+                return False
             self.before_click = list(view.each_object_selected())
             return False
+        # after KLayout's selection: a click that only picked a frame shape where something else lies
+        # (e.g. the transistor) takes that instead - for a plain click and for Shift (add)
         before = getattr(self, "before_click", [])
         added = [o for o in view.each_object_selected() if not any(o == b for b in before)]
         if added and all(stdcell.is_frame_object(o) for o in added):

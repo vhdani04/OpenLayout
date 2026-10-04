@@ -1,4 +1,5 @@
-# Virtuoso-style drag and drop in Select mode, run in KLayout with a main window (headless):
+# Virtuoso-style move (click to pick up, click to drop) and stretch, run in KLayout with a main
+# window (headless):
 #   klayout -e -z -nc -r tests/klayout/test_drag_move.py
 # Mouse input goes through LayoutView.send_mouse_* - the same dispatch as real mouse events.
 import os
@@ -55,13 +56,36 @@ def px(x, y):
 
 
 def drag(a, b, steps=6):
+    """press, move with the button down, release (no further mouse move)"""
     pa, pb = px(*a), px(*b)
     view.send_mouse_move_event(pa, 0)
     view.send_mouse_press_event(pa, L)
     for i in range(1, steps + 1):
         view.send_mouse_move_event(pa + (pb - pa) * (i / steps), L)
     view.send_mouse_release_event(pb, L)
-    view.send_mouse_move_event(pb + pya.DVector(40, 40), 0)   # a dropped object no longer follows
+
+
+def click(x, y):
+    q = px(x, y)
+    view.send_mouse_move_event(q, 0)
+    view.send_mouse_press_event(q, L)
+    view.send_mouse_release_event(q, L)
+
+
+def glide(a, b, steps=5):
+    pa, pb = px(*a), px(*b)
+    for i in range(1, steps + 1):
+        view.send_mouse_move_event(pa + (pb - pa) * (i / steps), 0)
+
+
+def move(a, b):
+    """click to select, click again to pick up, move the mouse, click to drop"""
+    view.clear_selection()
+    click(*a)
+    click(*a)
+    glide(a, b)
+    click(*b)
+    view.send_mouse_move_event(px(*b) + pya.DVector(40, 40), 0)   # a dropped object no longer follows
 
 
 def m2_box():
@@ -72,30 +96,32 @@ def inst_pos():
     return [i.dcplx_trans.disp for i in cell.each_inst()][0]
 
 
-drag((0.35, 0.05), (0.45, 0.05))
+move((0.35, 0.05), (0.45, 0.05))
 b = m2_box()
-check("dragging a shape moves it, release drops it", abs(b.left - 0.4) < 1e-6 and abs(b.bottom) < 1e-6, b)
-check("the dragged shape stays selected", view.has_object_selection())
-check("still in Select mode after a drag", view.mode_name() == "select", view.mode_name())
+check("click, click again: the shape follows the mouse, a click drops it", abs(b.left - 0.4) < 1e-6
+      and abs(b.bottom) < 1e-6, b)
+check("the moved shape stays selected", view.has_object_selection())
+check("still in Select mode after a move", view.mode_name() == "select", view.mode_name())
 
-drag((0.05, 0.05), (0.05, -0.15))
+move((0.05, 0.05), (0.05, -0.15))
 d = inst_pos()
-check("dragging an instance moves it", abs(d.x) < 1e-6 and abs(d.y + 0.2) < 1e-6, d)
+check("an instance moves the same way", abs(d.x) < 1e-6 and abs(d.y + 0.2) < 1e-6, d)
 
 mw.cm_undo()
-check("a drag is one undo step", inst_pos().y == 0 and abs(m2_box().left - 0.4) < 1e-6, (str(inst_pos()), str(m2_box())))
+check("a move is one undo step", inst_pos().y == 0 and abs(m2_box().left - 0.4) < 1e-6, (str(inst_pos()), str(m2_box())))
 
 view.clear_selection()
 before = (m2_box(), inst_pos())
+drag((0.45, 0.05), (0.55, 0.05))
+view.send_mouse_move_event(px(0.6, 0.1), 0)
+check("a press-drag on an object does not move it (it draws a selection box)", (m2_box(), inst_pos()) == before)
 drag((-0.15, 0.3), (0.2, 0.2))
 check("a drag on empty space moves nothing", (m2_box(), inst_pos()) == before)
 
-p = px(0.45, 0.05)
-view.send_mouse_move_event(p, 0)
-view.send_mouse_press_event(p, L)
-view.send_mouse_release_event(p, L)
-view.send_mouse_move_event(p + pya.DVector(60, 0), 0)
-check("a click selects without moving", view.has_object_selection() and m2_box() == before[0])
+view.clear_selection()
+click(0.45, 0.05)
+view.send_mouse_move_event(px(0.5, 0.05), 0)
+check("a first click selects without moving", view.has_object_selection() and m2_box() == before[0])
 
 
 
@@ -114,22 +140,16 @@ view.clear_selection()
 start = m2_box()
 view.send_mouse_move_event(px(0.45, 0.05), 0)
 mw.menu().action("openlayout_menu.move").trigger()               # the m key
-for x in (0.47, 0.5, 0.55):
-    view.send_mouse_move_event(px(x, 0.05), 0)
-q = px(0.55, 0.05)
-view.send_mouse_press_event(q, L)
-view.send_mouse_release_event(q, L)
+glide((0.45, 0.05), (0.55, 0.05))
+click(0.55, 0.05)
 view.send_mouse_move_event(px(-0.15, 0.3), 0)
 moved = m2_box()
 check("m moves the shape under the mouse", abs(moved.left - start.left - 0.1) < 1e-6, (str(start), str(moved)))
 check("back in Select mode after an m move", view.mode_name() == "select", view.mode_name())
-p = px(0.55, 0.05)
-view.send_mouse_move_event(p, 0)
-view.send_mouse_press_event(p, L)
-view.send_mouse_release_event(p, L)
-view.send_mouse_move_event(px(-0.15, 0.3), 0)
+view.clear_selection()
+click(-0.15, 0.3)
 view.send_mouse_move_event(px(-0.1, 0.25), 0)
-check("a later click does not pick the shape up", m2_box() == moved and "SizeAllCursor" not in canvas_cursor(),
+check("a click on empty space afterwards picks nothing up", m2_box() == moved and "SizeAllCursor" not in canvas_cursor(),
       (str(m2_box()), canvas_cursor()))
 
 check("m is bound to the OpenLayout move", mw.get_key_bindings().get("openlayout_menu.move") == "M",
@@ -140,29 +160,24 @@ view.clear_selection()
 before = m2_box()
 view.send_mouse_move_event(px(before.right, 0.05), 0)
 mw.menu().action("openlayout_menu.stretch").trigger()            # the s key
-for x in (0.02, 0.05, 0.1):
-    view.send_mouse_move_event(px(before.right + x, 0.05), 0)
-click_at = px(before.right + 0.1, 0.05)
-view.send_mouse_press_event(click_at, L)
-view.send_mouse_release_event(click_at, L)
+glide((before.right, 0.05), (before.right + 0.1, 0.05), 3)
+click(before.right + 0.1, 0.05)
 view.send_mouse_move_event(px(-0.15, 0.3), 0)
 b = m2_box()
 check("s stretches the edge under the mouse", abs(b.right - before.right - 0.1) < 1e-6 and b.left == before.left,
       (str(before), str(b)))
 check("back in Select mode after a stretch", view.mode_name() == "select", view.mode_name())
 
-# in Partial (stretch) mode, a dragged edge is placed where the button is released
+# in Partial (stretch) mode, a pressed edge follows the mouse - also after the release - until a click
 view.switch_mode("partial")
 before = b
-drag((before.left, 0.05), (before.left - 0.05, 0.05))
+drag((before.left, 0.05), (before.left - 0.03, 0.05))
+glide((before.left - 0.03, 0.05), (before.left - 0.05, 0.05), 3)
+click(before.left - 0.05, 0.05)
+view.send_mouse_move_event(px(-0.15, 0.3), 0)
 b = m2_box()
-check("a dragged edge drops on release in stretch mode", abs(b.left - before.left + 0.05) < 1e-6
+check("in stretch mode the edge follows until the click that places it", abs(b.left - before.left + 0.05) < 1e-6
       and b.right == before.right, (str(before), str(b)))
-before = b
-drag((before.right, 0.05), (before.right + 0.05, 0.05))
-b = m2_box()
-check("the next drag stretches only its own edge", abs(b.right - before.right - 0.05) < 1e-6
-      and b.left == before.left, (str(before), str(b)))
 check("s is bound to the OpenLayout stretch", mw.get_key_bindings().get("openlayout_menu.stretch") == "S")
 view.switch_mode("select")
 
