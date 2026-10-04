@@ -4,7 +4,9 @@ Two transistors chain when they share a source/drain column: the outer column of
 outer column of the other (the devices overlap by two gate pitches). Chained sides drop their dummy
 gate and run the diffusion on (PCell parameters abut_left / abut_right).
 
-- update(): after a move, a moved transistor dropped next to a compatible one (same type, row, VT
+- update(): after a move, a moved standard-cell-row transistor lands on the 54 nm gate grid and,
+  dropped onto the cell (within half a cell of y = 0), onto the row itself. A moved transistor
+  dropped next to a compatible one (same type, row, VT
   and fin count; up to two gate pitches apart, or overlapping by up to one) snaps into abutment -
   if the schematic link knows the nets, only when the touching diffusions are on the same net,
   flipping the moved device if that makes them match. Every transistor's abut flags are then set
@@ -22,6 +24,7 @@ from .pcells import CPP, LIBRARY
 
 SNAP_GAP = 2 * CPP     # dropped this far apart (both dummy gates still there) it still chains
 SNAP_OVERLAP = CPP     # or overlapping the neighbour by up to one more gate pitch
+ROW_CATCH = 135        # nm: a row transistor dropped this close to y = 0 goes onto the row
 R0, M90 = 0, 6         # Trans rotation codes: none, mirrored left-right
 
 
@@ -158,11 +161,27 @@ def _set_flags(devs):
             d.params.update(want)
 
 
+def _row_snap(dev):
+    """A row transistor lands on the gate grid; dropped onto the cell's row (origin within half a
+    cell of y = 0) it goes onto the row exactly."""
+    if not dev.params.get("row"):
+        return
+    dx = round(dev.x0 / CPP) * CPP - dev.x0      # columns at x0 +/- 54 (j+1): on the grid with x0
+    dy = -dev.y0 if abs(dev.y0) <= ROW_CATCH else 0
+    if dx or dy:
+        dev.inst.transform(pya.DTrans(dx / 1000, dy / 1000))
+        dev.x0 += dx
+        dev.y0 += dy
+
+
 def update(cell, moved=(), conn=None):
-    """Snap moved transistors into chains and refresh all abut flags. Returns messages."""
+    """Snap moved transistors onto their row and into chains, and refresh all abut flags.
+    Returns messages."""
     messages = []
     devs = devices(cell, conn)
     moved_devs = [d for d in devs if any(d.inst == m for m in moved)]
+    for d in moved_devs:
+        _row_snap(d)
     for d in moved_devs:
         _snap(d, devs, messages)
     _set_flags(devs)

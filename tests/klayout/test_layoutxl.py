@@ -33,7 +33,8 @@ sch = lib.path / "inv" / "inv.sch"
 # 1. generate from source
 rep = generate.generate(sch)
 check("generate adds devices", sorted(rep["added"]) == ["M1", "M2"], rep["added"])
-check("generate adds pins", sorted(rep["pins_added"]) == ["A", "VDD", "VSS", "Y"], rep["pins_added"])
+check("generate adds pins (VDD / VSS are the frame's rails)", sorted(rep["pins_added"]) == ["A", "Y"],
+      rep["pins_added"])
 gds = lib.path / "inv" / "inv.gds"
 check("layout and link written", gds.is_file() and connectivity.conn_file(gds).is_file())
 
@@ -51,19 +52,23 @@ check("PCell parameters from schematic", names["M1"].pcell_parameters_by_name()[
 conn = connectivity.load_conn(gds)
 res = connectivity.check(ly, top, conn)
 pieces = {n: v["pieces"] for n, v in res["nets"].items()}
-check("all nets open after generation", pieces == {"A": 3, "Y": 3, "VDD": 3, "VSS": 3}, pieces)
+check("all nets open after generation", set(pieces) == {"A", "Y", "VDD", "VSS"} and all(p > 1 for p in pieces.values()),
+      pieces)
 check("flight lines per open net", all(len(v["lines"]) == v["pieces"] - 1 for v in res["nets"].values()))
 
-# 4. route net A: LIG between the two gate straps, V0 + M1 over to pin A
+# 4. route net A: a LIG trunk left of the transistors with a branch to every gate finger, V0 + M1
+#    over to pin A
 ga = [t for t in connectivity.terminals(ly, top, conn)[0] if t.net == "A"]
 gates = [t.point for t in ga if t.term == "g"]
 pin = [t.point for t in ga if t.owner is None][0]
 lig, v0, m1 = (ly.layer(n, 0) for n in (16, 18, 19))
-x = gates[0].x
-top.shapes(lig).insert(pya.DPath([pya.DPoint(gates[0].x, gates[0].y), pya.DPoint(x, gates[1].y),
-                                  pya.DPoint(gates[1].x, gates[1].y)], 0.016, 0.011, 0.011))
-top.shapes(v0).insert(pya.DBox(x - 0.009, gates[0].y - 0.009, x + 0.009, gates[0].y + 0.009))
-top.shapes(m1).insert(pya.DPath([pya.DPoint(x, gates[0].y), pya.DPoint(x, pin.y),
+x = min(g.x for g in gates) - 0.1
+ys = sorted({round(g.y, 6) for g in gates})
+top.shapes(lig).insert(pya.DPath([pya.DPoint(x, ys[0]), pya.DPoint(x, ys[-1])], 0.016, 0.008, 0.008))
+for g in gates:
+    top.shapes(lig).insert(pya.DPath([pya.DPoint(x, g.y), pya.DPoint(g.x, g.y)], 0.016, 0.008, 0.011))
+top.shapes(v0).insert(pya.DBox(x - 0.009, ys[0] - 0.009, x + 0.009, ys[0] + 0.009))
+top.shapes(m1).insert(pya.DPath([pya.DPoint(x, ys[0]), pya.DPoint(x, pin.y),
                                  pya.DPoint(pin.x, pin.y)], 0.018, 0.009, 0.009))
 res = connectivity.check(ly, top, conn)
 check("routed net A is complete", res["nets"]["A"]["pieces"] == 1, res["nets"]["A"]["unconnected"])

@@ -12,7 +12,7 @@ sys.path.insert(0, str(HOME / "klayout" / "python"))
 
 import pya  # noqa: E402
 
-from openlayout_kl import gui, stdcell  # noqa: E402
+from openlayout_kl import axes, gui, stdcell  # noqa: E402
 from openlayout_kl.asap7 import LAYERS  # noqa: E402
 from openlayout_kl.pcells import LIBRARY  # noqa: E402
 
@@ -174,5 +174,16 @@ finally:
 p = stdcell.frame_params(cell)
 check("the Standard-Cell Frame menu command asks width and VT and applies them",
       p == {"cpp": 9, "vt": "slvt"} and Dialogs.asked == [("width", 14), ("vt", "lvt")], (p, Dialogs.asked))
+
+# the x / y axes through the origin, switchable from the OpenLayout menu
+live = [a for a in axes._all if not a.destroyed()]
+lines = sorted(str(e) for a in live for e in a.lines)
+check("the view shows the x and y axes through the origin", len(live) >= 1
+      and "(-100000,0;100000,0)" in lines and "(0,-100000;0,100000)" in lines, lines)
+toggle = mw.menu().action("openlayout_menu.axes")
+toggle.trigger()
+check("Show Axes switches them off", not axes.visible() and not any(a.markers for a in live))
+toggle.trigger()
+check("and on again", axes.visible() and all(len(a.markers) == 2 for a in live))
 
 print("PASS stdcell_gui" if not failures else f"FAIL stdcell_gui: {', '.join(failures)}")

@@ -184,11 +184,13 @@ gl.technology_name = "asap7"
 gl.read(str(gds))
 gtop = gl.cell("inv")
 devs = {connectivity.instance_name(i): i for i in gtop.each_inst() if connectivity.instance_name(i)}
-check("generation in a framed cell uses row mode at y = 0",
-      sorted(devs) == ["M1", "M2"] and all(i.pcell_parameters_by_name()["row"] and i.dcplx_trans.disp.y == 0
-                                           for i in devs.values()), {n: str(i.dcplx_trans) for n, i in devs.items()})
+check("generation in a framed cell: row-mode transistors parked below the cell (pMOS, then nMOS)",
+      sorted(devs) == ["M1", "M2"] and all(i.pcell_parameters_by_name()["row"] for i in devs.values())
+      and [round(devs[n].dcplx_trans.disp.y, 3) for n in ("M1", "M2")] == [-0.54, -0.81],
+      {n: str(i.dcplx_trans) for n, i in devs.items()})
 check("rail pins are not added again", sorted(rep["pins_added"]) == ["A", "Y"], rep["pins_added"])
-# a layout generated without a frame: adding one and updating moves the transistors into the rows
+# generating a cell without a frame draws one with its boundary at (0, 0); the transistors are
+# parked below it, none overlapping
 wlib2 = wa.library("cpu8")
 (wlib2.path / "inv2").mkdir()
 shutil.copy(HOME / "tests/klayout/inv_pins.sch", wlib2.path / "inv2" / "inv2.sch")
@@ -198,12 +200,45 @@ l2 = pya.Layout()
 l2.technology_name = "asap7"
 l2.read(str(g2))
 t2 = l2.cell("inv2")
-stdcell.draw_frame(t2, 5)
-rep2 = generate.generate(wlib2.path / "inv2" / "inv2.sch", layout=l2)
-moved = {connectivity.instance_name(i): (i.pcell_parameters_by_name()["row"], i.dcplx_trans.disp.y)
-         for i in t2.each_inst() if connectivity.instance_name(i)}
-check("updating after adding a frame puts existing transistors into the rows",
-      sorted(rep2["updated"]) == ["M1", "M2"] and all(r and y == 0 for r, y in moved.values()), (rep2["updated"], moved))
+bnd = [s.dbbox() for s in t2.shapes(l2.layer(LAYERS["boundary"], 0)).each()]
+boxes = [i.dbbox() for i in t2.each_inst()]
+check("a generated transistor cell gets the frame, boundary corner at (0, 0)",
+      len(bnd) == 1 and (bnd[0].left, bnd[0].bottom) == (0, 0) and stdcell.frame_params(t2) is not None, bnd)
+check("generated transistors sit below the cell, not overlapping each other",
+      all(b.top < 0 for b in boxes) and not any(a.overlaps(b) for k, a in enumerate(boxes) for b in boxes[k + 1:]),
+      [str(b) for b in boxes])
+
+# an older layout with standalone transistors: updating it gives the frame and parks them as row devices
+l3 = pya.Layout()
+l3.dbu = 0.00025
+l3.technology_name = "asap7"
+t3 = l3.create_cell("inv3")
+for name, kind, y in (("M1", "pmos", 0.3), ("M2", "nmos", 0.0)):
+    old_dev = t3.insert(pya.DCellInstArray(l3.create_cell(kind, LIBRARY, {"nfin": 3, "nf": 2}).cell_index(),
+                                           pya.DTrans(0, y)))
+    old_dev.set_property(1, "ol:" + name)
+(wlib2.path / "inv3").mkdir()
+shutil.copy(HOME / "tests/klayout/inv_pins.sch", wlib2.path / "inv3" / "inv3.sch")
+rep3 = generate.generate(wlib2.path / "inv3" / "inv3.sch", layout=l3)
+moved = {connectivity.instance_name(i): (i.pcell_parameters_by_name()["row"], round(i.dcplx_trans.disp.y, 3))
+         for i in t3.each_inst() if connectivity.instance_name(i)}
+check("updating an older layout converts its transistors to row devices, parked below the new frame",
+      sorted(rep3["updated"]) == ["M1", "M2"] and moved == {"M1": (True, -0.54), "M2": (True, -0.81)}
+      and stdcell.frame_params(t3) is not None, (rep3["updated"], moved))
+
+# a row transistor dropped onto the cell goes onto the row and the gate grid
+c4 = ly.create_cell("SNAP")
+stdcell.draw_frame(c4, 6)
+dev = c4.insert(pya.DCellInstArray(ly.create_cell("nmos", LIBRARY, {"row": True, "nfin": 2, "nf": 1}).cell_index(),
+                                   pya.DTrans(0.07, 0.06)))
+chain.update(c4, moved=[dev])
+d4 = list(c4.each_inst())[0].dcplx_trans.disp
+check("a row transistor dropped onto the cell snaps onto the row and the 54 nm grid",
+      (round(d4.x, 4), round(d4.y, 4)) == (0.054, 0.0), str(d4))
+c4.each_inst().__next__().transform(pya.DTrans(0.01, -0.5))
+chain.update(c4, moved=list(c4.each_inst()))
+d4 = list(c4.each_inst())[0].dcplx_trans.disp
+check("one dropped outside the cell keeps its height (grid only)", (round(d4.x, 4), round(d4.y, 4)) == (0.054, -0.5), str(d4))
 
 res = connectivity.check(gl, gtop, connectivity.load_conn(gds))
 check("connectivity check runs on row-mode devices", not res["missing"] and res["nets"]["VDD"]["terminals"] > 0,

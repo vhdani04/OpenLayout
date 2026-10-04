@@ -10,7 +10,7 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from . import align_tool, stdcell
+from . import align_tool, axes, stdcell
 from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
@@ -176,6 +176,7 @@ class OpenLayoutUI:
         if os.environ.get("OPENLAYOUT_KEYS") != "klayout":
             self.drag_factory = DragMoveFactory()   # Virtuoso drag and drop in Select mode
         self.align_factory = align_tool.AlignToolFactory()
+        self.axes_factory = axes.AxesFactory(int(CANVAS["axis"].lstrip("#"), 16))
         after_move_hooks.append(self.after_move)
         try:
             bind_path_tool(mw)
@@ -295,6 +296,7 @@ class OpenLayoutUI:
             ("lsw", self.action("Show LSW", lambda: (self.lsw.dock.show(), self.lsw.dock.raise_()))),
             ("connectivity", self.action("Show Connectivity", lambda: (self.nets.dock.show(), self.nets.dock.raise_()))),
             ("keys", self.action("Virtuoso Keys…", self.show_keys)),
+            ("axes", self.axes_action()),
             (None, None),
             ("move", self.action("Move (object under the mouse)", move_under_mouse)),
             ("stretch", self.action("Stretch (edge under the mouse)", stretch_under_mouse)),
@@ -308,6 +310,12 @@ class OpenLayoutUI:
                 menu.insert_separator("openlayout_menu.end", f"sep{i}")
             else:
                 menu.insert_item("openlayout_menu.end", name, action)
+
+    def axes_action(self):
+        a = self.action("Show Axes", lambda: axes.show(a.is_checked()))
+        a.checkable = True
+        a.checked = axes.visible()
+        return a
 
     # ---- custom standard cells ------------------------------------------------------------------
     def frame_dialog(self):

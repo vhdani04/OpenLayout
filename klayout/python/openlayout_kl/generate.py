@@ -6,8 +6,15 @@ generate(schematic) netlists the xschem schematic, then creates or updates <cell
   - other subcircuits become copies of their own layout view (if they have one),
   - schematic ports become M1 pin shapes with labels,
 and writes the schematic link <cell>.ol.json used by the connectivity check. Existing instances are
-matched by name (GDS property), so placement and routing survive updates; new parts are dropped in a
-staging row above the layout; parts removed from the schematic are reported, never deleted.
+matched by name (GDS property), so placement and routing survive updates; parts removed from the
+schematic are reported, never deleted.
+
+The cell's boundary has its lower left corner at (0, 0): a transistor-level cell gets the
+standard-cell frame (stdcell.draw_frame, sized for its transistors chained per row) unless it has
+one, and its transistors come in standard-cell row mode; a cell of only sub-cells gets a plain
+boundary. New parts are parked below the cell (y < 0) in rows - pMOS, nMOS, then other cells - left
+to right, so they never overlap the cell or each other; dragged into the frame, a row transistor
+snaps onto the row (see chain.update).
 """
 import json
 import os
@@ -23,7 +30,7 @@ import pya
 from .asap7 import DBU, LAYERS, PIN
 from .connectivity import PREFIX, PROP, conn_file, instance_name
 from .pcells import LIBRARY, ROW_MAX_FINS, register_library
-from .stdcell import has_frame
+from .stdcell import draw_frame, has_frame
 
 STDCELL_RE = re.compile(r"_ASAP7_75t_(R|L|SL|SRAM)$")
 GATE_PITCH, ROW_GAP, PIN_SIZE = 0.054, 0.108, 0.054
@@ -111,24 +118,67 @@ def _snap(v: float, grid: float) -> float:
 
 
 class Placer:
-    """Simple rows: pmos above nmos, cells below, new parts above existing layout when updating.
-    In a standard-cell frame (row mode) transistors are placed at y = 0 - their row geometry puts
-    nMOS in the bottom and pMOS in the top half - left to right, new ones right of the cell."""
+    """Parking rows below the cell (y < 0): pMOS, nMOS under it, then other cells - left to right
+    from x = 0, new parts after the ones already parked in their row. Row-mode transistors are drawn
+    in cell coordinates (pMOS 113..292 nm, nMOS -22..157 nm above their origin), so these origins
+    keep every row clear of the cell and of the next row."""
 
-    def __init__(self, top: pya.Cell, staging: bool, row: bool = False):
-        bbox = top.dbbox()
-        self.base_y = _snap(bbox.top + 0.27, 0.027) if staging and not bbox.empty() else 0.0
-        self.x = {"nmos": 0.0, "pmos": 0.0, "cell": 0.0}
-        self.row_y = {"nmos": self.base_y, "pmos": self.base_y + 0.54, "cell": self.base_y - 0.54}
-        if row:
-            x0 = _snap(bbox.right + 0.108, GATE_PITCH) if staging and not bbox.empty() else 0.0
-            self.x = {"nmos": x0, "pmos": x0, "cell": x0}
-            self.row_y = {"nmos": 0.0, "pmos": 0.0, "cell": -0.54}
+    ROW_Y = {"pmos": -0.54, "nmos": -0.81, "cell": -1.35}
+
+    def __init__(self, top: pya.Cell, has_mos: bool):
+        self.base_y = 0.0
+        self.row_y = dict(self.ROW_Y)
+        if not has_mos:
+            self.row_y["cell"] = -0.54
+        self.x = {}
+        for row, y in self.row_y.items():
+            rights = [i.dbbox().right for i in top.each_inst() if abs(i.dcplx_trans.disp.y - y) < 1e-6]
+            self.x[row] = _snap(max(rights) + ROW_GAP, GATE_PITCH) if rights else 0.0
 
     def place(self, row: str, width: float) -> pya.DTrans:
         x = self.x[row]
         self.x[row] = _snap(x + width + ROW_GAP, GATE_PITCH)
         return pya.DTrans(x, self.row_y[row])
+
+
+def _cell_width(layout: pya.Layout, x: dict) -> float:
+    """Width (um) of a standard cell of the netlist, 0 if unknown."""
+    m = STDCELL_RE.search(x["cell"])
+    if not m:
+        return 0.0
+    lib = pya.Library.library_by_name("asap7sc7p5t_28_" + m.group(1), "asap7")
+    lc = lib.layout().cell(x["cell"]) if lib else None
+    return lc.dbbox().width() if lc is not None else 0.0
+
+
+def _frame_width(devices) -> int:
+    """Gate pitches for the transistors chained per row (each device nf + 1 pitches, + 1)."""
+    need = {"nmos": 1, "pmos": 1}
+    for dev in devices:
+        kind = dev["model"].partition("_")[0]
+        if kind in need:
+            p = dev["params"]
+            need[kind] += int(float(p.get("m", 1))) * (int(float(p.get("nf", 1))) + 1)
+    return max(3, *need.values())
+
+
+def _ensure_boundary(top: pya.Cell, net: dict, cell_widths: float) -> bool:
+    """Frame (transistor cells) or plain boundary (cells only) at the origin, unless the cell has
+    one. Returns True if the cell has a standard-cell frame (transistors go in row mode)."""
+    has_mos = any(d["model"].partition("_")[0] in ("nmos", "pmos") for d in net["devices"])
+    if has_frame(top):
+        return True
+    layout = top.layout()
+    bound = layout.find_layer(LAYERS["boundary"], 0)
+    if bound is not None and not top.shapes(bound).is_empty():
+        return False                              # the user's own boundary: leave it
+    if has_mos:
+        draw_frame(top, _frame_width(net["devices"]))
+        return True
+    if cell_widths > 0:
+        w = max(_snap(cell_widths, GATE_PITCH), GATE_PITCH)
+        top.shapes(layout.layer(LAYERS["boundary"], 0)).insert(pya.DBox(0, 0, w, 0.27))
+    return False
 
 
 def _layout_for(sch: Path, cell_name: str, gds: Path, layout: pya.Layout | None):
@@ -198,8 +248,9 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
     top = layout.cell(cell.name) or (layout.top_cell() if layout.cells() else None) or layout.create_cell(cell.name)
     existing = {instance_name(i): i for i in top.each_inst()}
     existing.pop(None, None)
-    row = has_frame(top)
-    placer = Placer(top, staging=bool(existing), row=row)
+    has_mos = any(d["model"].partition("_")[0] in ("nmos", "pmos") for d in net["devices"])
+    placer = Placer(top, has_mos)
+    row = _ensure_boundary(top, net, sum(_cell_width(layout, x) for x in net["cells"]))
     report = {"added": [], "updated": [], "unchanged": [], "extra": [], "skipped": [], "pins_added": [],
               "warnings": []}
     conn = {"version": 1, "schematic": sch.name, "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -230,8 +281,8 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
                 cur = inst.pcell_parameters_by_name()
                 if any(str(cur.get(k2)) != str(v) for k2, v in params.items()):
                     inst.change_pcell_parameters(params)
-                    if row and not cur.get("row"):    # into the frame's row: cell coordinates at y = 0
-                        inst.transform(pya.DTrans(0, -inst.dcplx_trans.disp.y))
+                    if row and not cur.get("row"):    # now a row device: park it below the cell
+                        inst.transform(pya.DTrans(0, placer.row_y[kind] - inst.dcplx_trans.disp.y))
                     report["updated"].append(name)
                 else:
                     report["unchanged"].append(name)
