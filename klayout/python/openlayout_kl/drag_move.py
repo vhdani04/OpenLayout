@@ -19,8 +19,9 @@ and a click places it - and the editor returns to Select mode afterwards; in Par
 press-drag on an edge drops it on release.
 
 When a move (drag, m) is done, the functions in after_move_hooks are called with the view - the
-standard-cell code snaps moved transistors into chains there. A press-drag that would only pick up
-the standard-cell frame draws a selection box instead (the frame covers the whole cell).
+standard-cell code snaps moved transistors into chains there. The standard-cell frame covers the
+whole cell, so it only drags once it is selected (click it first); otherwise a press-drag that would
+pick up just the frame draws a selection box, and a transistor under the press always wins.
 
 The move itself is KLayout's (move-angle constraint, snapping, dx/dy display, one undo step): this
 service only selects the object under the press, starts KLayout's interactive move there and ends
@@ -122,7 +123,7 @@ class DragMove(pya.Plugin):
         """True where a press-drag moves the current selection"""
         view = self._view
         return (view.mode_name() in MODES and view.is_editable() and view.has_object_selection()
-                and view.selection_bbox().contains(p) and not _frame_only(view))
+                and view.selection_bbox().contains(p))
 
     def pixel(self, p):
         """micrometers -> widget pixels (y down)"""
@@ -179,11 +180,17 @@ class DragMove(pya.Plugin):
         view = self._view
         if view.mode_name() not in MODES or not view.is_editable():
             return False
-        if not self.over_selection(p):
+        if self.over_selection(p) and _frame_only(view):
+            # the selected frame drags - unless there is something else (a transistor) under the press
+            frame = list(view.each_object_selected())
+            view.select_from(p, pya.LayoutView.SelectionMode.Replace)
+            if not view.has_object_selection() or _frame_only(view):
+                view.object_selection = frame
+        elif not self.over_selection(p):
             view.select_from(p, pya.LayoutView.SelectionMode.Replace)
             if not view.has_object_selection() or _frame_only(view):
                 view.clear_selection()
-                return False      # empty space (or only the cell frame): let the selection box start
+                return False      # empty space (or only the unselected cell frame): selection box
         if not _start_move():
             return False
         self.dragging = True

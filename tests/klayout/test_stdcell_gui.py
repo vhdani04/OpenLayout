@@ -98,6 +98,28 @@ drag((0.7, 0.2), (0.74, 0.24))
 check("dragging empty space in the frame does not move it", cell.each_inst() and
       [i for i in cell.each_inst() if stdcell._is_frame(i)][0].dbbox() == fb)
 
+# a selected frame drags (click it first); a transistor under the press still moves on its own
+view.clear_selection()
+click = px(0.7, 0.2)
+view.send_mouse_move_event(click, 0)
+view.send_mouse_press_event(click, L)
+view.send_mouse_release_event(click, L)
+check("a click on empty space in the cell selects the frame", stdcell.is_frame_selection(view))
+nmos_before = devs("nmos")
+drag((0.17, 0.05), (0.37, 0.05))                    # on the chained nMOS: moves that one, not the frame
+check("with the frame selected, dragging a transistor moves the transistor",
+      [i for i in cell.each_inst() if stdcell._is_frame(i)][0].dbbox() == fb and devs("nmos") != nmos_before,
+      (devs("nmos"), nmos_before))
+mw.cm_undo()
+view.clear_selection()
+view.send_mouse_move_event(click, 0)
+view.send_mouse_press_event(click, L)
+view.send_mouse_release_event(click, L)
+drag((0.7, 0.2), (0.7 + 0.108, 0.2))
+nfb = [i for i in cell.each_inst() if stdcell._is_frame(i)][0].dbbox()
+check("a selected frame drags", abs(nfb.left - fb.left - 0.108) < 1e-6 and nfb.bottom == fb.bottom, (str(fb), str(nfb)))
+mw.cm_undo()
+
 # Chain Selected: the two pMOS, far apart
 view.clear_selection()
 for x in (0.1, 0.6):

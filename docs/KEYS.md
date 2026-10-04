@@ -95,7 +95,9 @@ wins). The edge under the mouse is highlighted; `Esc` or a right click cancels; 
 of the open cell (asked again, it resizes it): a 7.5-track frame (270 nm high, a whole number of
 54 nm gate pitches wide) with the boundary, n-well / implant split, VT layer, all ten fin rows, the
 VDD / VSS rails on M1 (labelled as pins) and dummy gates at both cell edges - like the ASAP7 library
-cells. Transistors go in with *Standard-cell row* on and at y = 0: nMOS sit on the bottom fins, pMOS
+cells. The frame is selected by clicking an empty part of the cell; once selected it drags like
+anything else (a drag on empty space with the frame not selected draws a selection box).
+Transistors go in with *Standard-cell row* on and at y = 0: nMOS sit on the bottom fins, pMOS
 on the top fins, and an nMOS and a pMOS in the same column share one gate (no strap; contact it with
 LIG + V0 near mid-cell). Generating the layout from the schematic into a cell that has a frame
 places the transistors this way by itself (for a layout generated before it had a frame: add the
