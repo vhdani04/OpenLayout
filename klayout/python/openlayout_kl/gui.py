@@ -63,6 +63,8 @@ PREFS = {
     # The LSW replaces KLayout's layer panel and layer toolbox (one layer panel only).
     "show-layer-panel": "false",
     "show-layer-toolbox": "false",
+    # Rulers: a dark halo around line and text keeps the (vivid orange) ruler readable over any layer.
+    "ruler-halo": "true",
 }
 
 
