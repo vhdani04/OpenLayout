@@ -181,7 +181,7 @@ case "$cmd" in
 '
     else printf '  [FAIL] standard-cell frame + chaining
 '; grep -E "^FAIL|ERROR" <<< "$out" | head -3 | sed 's/^/         /'; ok=0; fi
-    for t in path_tool lsw drag_move align stdcell_gui vias generate_form; do
+    for t in path_tool lsw drag_move align stdcell_gui vias generate_form drd; do
       out="$(env -u DISPLAY QT_QPA_PLATFORM=offscreen HOME="$kl_home" klayout -e -z -nc -r "$OPENLAYOUT_HOME/tests/klayout/test_$t.py" 2>&1 || true)"
       if grep -q "^PASS $t" <<< "$out"; then printf '  [ok]   %s
 ' "$t"

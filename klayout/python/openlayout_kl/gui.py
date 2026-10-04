@@ -10,7 +10,7 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from . import align_tool, axes, drc, generate_form, lvs, stdcell, vias
+from . import align_tool, axes, drc, drd, generate_form, lvs, stdcell, vias
 from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
@@ -311,6 +311,7 @@ class OpenLayoutUI:
             ("connectivity", self.action("Show Connectivity", lambda: (self.nets.dock.show(), self.nets.dock.raise_()))),
             ("keys", self.action("Virtuoso Keys…", self.show_keys)),
             ("axes", self.axes_action()),
+            ("drd", self.drd_action()),
             (None, None),
             ("move", self.action("Move (object under the mouse)", move_under_mouse)),
             ("stretch", self.action("Stretch (edge under the mouse)", stretch_under_mouse)),
@@ -330,6 +331,12 @@ class OpenLayoutUI:
         a = self.action("Show Axes", lambda: axes.show(a.is_checked()))
         a.checkable = True
         a.checked = axes.visible()
+        return a
+
+    def drd_action(self):
+        a = self.action("DRD Spacing Hints (while drawing / moving)", lambda: drd.set_enabled(a.is_checked()))
+        a.checkable = True
+        a.checked = drd.enabled
         return a
 
     # ---- custom standard cells ------------------------------------------------------------------

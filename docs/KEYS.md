@@ -169,6 +169,15 @@ The **LSW** (right side) is the only layer panel. *All layers* / *Used layers* t
 shapes in the current cell). Click a layer to make it the current drawing layer, untick to hide it.
 **AV** shows every layer; **NV** hides every layer except the current one.
 
+**DRD spacing hints** (like Virtuoso's DRD in notify mode): while you draw a path, draw a box or
+move shapes, every gap to a neighbouring shape on the same layer that is closer than the ASAP7
+minimum spacing is outlined in red with a dimension line labelled with the minimum ("18 nm min").
+The values are the DRC deck's: line-end vs. side spacing for LISD / LIG / M1-M3 / M8-M9, the
+horizontal / vertical values for WELL, ACTIVE, GATE, SDT, GCUT and the track metals M4-M7, the
+via spacings, and corner-to-corner where the DRM has it. Shapes touching the edited one are on its
+net and not checked. Nothing is constrained - the hints go when the edit ends. Switch them off with
+*OpenLayout > DRD Spacing Hints*.
+
 The **Connectivity** panel (right side) compares the layout with its schematic: open nets (with
 flight lines in the layout), shorts, and parts missing from / extra to the schematic. Click a net
 to highlight its flight lines, double-click to zoom to it.

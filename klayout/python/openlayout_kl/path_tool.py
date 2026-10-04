@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pya
 
+from . import drd
 from .asap7 import LAYER_NAME, MIN_WIDTH
 
 TOOL_NAME = "openlayout_path"  # KLayout cuts menu names at "::"
@@ -47,6 +48,7 @@ class PathTool(pya.Plugin):
 
     # ---- state ------------------------------------------------------------------------------
     def reset(self):
+        drd.clear(self._view)
         self.points = []
         self.width = None
         self.bgn_ext = 0.0
@@ -253,7 +255,19 @@ class PathTool(pya.Plugin):
                 self.preview.color = lp.eff_fill_color(True) & 0xFFFFFF
                 self.preview.frame_color = lp.eff_frame_color(True) & 0xFFFFFF
                 self.preview.dither_pattern = lp.eff_dither_pattern(True)
-        self.preview.set(self.make_path(pts, end_flush).polygon())
+        path = self.make_path(pts, end_flush)
+        self.preview.set(path.polygon())
+        self.show_drd(path)
+
+    def show_drd(self, path):
+        """DRD hints: the wire being drawn against its neighbours on the layer"""
+        t = self.target()
+        if t is None or len(list(path.each_point())) < 2:
+            drd.clear(self._view)
+            return
+        cv, cell, li, _ = t
+        ctx = cv.context_dtrans()
+        drd.show(self._view, cell, li, [path.polygon().transformed(ctx.inverted())], trans=ctx)
 
     def show_guide(self):
         if self.guide is None:

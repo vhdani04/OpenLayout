@@ -20,12 +20,15 @@ moved transistors onto their row and into chains there.
 The standard-cell frame's shapes cover the whole cell, so picking (clicks too) prefers anything else
 under the mouse (stdcell.pick).
 
+DRD hints (drd.py): while a selection is being moved, and while a box is being drawn in KLayout's
+Box mode, gaps under the minimum spacing to the neighbouring shapes are shown.
+
 This service takes no mode of its own; it holds a mouse grab so it sees presses and clicks before
 KLayout's selection does.
 """
 import pya
 
-from . import stdcell
+from . import drd, stdcell
 
 NAME = "openlayout_drag_move"
 MODES = ("select", "move")
@@ -109,6 +112,10 @@ class DragMove(pya.Plugin):
         self.timer = None
         self.watch_box = None
         self.switching = False     # this service switches KLayout's mode (which cancels - not Esc)
+        self.esc_filter = None     # watches the canvas for Esc while a box / move shows hints
+        self._drd_moving = None    # (origin, {layer: [DPolygon]}, skip, cv) of the selection being moved
+        self._box_start = None     # first corner of a box being drawn in Box mode
+        self.box_new = False       # the box was just started (KLayout then cancels other drags)
 
     def _grab(self):
         if not self.grabbed:
@@ -148,6 +155,7 @@ class DragMove(pya.Plugin):
             _status("Move: click the object to move (Esc to finish)")
 
     def _start(self, p):
+        self.drd_start(p)
         self.switching = True
         try:
             started = _start_move()
@@ -187,6 +195,7 @@ class DragMove(pya.Plugin):
             self._back_to_select()
 
     def _back_to_select(self):
+        self.drd_stop()
         stretched = self.stretch_once or self._view.mode_name() == "partial"
         if stretched:
             # KLayout keeps the stretched edge selected, and in stretch mode the next press would
@@ -221,9 +230,15 @@ class DragMove(pya.Plugin):
         self._grab()
         _under_mouse = (self, p)
         mode = self._view.mode_name()
+        self.box_new = False
+        if mode != "box":
+            self.box_start = None
+        elif prio and self.box_start is not None:
+            self.drd_box(p)
         if prio and (mode == "move" or (mode == "partial" and self.stretch_once)):
             if self._move_in_progress():
                 self.moving = True
+                self.drd_update(p)
                 return False
             if self.moving:          # a move / stretch was just placed: back to Select mode
                 self._back_to_select()
@@ -241,6 +256,10 @@ class DragMove(pya.Plugin):
         # Only called when the mouse moved with the button down (a plain click never gets here).
         self._grab()
         view = self._view
+        if prio and view.mode_name() == "box" and self._plain_left(buttons):
+            self.box_start = self.snap(p)
+            self.box_new = True
+            return False
         if not prio or self.dragging or not self._plain_left(buttons) or self.command:
             return False
         if view.mode_name() != "select" or not view.is_editable() or not self.over_selection(p):
@@ -249,13 +268,19 @@ class DragMove(pya.Plugin):
             return False                      # a frame shape selected, a transistor under the press
         if not _start_move():
             return False
+        self.drd_start(p)          # after the switch to Move mode, which cancels drags (drag_cancel)
         self.dragging = True
         return True
 
     def mouse_button_released_event(self, p, buttons, prio):
+        if prio and self.box_start is not None and self._view.mode_name() == "box":
+            self.box_start = None
+            drd.clear(self._view)
+            return False
         if not (prio and self.dragging):
             return False
         self.dragging = False
+        self.drd_stop()
         # KLayout's move ends on Return (at the last mouse position) - drop it where it was released
         self._view.send_key_press_event(pya.KeyCode.Return, 0)
         self.moving = False
@@ -268,6 +293,14 @@ class DragMove(pya.Plugin):
         # This service sees a click first (prio, as it holds a grab) and again after KLayout's own
         # click selection (non-priority round).
         view = self._view
+        if prio and view.mode_name() == "box" and buttons & pya.ButtonState.LeftButton:
+            if self.box_start is None:
+                self.box_start = self.snap(p)
+                self.box_new = True
+            else:
+                self.box_start = None
+                drd.clear(view)
+            return False
         if prio and self.command and buttons & pya.ButtonState.RightButton:
             self.end_command()
             return True
@@ -295,11 +328,139 @@ class DragMove(pya.Plugin):
         return False
 
     def drag_cancel(self):          # Esc (KLayout also cancels when the mode changes)
+        if self.box_new:           # the box tool starting its box (it cancels twice), not Esc
+            return
         if not self.switching:
+            self.drd_stop()
+            self.box_start = None
             self.end_command()
+
+    # ---- DRD hints -------------------------------------------------------------------------------
+    @property
+    def box_start(self):
+        return self._box_start
+
+    @box_start.setter
+    def box_start(self, value):
+        self._box_start = value
+        self._watch_esc()
+
+    @property
+    def drd_moving(self):
+        return self._drd_moving
+
+    @drd_moving.setter
+    def drd_moving(self, value):
+        self._drd_moving = value
+        self._watch_esc()
+
+    def _watch_esc(self):
+        """Esc ends a box or a move without telling this service (KLayout's tool takes the key):
+        while hints may be up, an event filter on the canvas sees it"""
+        busy = self._box_start is not None or self._drd_moving is not None
+        if busy and self.esc_filter is None and self._move_in_progress() is not None and self.canvas:
+            self.esc_filter = EscFilter(self)
+            self.canvas.installEventFilter(self.esc_filter)
+        elif not busy and self.esc_filter is not None:
+            if self.canvas:
+                self.canvas.removeEventFilter(self.esc_filter)
+            self.esc_filter = None
+
+    def escape(self):
+        self.box_start = None
+        self.drd_stop()
+
+    def _current_layer(self):
+        """(cellview, layer index) of the LSW's current drawing layer"""
+        view = self._view
+        cur = view.current_layer
+        if cur.is_null() or cur.at_end() or cur.current().has_children():
+            return None
+        lp = cur.current()
+        cv = view.cellview(lp.cellview() if lp.cellview() >= 0 else 0)
+        if not cv.is_valid():
+            return None
+        return cv, cv.layout().layer(lp.source_layer, lp.source_datatype)
+
+    def drd_box(self, p):
+        target = self._current_layer()
+        if target is None:
+            return
+        cv, li = target
+        ctx = cv.context_dtrans()
+        box = pya.DBox(self.box_start, self.snap(p))
+        if box.width() <= 0 or box.height() <= 0:
+            drd.clear(self._view)
+            return
+        drd.show(self._view, cv.cell, li, [pya.DPolygon(box).transformed(ctx.inverted())], trans=ctx)
+
+    def drd_start(self, p):
+        """remember the selection (per layer, cell coordinates) as the move starts"""
+        try:
+            self.drd_moving = None
+            view = self._view
+            shapes, objs = {}, []
+            cv = None
+            for obj in view.each_object_selected():
+                cv = view.cellview(obj.cv_index)
+                layout = cv.layout()
+                dbu = layout.dbu
+                objs.append(obj)
+                if obj.is_cell_inst():
+                    child = obj.inst().cell
+                    for li in layout.layer_indexes():
+                        if drd.rule_for(layout, li)[1] is None:
+                            continue
+                        it = child.begin_shapes_rec(li)
+                        while not it.at_end():
+                            s = it.shape()
+                            if s.is_box() or s.is_polygon() or s.is_path():
+                                poly = s.polygon.transformed(it.trans()).to_dtype(dbu)
+                                shapes.setdefault(li, []).append(poly.transformed(obj.dtrans()))
+                            it.next()
+                elif not obj.shape.is_text() and drd.rule_for(layout, obj.layer)[1] is not None:
+                    poly = obj.shape.polygon.to_dtype(dbu).transformed(obj.dtrans())
+                    shapes.setdefault(obj.layer, []).append(poly)
+            if cv is None or not shapes:
+                return
+            sel_shapes = [(o.cell_index(), o.shape) for o in objs if not o.is_cell_inst()]
+            sel_paths = [[e.inst() for e in o.path] for o in objs if o.is_cell_inst()]
+
+            def skip(it):
+                if any(c == it.cell_index() and s == it.shape() for c, s in sel_shapes):
+                    return True
+                path = [e.inst() for e in it.path()]
+                return any(len(path) >= len(sp) and all(a == b for a, b in zip(path, sp)) for sp in sel_paths)
+            self.drd_moving = (p, shapes, skip, cv)
+        except Exception as e:
+            print(f"OpenLayout DRD: {e}")
+            self.drd_moving = None
+
+    def drd_update(self, p):
+        if self.drd_moving is None:
+            return
+        origin, shapes, skip, cv = self.drd_moving
+        d = self.snap(p) - self.snap(origin)          # KLayout's move snaps the displacement too
+        moved = {li: [poly.moved(d.x, d.y) for poly in polys] for li, polys in shapes.items()}
+        drd.show_layers(self._view, cv.cell, moved, skip, trans=cv.context_dtrans())
+
+    def drd_stop(self):
+        self.drd_moving = None
+        drd.clear(self._view)
 
     def deactivated(self):
         self.dragging = False
+
+
+class EscFilter(pya.QObject):
+    def __init__(self, service):
+        super().__init__()
+        self.service = service
+
+    def eventFilter(self, obj, event):
+        if event.type() == pya.QEvent.KeyPress and getattr(event, "key", lambda: None)() == pya.Qt.Key_Escape.to_i():
+            pya.QTimer.singleShot(0, self.service.escape)     # not while Qt delivers this event
+        return False
 
 
 class DragMoveFactory(pya.PluginFactory):
