@@ -91,17 +91,23 @@ up - sideways for vertical edges, up/down for horizontal ones. Edges are instanc
 shapes, also inside instances (e.g. a transistor's diffusion or gate; near an outline the outline
 wins). The edge under the mouse is highlighted; `Esc` or a right click cancels; `u` undoes.
 
-**Custom standard cells.** *OpenLayout ▸ Standard-Cell Frame…* puts the cell template at the origin
-of the open cell (asked again, it resizes it): a 7.5-track frame (270 nm high, a whole number of
-54 nm gate pitches wide) with the boundary, n-well / implant split, VT layer, all ten fin rows, the
-VDD / VSS rails on M1 (labelled as pins) and dummy gates at both cell edges - like the ASAP7 library
-cells. The frame is selected by clicking an empty part of the cell; once selected it drags like
-anything else (a drag on empty space with the frame not selected draws a selection box).
-Transistors go in with *Standard-cell row* on and at y = 0: nMOS sit on the bottom fins, pMOS
-on the top fins, and an nMOS and a pMOS in the same column share one gate (no strap; contact it with
+**Custom standard cells.** *OpenLayout ▸ Standard-Cell Frame…* draws the cell template at the origin
+of the open cell, as plain shapes in the cell itself (no extra hierarchy level - every shape can be
+selected and edited): a 7.5-track frame (270 nm high, a whole number of 54 nm gate pitches wide)
+with the boundary, n-well / implant split, VT layer, all ten fin rows, the VDD / VSS rails on M1
+(labelled as pins), LIG rails, gate cuts and dummy gates at both cell edges - like the ASAP7 library
+cells. Running it again (another width or VT) redraws the frame's shapes; shapes you added yourself
+are kept. As the frame covers the whole cell, a click picks what lies on top of it - a transistor,
+a wire - and only an empty spot picks a frame shape. A drag that starts on an unselected frame
+shape draws a selection box; a selected frame shape drags like any shape (to move the whole frame,
+box-select it).
+
+Transistors go in with *Standard-cell row* on and at y = 0: nMOS sit on the bottom fins, pMOS on
+the top fins, and an nMOS and a pMOS in the same column share one gate (no strap; contact it with
 LIG + V0 near mid-cell). Generating the layout from the schematic into a cell that has a frame
 places the transistors this way by itself (for a layout generated before it had a frame: add the
-frame, then *Update Layout from Schematic* moves the transistors into the rows). Row devices have at most 3 fins (use fingers for more).
+frame, then *Update Layout from Schematic* moves the transistors into the rows). Row devices have at
+most 3 fins (use fingers for more).
 
 **Chaining** (shared diffusion, like Virtuoso's abutment): drop a transistor next to another of the
 same type and row - touching, or overlapping by up to a gate pitch - and it snaps into the chain:

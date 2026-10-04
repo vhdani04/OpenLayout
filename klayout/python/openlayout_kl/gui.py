@@ -316,8 +316,7 @@ class OpenLayoutUI:
         if cv is None or not cv.is_valid() or cv.cell is None or not view.is_editable():
             pya.MessageBox.info("OpenLayout", "Open the (editable) layout of the cell first.", pya.MessageBox.Ok)
             return
-        frame = stdcell.find_frame(cv.cell)
-        cur = frame.pcell_parameters_by_name() if frame is not None else {}
+        cur = stdcell.frame_params(cv.cell) or {}
         cpp = pya.InputDialog.ask_int_ex("Standard-cell frame",
                                       "Width in gate pitches (54 nm each; 7.5-track cell, 270 nm high):",
                                       int(cur.get("cpp") or stdcell.default_width(cv.cell)), 1, 400, 1)

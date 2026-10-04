@@ -11,6 +11,7 @@ Not a KLayout mode: while aligning, this service holds the mouse grab, so it see
 """
 import pya
 
+from . import stdcell
 from .drag_move import notify_moved
 
 NAME = "openlayout_align"
@@ -174,7 +175,7 @@ class AlignTool(pya.Plugin):
         if not view.is_editable():
             return
         if not view.has_object_selection():
-            view.select_from(p, pya.LayoutView.SelectionMode.Replace)
+            stdcell.pick(view, p)
         if not self._selected():
             self.status("Align: select the objects to align first")
             return

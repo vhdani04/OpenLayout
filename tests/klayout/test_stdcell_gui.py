@@ -50,16 +50,20 @@ view.switch_mode("select")
 cell = view.active_cellview().cell
 L = pya.ButtonState.LeftButton
 
-# frame: inserted at the origin, wide enough for the devices; asked again it resizes, no duplicates
-frame = stdcell.insert_frame(view)
-check("the frame covers the devices", frame.pcell_parameters_by_name()["cpp"] == 13
-      and abs(frame.dbbox().top - 0.27 - 0.022) < 1e-6, frame.pcell_parameters_by_name())
+# frame: drawn at the origin as plain shapes, wide enough for the devices; again it is redrawn
+stdcell.insert_frame(view)
+check("the frame covers the devices", stdcell.frame_params(cell) == {"cpp": 13, "vt": "rvt"}
+      and cell.child_instances() == 4, (stdcell.frame_params(cell), cell.child_instances()))
 stdcell.insert_frame(view, cpp=14, vt="lvt")
-frames = [i for i in cell.each_inst() if stdcell._is_frame(i)]
 pins = [s.text_string for s in cell.shapes(cell.layout().layer(LAYERS["m1"], 251)).each(pya.Shapes.STexts)]
-check("asked again, the frame is resized (one frame, one pin per rail)",
-      len(frames) == 1 and frames[0].pcell_parameters_by_name()["cpp"] == 14 and sorted(pins) == ["VDD", "VSS"],
-      (len(frames), pins))
+bound = cell.layout().find_layer(LAYERS["boundary"], 0)
+check("asked again, the frame is redrawn (one boundary, one pin per rail)",
+      stdcell.frame_params(cell) == {"cpp": 14, "vt": "lvt"} and cell.shapes(bound).size() == 1
+      and sorted(pins) == ["VDD", "VSS"], (stdcell.frame_params(cell), pins))
+
+
+def frame_boxes():
+    return sorted(str(s.dbbox()) for s in stdcell.frame_shapes(cell))
 
 
 def px(x, y):
@@ -93,37 +97,52 @@ check("a transistor dropped next to another chains (shared diffusion)", devs("nm
 check("still in Select mode after the drop", view.mode_name() == "select", view.mode_name())
 
 # a drag on empty space inside the frame selects; it does not move the frame
-fb = frames[0].dbbox()
+fb = frame_boxes()
 drag((0.7, 0.2), (0.74, 0.24))
-check("dragging empty space in the frame does not move it", cell.each_inst() and
-      [i for i in cell.each_inst() if stdcell._is_frame(i)][0].dbbox() == fb)
+check("dragging empty space in the frame does not move it", frame_boxes() == fb)
 
-# a selected frame drags (click it first); a transistor under the press still moves on its own
+
+def click_at(x, y):
+    q = px(x, y)
+    view.send_mouse_move_event(q, 0)
+    view.send_mouse_press_event(q, L)
+    view.send_mouse_release_event(q, L)
+
+
+click_at(0.1, 0.05)
+sel = list(view.each_object_selected())
+check("a click on a transistor selects the transistor, not the frame under it",
+      len(sel) == 1 and sel[0].is_cell_inst() and sel[0].inst().pcell_declaration().name() == "nmos",
+      [o.is_cell_inst() for o in sel])
+
+# a frame shape is selected by a click on empty space; selected, it drags; a transistor under the
+# press still moves on its own
 view.clear_selection()
-click = px(0.7, 0.2)
-view.send_mouse_move_event(click, 0)
-view.send_mouse_press_event(click, L)
-view.send_mouse_release_event(click, L)
-check("a click on empty space in the cell selects the frame", stdcell.is_frame_selection(view))
+click_at(0.7, 0.2)
+check("a click on empty space in the cell selects a frame shape", stdcell.is_frame_selection(view))
 nmos_before = devs("nmos")
 drag((0.17, 0.05), (0.37, 0.05))                    # on the chained nMOS: moves that one, not the frame
-check("with the frame selected, dragging a transistor moves the transistor",
-      [i for i in cell.each_inst() if stdcell._is_frame(i)][0].dbbox() == fb and devs("nmos") != nmos_before,
-      (devs("nmos"), nmos_before))
+check("with a frame shape selected, dragging a transistor moves the transistor",
+      frame_boxes() == fb and devs("nmos") != nmos_before, (devs("nmos"), nmos_before))
 mw.cm_undo()
 view.clear_selection()
-view.send_mouse_move_event(click, 0)
-view.send_mouse_press_event(click, L)
-view.send_mouse_release_event(click, L)
+click_at(0.7, 0.2)
+picked = [str(o.shape.dbbox()) for o in view.each_object_selected()]
 drag((0.7, 0.2), (0.7 + 0.108, 0.2))
-nfb = [i for i in cell.each_inst() if stdcell._is_frame(i)][0].dbbox()
-check("a selected frame drags", abs(nfb.left - fb.left - 0.108) < 1e-6 and nfb.bottom == fb.bottom, (str(fb), str(nfb)))
+moved = [b for b in frame_boxes() if b not in fb]
+check("a selected frame shape drags like any shape", len(picked) == 1 and len(moved) == 1, (picked, moved))
 mw.cm_undo()
 
 # Chain Selected: the two pMOS, far apart
 view.clear_selection()
-for x in (0.1, 0.6):
-    view.select_from(pya.DPoint(x, 0.2), pya.LayoutView.SelectionMode.Add)
+click_at(0.1, 0.2)                                   # click, then Shift+click: like the mouse
+q = px(0.6, 0.2)
+view.send_mouse_move_event(q, 0)
+view.send_mouse_press_event(q, L | pya.ButtonState.ShiftKey)
+view.send_mouse_release_event(q, L | pya.ButtonState.ShiftKey)
+check("Shift+click adds the transistor, not the frame under it",
+      [o.inst().pcell_declaration().name() for o in view.each_object_selected() if o.is_cell_inst()] == ["pmos", "pmos"]
+      and not any(stdcell.is_frame_object(o) for o in view.each_object_selected()))
 gui.instance.chain_selected()
 check("Chain Selected chains the selected transistors", devs("pmos") == [(0, False, True), (54, True, False)],
       devs("pmos"))
@@ -152,10 +171,8 @@ try:
     gui.instance.frame_dialog()
 finally:
     pya.InputDialog = real_dialog
-frames = [i for i in cell.each_inst() if stdcell._is_frame(i)]
-p = frames[0].pcell_parameters_by_name()
+p = stdcell.frame_params(cell)
 check("the Standard-Cell Frame menu command asks width and VT and applies them",
-      len(frames) == 1 and (p["cpp"], p["vt"]) == (9, "slvt") and Dialogs.asked == [("width", 14), ("vt", "lvt")],
-      (p, Dialogs.asked))
+      p == {"cpp": 9, "vt": "slvt"} and Dialogs.asked == [("width", 14), ("vt", "lvt")], (p, Dialogs.asked))
 
 print("PASS stdcell_gui" if not failures else f"FAIL stdcell_gui: {', '.join(failures)}")

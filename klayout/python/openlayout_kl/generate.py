@@ -23,6 +23,7 @@ import pya
 from .asap7 import DBU, LAYERS, PIN
 from .connectivity import PREFIX, PROP, conn_file, instance_name
 from .pcells import LIBRARY, ROW_MAX_FINS, register_library
+from .stdcell import has_frame
 
 STDCELL_RE = re.compile(r"_ASAP7_75t_(R|L|SL|SRAM)$")
 GATE_PITCH, ROW_GAP, PIN_SIZE = 0.054, 0.108, 0.054
@@ -197,8 +198,7 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
     top = layout.cell(cell.name) or (layout.top_cell() if layout.cells() else None) or layout.create_cell(cell.name)
     existing = {instance_name(i): i for i in top.each_inst()}
     existing.pop(None, None)
-    row = any(i.is_pcell() and i.pcell_declaration() is not None and i.pcell_declaration().name() == "stdcell"
-              for i in top.each_inst())
+    row = has_frame(top)
     placer = Placer(top, staging=bool(existing), row=row)
     report = {"added": [], "updated": [], "unchanged": [], "extra": [], "skipped": [], "pins_added": [],
               "warnings": []}

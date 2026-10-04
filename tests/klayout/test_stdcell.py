@@ -11,7 +11,7 @@ sys.path.insert(0, str(HOME / "klayout" / "python"))
 
 import pya  # noqa: E402
 
-from openlayout_kl import chain  # noqa: E402
+from openlayout_kl import chain, stdcell  # noqa: E402
 from openlayout_kl.asap7 import LAYERS  # noqa: E402
 from openlayout_kl.pcells import LIBRARY, register_library  # noqa: E402
 
@@ -60,7 +60,7 @@ def compare(cell, ref_name):
 
 # INVx1: frame of 3 gate pitches, a 3-fin nMOS and pMOS in the same column (one gate through both)
 inv = ly.create_cell("INV")
-place(inv, "stdcell", 0, cpp=3)
+stdcell.draw_frame(inv, 3)
 place(inv, "nmos", 0, row=True, nfin=3, nf=1)
 place(inv, "pmos", 0, row=True, nfin=3, nf=1)
 bad = compare(inv, "INVx1_ASAP7_75t_R")
@@ -69,7 +69,7 @@ check("frame + row devices reproduce INVx1 (front-end layers)", not bad, bad)
 # NAND2xp33: two 2-fin nMOS chained in series (no contact on the inner node), a 1-fin pMOS with
 # two fingers in parallel
 nand = ly.create_cell("NAND")
-place(nand, "stdcell", 0, cpp=4)
+stdcell.draw_frame(nand, 4)
 place(nand, "nmos", 0, row=True, nfin=2, nf=1, abut_right=True, contact_right=False)
 place(nand, "nmos", 54, row=True, nfin=2, nf=1, abut_left=True, contact_left=False)
 place(nand, "pmos", 0, row=True, nfin=1, nf=2)
@@ -77,6 +77,18 @@ bad = compare(nand, "NAND2xp33_ASAP7_75t_R")
 check("chained series nMOS reproduce NAND2xp33 (front-end layers)", not bad, bad)
 
 check("the comparison notices differences", bool(compare(inv, "NAND2xp33_ASAP7_75t_R")))
+check("the frame is plain shapes in the cell (no instance), tagged as frame",
+      not [i for i in nand.each_inst() if not i.is_pcell() or i.pcell_declaration().name() == "stdcell"]
+      and len(stdcell.frame_shapes(nand)) > 10 and stdcell.frame_params(nand) == {"cpp": 4, "vt": "rvt"},
+      (len(stdcell.frame_shapes(nand)), stdcell.frame_params(nand)))
+stdcell.draw_frame(nand, 6, "slvt")
+check("drawing the frame again replaces it", stdcell.frame_params(nand) == {"cpp": 6, "vt": "slvt"}
+      and region(ly, nand, "boundary").count() == 1, (stdcell.frame_params(nand), region(ly, nand, "boundary").count()))
+old = ly.create_cell("OLDFRAME")
+place(old, "stdcell", 0, cpp=5)
+stdcell.draw_frame(old, 5)
+check("an old frame PCell instance is replaced by plain shapes", old.child_instances() == 0
+      and stdcell.frame_params(old) == {"cpp": 5, "vt": "rvt"}, old.child_instances())
 
 # chaining: standalone 2-fin nMOS, nets from a schematic link (s/d per instance)
 conn = {"instances": {
@@ -164,11 +176,7 @@ fl = pya.Layout()
 fl.dbu = 0.00025
 fl.technology_name = "asap7"
 ftop = fl.create_cell("inv")
-fpc = fl.create_cell("stdcell", LIBRARY, {"cpp": 5})
-ftop.insert(pya.DCellInstArray(fpc.cell_index(), pya.DTrans()))
-pli = fl.layer(LAYERS["m1"], 251)
-ftop.shapes(pli).insert(pya.DText("VSS", pya.DTrans(0.03, 0)))
-ftop.shapes(pli).insert(pya.DText("VDD", pya.DTrans(0.03, 0.27)))
+stdcell.draw_frame(ftop, 5)
 fl.write(str(gds))
 rep = generate.generate(wlib.path / "inv" / "inv.sch")
 gl = pya.Layout()
@@ -190,7 +198,7 @@ l2 = pya.Layout()
 l2.technology_name = "asap7"
 l2.read(str(g2))
 t2 = l2.cell("inv2")
-t2.insert(pya.DCellInstArray(l2.create_cell("stdcell", LIBRARY, {"cpp": 5}).cell_index(), pya.DTrans()))
+stdcell.draw_frame(t2, 5)
 rep2 = generate.generate(wlib2.path / "inv2" / "inv2.sch", layout=l2)
 moved = {connectivity.instance_name(i): (i.pcell_parameters_by_name()["row"], i.dcplx_trans.disp.y)
          for i in t2.each_inst() if connectivity.instance_name(i)}
