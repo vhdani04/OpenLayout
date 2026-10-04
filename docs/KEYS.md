@@ -44,6 +44,14 @@ lights up. Press and drag it: a dashed outline shows the new size, and on releas
 snaps to it (the edge lands on the snap grid; `u` undoes it). A corner moves both of its edges.
 Pressing on a pin still moves the pin.
 
+**Ground is VSS** (the ASAP7 convention, as in the standard cells and the layout's VSS rail): the
+ground symbol (`gnd.sym`) names its net VSS - a global net like VDD - instead of xschem's `0`.
+For simulation, OpenLayout's netlisting adds one 0 V source tying VSS to SPICE's node 0
+(`V_OL_VSS VSS 0 0`), so testbenches work unchanged. Older schematics with the stock ground
+(`lab=0`) still match the layout: the schematic link treats `0` / `GND` as VSS. The VDD / VSS a cell
+uses are supply pins of its layout - the frame's rails - so the connectivity check also checks the
+supply connections.
+
 xschem also runs in its Cadence-compatibility mode: persistent commands (a command stays active
 until `Esc`), orthogonal wiring (wires only; lines can be drawn at any angle) and a cursor that
 snaps to pins. The mouse cursor is the normal pointer.

@@ -56,6 +56,15 @@ def netlist_schematic(sch: Path, wa_root: Path) -> str:
     return net.read_text()
 
 
+GROUND_NAMES = {"0", "gnd", "gnd!", "vss!"}   # SPICE / analogLib ground -> the ASAP7 ground net
+SUPPLIES = ("VDD", "VSS")
+
+
+def ground_to_vss(net: str) -> str:
+    """The ground net is VSS (ASAP7 convention); xschem's stock ground (0) and GND map to it."""
+    return "VSS" if net.lower() in GROUND_NAMES else net
+
+
 def parse_netlist(text: str, top: str) -> dict:
     lines = []
     for raw in text.splitlines():
@@ -87,11 +96,17 @@ def parse_netlist(text: str, top: str) -> dict:
                 result["dirs"][name] = d
         elif head.startswith("n") and len(tok) >= 6:
             params = dict(t.split("=", 1) for t in tok[6:] if "=" in t)
-            result["devices"].append({"name": tok[0][1:], "nets": tok[1:5], "model": tok[5], "params": params})
+            result["devices"].append({"name": tok[0][1:], "nets": [ground_to_vss(n) for n in tok[1:5]],
+                                      "model": tok[5], "params": params})
         elif head.startswith("x"):
             plain = [i for i, t in enumerate(tok) if "=" not in t]
             cell_i = plain[-1]
-            result["cells"].append({"name": tok[0][1:], "nets": tok[1:cell_i], "cell": tok[cell_i]})
+            result["cells"].append({"name": tok[0][1:], "nets": [ground_to_vss(n) for n in tok[1:cell_i]],
+                                    "cell": tok[cell_i]})
+    # the supplies used inside the cell (global labels, like the ASAP7 cells' VDD / VSS) are pins of
+    # the layout too - the rails - unless they are ports already
+    used = {n for d in result["devices"] for n in d["nets"]} | {n for c in result["cells"] for n in c["nets"]}
+    result["supplies"] = [s for s in SUPPLIES if s in used and s not in result["ports"]]
     return result
 
 
@@ -254,7 +269,8 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
     report = {"added": [], "updated": [], "unchanged": [], "extra": [], "skipped": [], "pins_added": [],
               "warnings": []}
     conn = {"version": 1, "schematic": sch.name, "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "ports": net["ports"], "pins": {p: net["dirs"].get(p, "B") for p in net["ports"]}, "instances": {}}
+            "ports": net["ports"], "pins": {p: net["dirs"].get(p, "B") for p in net["ports"] + net["supplies"]},
+            "instances": {}}
     seen = set()
 
     for dev in sorted(net["devices"], key=lambda d: _natural(d["name"])):
@@ -328,9 +344,9 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
         new.set_property(PROP, PREFIX + name)
         report["added"].append(name)
 
-    have_pins = _top_pin_names(top)
+    have_pins = _top_pin_names(top)      # e.g. the frame's VDD / VSS rails
     y = placer.base_y
-    for p in net["ports"]:
+    for p in net["ports"] + net["supplies"]:
         if p not in have_pins:
             _add_pin(top, p, pya.DPoint(-0.324, y))
             report["pins_added"].append(p)

@@ -234,6 +234,26 @@ check("updating an older layout converts its transistors to row devices, parked 
       sorted(rep3["updated"]) == ["M1", "M2"] and moved == {"M1": (True, -0.54), "M2": (True, -0.81)}
       and stdcell.frame_params(t3) is not None, (rep3["updated"], moved))
 
+# the ground net is VSS: a schematic with xschem's stock ground (lab=0) and global VDD, like the
+# demo cells, links to the layout with VSS - and VDD / VSS are supply pins (the frame's rails)
+assert generate.ground_to_vss("0") == "VSS" and generate.ground_to_vss("GND") == "VSS"
+(wlib2.path / "invg").mkdir()
+shutil.copy(HOME / "tests/klayout/inv_globals.sch", wlib2.path / "invg" / "invg.sch")
+repg = generate.generate(wlib2.path / "invg" / "invg.sch")
+cg = connectivity.load_conn(wlib2.path / "invg" / "invg.gds")
+nets = {t for spec in cg["instances"].values() for t in spec["terminals"].values()}
+check("the stock ground (0) becomes VSS in the schematic link", "VSS" in nets and "0" not in nets, sorted(nets))
+check("the cell's global VDD / VSS are supply pins of the layout (the frame's rails)",
+      {"VDD", "VSS"} <= set(cg["pins"]) and "VDD" not in repg["pins_added"] and "VSS" not in repg["pins_added"],
+      (cg["pins"], repg["pins_added"]))
+lg = pya.Layout()
+lg.technology_name = "asap7"
+lg.read(str(wlib2.path / "invg" / "invg.gds"))
+resg = connectivity.check(lg, lg.cell("invg"), cg)
+check("the connectivity check sees the VSS rail as the ground net's pin",
+      "VSS" in resg["nets"] and resg["nets"]["VSS"]["terminals"] >= 2
+      and "0" not in resg["nets"], {n: v["terminals"] for n, v in resg["nets"].items()})
+
 # a row transistor dropped onto the cell goes onto the row and the gate grid
 c4 = ly.create_cell("SNAP")
 stdcell.draw_frame(c4, 6)
