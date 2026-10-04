@@ -10,7 +10,7 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from .drag_move import DragMoveFactory
+from .drag_move import DragMoveFactory, move_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
 from .path_tool import TOOL_NAME, PathToolFactory
@@ -20,9 +20,9 @@ FLOW = Path(os.environ.get("OPENLAYOUT_HOME", Path.home() / "openlayout/flow"))
 THEME = json.loads((FLOW / "share" / "theme" / "openlayout.json").read_text())
 UI, CANVAS = THEME["ui"], THEME["canvas"]
 
-# KLayout menu path -> Virtuoso key. Interactive move/copy are KLayout's "secret" actions that work
-# like Virtuoso's m/c (pick a reference point, then the destination). P is bound to OpenLayout's
-# path tool once it is registered (see bind_path_tool).
+# KLayout menu path -> Virtuoso key. Interactive copy is KLayout's "secret" action that works like
+# Virtuoso's c; m is OpenLayout's move of the object under the mouse (see drag_move). P is bound to
+# OpenLayout's path tool once it is registered (see bind_path_tool).
 VIRTUOSO_KEYS = {
     "edit_menu.mode_menu.box": "R",
     "edit_menu.mode_menu.polygon": "Shift+P",
@@ -31,7 +31,7 @@ VIRTUOSO_KEYS = {
     "edit_menu.mode_menu.ruler": "K",
     "edit_menu.mode_menu.partial": "S",
     "edit_menu.clear_all_rulers": "Shift+K",
-    "@secrets.sel_move_interactive": "M",
+    "openlayout_menu.move": "M",
     "@secrets.duplicate_interactive": "C",
     "edit_menu.show_properties": "Q",
     "edit_menu.undo": "U",
@@ -178,6 +178,10 @@ class OpenLayoutUI:
         self.nets = NetsPanel(mw, UI, on_update=self.update_layout_file)
         mw.splitDockWidget(self.lsw.dock, self.nets.dock, pya.Qt.Vertical)
         self.build_menu()
+        try:
+            apply_keys(mw)    # again: the OpenLayout menu entries (m) exist now
+        except Exception as e:
+            print(f"OpenLayout: key binding failed: {e}")
 
     # ---- schematic-driven layout ------------------------------------------------------------
     def open_views(self):
@@ -272,6 +276,8 @@ class OpenLayoutUI:
             ("lsw", self.action("Show LSW", lambda: (self.lsw.dock.show(), self.lsw.dock.raise_()))),
             ("connectivity", self.action("Show Connectivity", lambda: (self.nets.dock.show(), self.nets.dock.raise_()))),
             ("keys", self.action("Virtuoso Keys…", self.show_keys)),
+            (None, None),
+            ("move", self.action("Move (object under the mouse)", move_under_mouse)),
         ]
         for i, (name, action) in enumerate(items):
             if name is None:
