@@ -4,7 +4,8 @@ generate(schematic) netlists the xschem schematic, then creates or updates <cell
   - FinFETs become OpenLayout_ASAP7 nmos/pmos PCells (vt, nfin, nf from the schematic; m copies),
   - standard cells become instances of the ASAP7 std-cell libraries,
   - other subcircuits become copies of their own layout view (if they have one),
-  - schematic ports become M1 pin shapes with labels,
+  - schematic ports become M1 pins: a pin-purpose square of the layer's minimum width with the
+    label, no drawing shape under it (draw the wire the pin sits on),
 and writes the schematic link <cell>.ol.json used by the connectivity check. Existing instances are
 matched by name (GDS property), so placement and routing survive updates; parts removed from the
 schematic are reported, never deleted.
@@ -27,13 +28,13 @@ from pathlib import Path
 
 import pya
 
-from .asap7 import DBU, LAYERS, PIN
+from .asap7 import DBU, LAYERS, METALS, MIN_WIDTH, PIN
 from .connectivity import PREFIX, PROP, conn_file, instance_name
 from .pcells import LIBRARY, ROW_MAX_FINS, register_library
 from .stdcell import draw_frame, has_frame
 
 STDCELL_RE = re.compile(r"_ASAP7_75t_(R|L|SL|SRAM)$")
-GATE_PITCH, ROW_GAP, PIN_SIZE = 0.054, 0.108, 0.054
+GATE_PITCH, ROW_GAP = 0.054, 0.108
 
 
 def _workarea():
@@ -227,12 +228,16 @@ def _user_cell(wa, cell_name: str, layout: pya.Layout):
     return None
 
 
-def _add_pin(top: pya.Cell, name: str, at: pya.DPoint):
+def _add_pin(top: pya.Cell, name: str, at: pya.DPoint, metal: str = "m1"):
+    """A pin: a square of the metal's minimum width on its pin purpose, centred on `at`, with the
+    label - only the pin, no drawing shape (pins are metal only)."""
+    if metal not in METALS:
+        raise ValueError(f"pins are on metal layers, not {metal}")
     layout = top.layout()
-    box = pya.DBox(at.x, at.y, at.x + PIN_SIZE, at.y + PIN_SIZE)
-    top.shapes(layout.layer(LAYERS["m1"], 0)).insert(box)
-    top.shapes(layout.layer(LAYERS["m1"], PIN)).insert(box)
-    top.shapes(layout.layer(LAYERS["m1"], PIN)).insert(pya.DText(name, pya.DTrans(box.center().x, box.center().y)))
+    h = MIN_WIDTH[metal] / 2000
+    li = layout.layer(LAYERS[metal], PIN)
+    top.shapes(li).insert(pya.DBox(at.x - h, at.y - h, at.x + h, at.y + h))
+    top.shapes(li).insert(pya.DText(name, pya.DTrans(at.x, at.y)))
 
 
 def _top_pin_names(top: pya.Cell) -> set:

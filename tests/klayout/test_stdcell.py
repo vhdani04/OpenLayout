@@ -254,6 +254,14 @@ check("the connectivity check sees the VSS rail as the ground net's pin",
       "VSS" in resg["nets"] and resg["nets"]["VSS"]["terminals"] >= 2
       and "0" not in resg["nets"], {n: v["terminals"] for n, v in resg["nets"].items()})
 
+pin_li = lg.find_layer(LAYERS["m1"], 251)
+pin_boxes = [sh.dbbox() for sh in lg.cell("invg").shapes(pin_li).each() if sh.is_box()]
+m1_draw = pya.Region(lg.cell("invg").shapes(lg.find_layer(LAYERS["m1"], 0)))
+check("generated pins are minimum-width (18 nm) M1 pin squares with no drawing shape under them",
+      len(pin_boxes) == 2 and all(abs(b.width() - 0.018) < 1e-9 and abs(b.height() - 0.018) < 1e-9 for b in pin_boxes)
+      and not any(m1_draw.interacting(pya.Region(b.to_itype(lg.dbu))).count() for b in pin_boxes),
+      [str(b) for b in pin_boxes])
+
 # a row transistor dropped onto the cell goes onto the row and the gate grid
 c4 = ly.create_cell("SNAP")
 stdcell.draw_frame(c4, 6)

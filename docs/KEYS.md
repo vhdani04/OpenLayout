@@ -132,7 +132,9 @@ devices have at most 3 fins (use fingers for more). The transistor PCells draw n
 gate is cut depends on the cell, so draw GCUT where yours needs it (the frame already cuts at the
 rails and at its edge dummy gates).
 
-**Generating from the schematic** puts the cell's boundary corner at (0, 0): a transistor-level cell
+**Generating from the schematic** adds the schematic's pins as M1 pins: a square of the layer's
+minimum width (18 nm) on the pin purpose, with the label - only the pin, no drawing shape under
+it; draw (or route) the metal the pin sits on. It puts the cell's boundary corner at (0, 0): a transistor-level cell
 gets the frame (sized for its transistors chained per row) unless it has one already, a cell of
 only sub-cells a plain boundary. Generated parts are parked below the cell, never overlapping: the
 pMOS in a row at y = -0.54, the nMOS under them at y = -0.81 (other cells further down), left to
