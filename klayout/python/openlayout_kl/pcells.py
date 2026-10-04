@@ -21,7 +21,9 @@ overlap by two gate pitches). The shared column keeps its contact unless `contac
 off (e.g. the inner node of a series stack).
 
 The standard-cell frame (`stdcell`): boundary, well/implant split, VT layer, the full fin grid,
-M1 + LIG rails with GCUT over them, and dummy gates at both cell edges.
+M1 + LIG rails joined by V0 at every gate-pitch column, GCUT over them, and dummy gates at both cell
+edges. A source connects to a rail by running its LISD into the LIG rail (LIG and LISD connect
+where they overlap).
 """
 import pya
 
@@ -133,6 +135,8 @@ def stdcell_geometry(cpp: int, vt: str = "rvt") -> dict:
         "lig": [(0, -8, w, 8), (0, CELL_HEIGHT - 8, w, CELL_HEIGHT + 8)],
         "gcut": [(0, -22, w, 22), (0, CELL_HEIGHT - 22, w, CELL_HEIGHT + 22)],
         "gate": [],
+        # V0 joining each LIG rail to its M1 rail at every gate-pitch column, like the library cells
+        "v0": [(CPP * k - 9, y - 9, CPP * k + 9, y + 9) for y in (0, CELL_HEIGHT) for k in range(1, cpp)],
     }
     if cpp >= 2:   # dummy gates on both cell edges, cut at mid-height like the library cells
         for c in (27, w - 27):

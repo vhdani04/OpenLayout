@@ -117,7 +117,7 @@ via, rows and columns.
 of the open cell, as plain shapes in the cell itself (no extra hierarchy level - every shape can be
 selected and edited): a 7.5-track frame (270 nm high, a whole number of 54 nm gate pitches wide)
 with the boundary, n-well / implant split, VT layer, all ten fin rows, the VDD / VSS rails on M1
-(labelled as pins), LIG rails, gate cuts and dummy gates at both cell edges - like the ASAP7 library
+(labelled as pins), LIG rails under them (joined to M1 by V0 at every gate pitch), gate cuts and dummy gates at both cell edges - like the ASAP7 library
 cells. Running it again (another width or VT) redraws the frame's shapes; shapes you added yourself
 are kept. As the frame covers the whole cell, a click picks what lies on top of it - a transistor,
 a wire - and only an empty spot picks a frame shape. A drag that starts on an unselected frame
@@ -151,6 +151,11 @@ to row devices and parked.
 
 The **x and y axes** through the origin are drawn in every layout view (*OpenLayout ▸ Show Axes*
 switches them off and on).
+
+**Connecting to the rails**: run a source's LISD down (or up) into the LIG rail - LIG and LISD
+connect where they overlap, as in the ASAP7 cells - and the rail's V0s take it to the M1 VDD / VSS.
+The same rule means LIG must stay 14 nm clear of LISD wherever they should not connect (the
+connectivity check reports such an overlap as a short).
 
 **Chaining** (shared diffusion, like Virtuoso's abutment): drop a transistor next to another of the
 same type and row - touching, or overlapping by up to a gate pitch - and it snaps into the chain:

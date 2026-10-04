@@ -11,7 +11,7 @@ sys.path.insert(0, str(HOME / "klayout" / "python"))
 
 import pya  # noqa: E402
 
-from openlayout_kl import chain, stdcell  # noqa: E402
+from openlayout_kl import chain, connectivity, stdcell  # noqa: E402
 from openlayout_kl.asap7 import LAYERS  # noqa: E402
 from openlayout_kl.pcells import LIBRARY, register_library  # noqa: E402
 
@@ -97,6 +97,42 @@ place(old, "stdcell", 0, cpp=5)
 stdcell.draw_frame(old, 5)
 check("an old frame PCell instance is replaced by plain shapes", old.child_instances() == 0
       and stdcell.frame_params(old) == {"cpp": 5, "vt": "rvt"}, old.child_instances())
+
+# the rails: V0 joins LIG and M1 at every gate-pitch column, like the library
+for name, cellv, ref in (("INV", inv, "INVx1_ASAP7_75t_R"), ("NAND", nand, "NAND2xp33_ASAP7_75t_R")):
+    if name == "NAND":
+        stdcell.draw_frame(cellv, 4)
+    rails = pya.Region([pya.DBox(-1, -0.010, 10, 0.010).to_itype(ly.dbu), pya.DBox(-1, 0.260, 10, 0.280).to_itype(ly.dbu)])
+    ours = region(ly, cellv, "v0") & rails
+    rails_lib = pya.Region([pya.DBox(-1, -0.010, 10, 0.010).to_itype(lib.dbu), pya.DBox(-1, 0.260, 10, 0.280).to_itype(lib.dbu)])
+    theirs = region(lib, lib.cell(ref), "v0") & rails_lib
+    check(f"the frame's rail V0s match {ref}", ours.count() == theirs.count() and ours.count() > 0
+          and sorted(str(b.bbox().to_dtype(ly.dbu)) for b in ours.each()) ==
+          sorted(str(b.bbox().to_dtype(lib.dbu)) for b in theirs.each()), (ours.count(), theirs.count()))
+
+# LIG and LISD connect where they overlap: a source run into the LIG rail reaches the M1 VSS rail
+src = ly.create_cell("SRC")
+stdcell.draw_frame(src, 3)
+place(src, "nmos", 0, row=True, nfin=2, nf=1)
+lisd_li = ly.layer(LAYERS["lisd"], 0)
+
+
+def same_net(cellv, a, b, la, lb):
+    l2n, regs = connectivity.extract(ly, cellv)
+    na = l2n.probe_net(regs[la], pya.DPoint(*a))
+    nb = l2n.probe_net(regs[lb], pya.DPoint(*b))
+    return na is not None and nb is not None and na.cluster_id == nb.cluster_id
+
+
+check("a source not run into the rail is not on VSS", not same_net(src, (0.054, 0.05), (0.1, 0.0), "lisd", "m1"))
+src.shapes(lisd_li).insert(pya.DBox(0.042, 0.0, 0.066, 0.027))       # the source's LISD down into the LIG rail
+check("a source's LISD run into the LIG rail is on the M1 VSS rail (LISD - LIG - V0 - M1)",
+      same_net(src, (0.054, 0.05), (0.1, 0.0), "lisd", "m1"))
+lig_li = ly.layer(LAYERS["lig"], 0)
+src.shapes(lig_li).insert(pya.DBox(0.04, 0.124, 0.08, 0.146))        # LIG from the gate strap ...
+src.shapes(lig_li).insert(pya.DBox(0.046, 0.06, 0.062, 0.146))       # ... down onto the source contact
+check("LIG over a source contact joins it to the gate (a short the check can now see)",
+      same_net(src, (0.081, 0.135), (0.054, 0.05), "lig", "lisd"))
 
 # chaining: standalone 2-fin nMOS, nets from a schematic link (s/d per instance)
 conn = {"instances": {

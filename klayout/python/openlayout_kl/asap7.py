@@ -51,8 +51,10 @@ VIAS = {("lisd", "m1"): ("v0", 18), ("lig", "m1"): ("v0", 18), ("m1", "m2"): ("v
         ("m8", "m9"): ("v8", 40)}
 VT_LAYER = {"rvt": None, "lvt": "lvt", "slvt": "slvt", "sram": "sramvt"}
 
-# Conductor connectivity for extraction ("sd" = ACTIVE outside GATE).
-CONNECTIONS = [("gate", "lig"), ("sd", "lisd"), ("lig", "v0"), ("lisd", "v0"), ("v0", "m1"),
+# Conductor connectivity for extraction ("sd" = ACTIVE outside GATE). LIG and LISD are both local
+# interconnect at the same level of the MOL stack: where they overlap they connect (the ASAP7 cells
+# connect sources to the LIG power rails that way - Clark et al., ASAP7 PDK paper, 2016).
+CONNECTIONS = [("gate", "lig"), ("sd", "lisd"), ("lig", "lisd"), ("lig", "v0"), ("lisd", "v0"), ("v0", "m1"),
                ("m1", "v1"), ("v1", "m2"), ("m2", "v2"), ("v2", "m3"), ("m3", "v3"), ("v3", "m4"),
                ("m4", "v4"), ("v4", "m5"), ("m5", "v5"), ("v5", "m6"), ("m6", "v6"), ("v6", "m7"),
                ("m7", "v7"), ("v7", "m8"), ("m8", "v8"), ("v8", "m9")]
