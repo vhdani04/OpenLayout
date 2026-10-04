@@ -54,13 +54,13 @@ def show_results(file, cell, report, mw=None):
     layout = view.cellview(index[1]).layout()
     if cell and layout.cell(cell) is not None:
         view.select_cell(layout.cell(cell).cell_index(), index[1])
-    rdb = pya.ReportDatabase("DRC")
-    rdb.load(str(report))
-    rdb_index = view.add_rdb(rdb)
-    view.show_rdb(rdb_index, index[1])
     view.max_hier()
     view.zoom_fit()
     mw.showNormal()
     mw.raise_()
     mw.activateWindow()
+    rdb = pya.ReportDatabase("DRC")
+    rdb.load(str(report))
+    rdb_index = view.add_rdb(rdb)
+    view.show_rdb(rdb_index, index[1])      # last: the browser opens on top of the main window
     return rdb.num_items()

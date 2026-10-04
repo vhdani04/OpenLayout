@@ -119,9 +119,9 @@ def show_results(file, cell, report, mw=None):
     layout = view.cellview(index[1]).layout()
     if cell and layout.cell(cell) is not None:
         view.select_cell(layout.cell(cell).cell_index(), index[1])
-    show(view, index[1], report)
     view.zoom_fit()
     mw.showNormal()
     mw.raise_()
     mw.activateWindow()
+    show(view, index[1], report)            # last: the browser opens on top of the main window
     return True
