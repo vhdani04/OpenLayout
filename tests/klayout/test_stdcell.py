@@ -180,6 +180,23 @@ check("generation in a framed cell uses row mode at y = 0",
       sorted(devs) == ["M1", "M2"] and all(i.pcell_parameters_by_name()["row"] and i.dcplx_trans.disp.y == 0
                                            for i in devs.values()), {n: str(i.dcplx_trans) for n, i in devs.items()})
 check("rail pins are not added again", sorted(rep["pins_added"]) == ["A", "Y"], rep["pins_added"])
+# a layout generated without a frame: adding one and updating moves the transistors into the rows
+wlib2 = wa.library("cpu8")
+(wlib2.path / "inv2").mkdir()
+shutil.copy(HOME / "tests/klayout/inv_pins.sch", wlib2.path / "inv2" / "inv2.sch")
+generate.generate(wlib2.path / "inv2" / "inv2.sch")
+g2 = wlib2.path / "inv2" / "inv2.gds"
+l2 = pya.Layout()
+l2.technology_name = "asap7"
+l2.read(str(g2))
+t2 = l2.cell("inv2")
+t2.insert(pya.DCellInstArray(l2.create_cell("stdcell", LIBRARY, {"cpp": 5}).cell_index(), pya.DTrans()))
+rep2 = generate.generate(wlib2.path / "inv2" / "inv2.sch", layout=l2)
+moved = {connectivity.instance_name(i): (i.pcell_parameters_by_name()["row"], i.dcplx_trans.disp.y)
+         for i in t2.each_inst() if connectivity.instance_name(i)}
+check("updating after adding a frame puts existing transistors into the rows",
+      sorted(rep2["updated"]) == ["M1", "M2"] and all(r and y == 0 for r, y in moved.values()), (rep2["updated"], moved))
+
 res = connectivity.check(gl, gtop, connectivity.load_conn(gds))
 check("connectivity check runs on row-mode devices", not res["missing"] and res["nets"]["VDD"]["terminals"] > 0,
       connectivity.summary(res))

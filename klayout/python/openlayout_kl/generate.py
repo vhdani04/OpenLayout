@@ -230,6 +230,8 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
                 cur = inst.pcell_parameters_by_name()
                 if any(str(cur.get(k2)) != str(v) for k2, v in params.items()):
                     inst.change_pcell_parameters(params)
+                    if row and not cur.get("row"):    # into the frame's row: cell coordinates at y = 0
+                        inst.transform(pya.DTrans(0, -inst.dcplx_trans.disp.y))
                     report["updated"].append(name)
                 else:
                     report["unchanged"].append(name)

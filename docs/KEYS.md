@@ -98,7 +98,8 @@ VDD / VSS rails on M1 (labelled as pins) and dummy gates at both cell edges - li
 cells. Transistors go in with *Standard-cell row* on and at y = 0: nMOS sit on the bottom fins, pMOS
 on the top fins, and an nMOS and a pMOS in the same column share one gate (no strap; contact it with
 LIG + V0 near mid-cell). Generating the layout from the schematic into a cell that has a frame
-places the transistors this way by itself. Row devices have at most 3 fins (use fingers for more).
+places the transistors this way by itself (for a layout generated before it had a frame: add the
+frame, then *Update Layout from Schematic* moves the transistors into the rows). Row devices have at most 3 fins (use fingers for more).
 
 **Chaining** (shared diffusion, like Virtuoso's abutment): drop a transistor next to another of the
 same type and row - touching, or overlapping by up to a gate pitch - and it snaps into the chain:

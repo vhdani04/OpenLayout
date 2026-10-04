@@ -267,9 +267,19 @@ class OpenLayoutUI:
         a.title = title
         if shortcut:
             a.shortcut = shortcut
-        a.on_triggered += fn
+        a.on_triggered += lambda: self.run(title, fn)
         self.actions.append(a)
         return a
+
+    @staticmethod
+    def run(title, fn):
+        """Menu commands report failures (KLayout would only log them)."""
+        try:
+            fn()
+        except Exception as e:
+            print(f"OpenLayout: {title} failed: {e}")
+            pya.MessageBox.warning("OpenLayout", f"{title.rstrip('…')} failed:\n{type(e).__name__}: {e}",
+                                   pya.MessageBox.Ok)
 
     def build_menu(self):
         menu = self.mw.menu()
@@ -303,12 +313,12 @@ class OpenLayoutUI:
     def frame_dialog(self):
         view = self.mw.current_view()
         cv = view.active_cellview() if view else None
-        if cv is None or not cv.is_valid() or not view.is_editable():
+        if cv is None or not cv.is_valid() or cv.cell is None or not view.is_editable():
             pya.MessageBox.info("OpenLayout", "Open the (editable) layout of the cell first.", pya.MessageBox.Ok)
             return
         frame = stdcell.find_frame(cv.cell)
         cur = frame.pcell_parameters_by_name() if frame is not None else {}
-        cpp = pya.InputDialog.ask_int("Standard-cell frame",
+        cpp = pya.InputDialog.ask_int_ex("Standard-cell frame",
                                       "Width in gate pitches (54 nm each; 7.5-track cell, 270 nm high):",
                                       int(cur.get("cpp") or stdcell.default_width(cv.cell)), 1, 400, 1)
         if cpp is None:

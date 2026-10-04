@@ -110,4 +110,30 @@ check("the selection is still usable after chaining", view.has_object_selection(
 mw.cm_undo()
 check("chaining is one undo step", devs("pmos") == [(0, False, False), (500, False, False)], devs("pmos"))
 
+# the menu command's dialogs, answered by stand-ins with KLayout's real signatures
+class Dialogs:
+    asked = []
+
+    @staticmethod
+    def ask_int_ex(title, label, value, vmin, vmax, step):
+        Dialogs.asked.append(("width", value))
+        return 9
+
+    @staticmethod
+    def ask_item(title, label, items, index):
+        Dialogs.asked.append(("vt", items[index]))
+        return "slvt"
+
+
+real_dialog, pya.InputDialog = pya.InputDialog, Dialogs
+try:
+    gui.instance.frame_dialog()
+finally:
+    pya.InputDialog = real_dialog
+frames = [i for i in cell.each_inst() if stdcell._is_frame(i)]
+p = frames[0].pcell_parameters_by_name()
+check("the Standard-Cell Frame menu command asks width and VT and applies them",
+      len(frames) == 1 and (p["cpp"], p["vt"]) == (9, "slvt") and Dialogs.asked == [("width", 14), ("vt", "lvt")],
+      (p, Dialogs.asked))
+
 print("PASS stdcell_gui" if not failures else f"FAIL stdcell_gui: {', '.join(failures)}")
