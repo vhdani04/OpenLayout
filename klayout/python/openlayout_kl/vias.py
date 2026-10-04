@@ -10,6 +10,8 @@ Not a KLayout mode: while placing, this service holds the mouse grab, so it sees
 """
 import pya
 
+from . import drd
+from .asap7 import LAYERS
 from .pcells import LIBRARY, via_choices, via_geometry
 
 NAME = "openlayout_via"
@@ -105,6 +107,7 @@ class ViaPlacer(pya.Plugin):
     def finish(self):
         self.active = False
         self.markers = []
+        drd.clear(self._view)
         self.ungrab_mouse()
 
     def show(self, p):
@@ -122,6 +125,22 @@ class ViaPlacer(pya.Plugin):
         t = pya.DTrans(p.x, p.y)
         for m, (_, box) in zip(self.markers, self.boxes):
             m.set(t * box)
+        self.show_drd(p)
+
+    def show_drd(self, p):
+        """DRD hints: the via's cuts and pads against their neighbours"""
+        cv = self._view.active_cellview()
+        if not cv.is_valid():
+            return
+        layout = cv.layout()
+        ctx = cv.context_dtrans()
+        t = ctx.inverted() * pya.DCplxTrans(1, 0, False, p.x, p.y)
+        moving = {}
+        for layer, box in self.boxes:
+            li = layout.find_layer(LAYERS[layer], 0)
+            if li is not None:
+                moving.setdefault(li, []).append(pya.DPolygon(t * box))
+        drd.show_layers(self._view, cv.cell, moving, None, trans=ctx)
 
     def place(self, p):
         view = self._view

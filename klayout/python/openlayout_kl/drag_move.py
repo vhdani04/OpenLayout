@@ -20,8 +20,12 @@ moved transistors onto their row and into chains there.
 The standard-cell frame's shapes cover the whole cell, so picking (clicks too) prefers anything else
 under the mouse (stdcell.pick).
 
-DRD hints (drd.py): while a selection is being moved, and while a box is being drawn in KLayout's
-Box mode, gaps under the minimum spacing to the neighbouring shapes are shown.
+DRD hints (drd.py): this service also follows KLayout's own tools, which tell plugins nothing about
+what they are drawing, from the mouse input it sees first: a box (Box mode) or polygon (Polygon
+mode) being drawn, an edge being stretched (Partial mode, `s`), a selection being moved or copied
+(any move: drag, `m`, KLayout's Move, copy `c`) and a cell about to be placed (Instance mode) - and
+shows the gaps under the minimum spacing to the neighbouring shapes, on the same layer and between
+layers. (The path tool and the via placer show theirs themselves.)
 
 This service takes no mode of its own; it holds a mouse grab so it sees presses and clicks before
 KLayout's selection does.
@@ -36,6 +40,17 @@ MOVE_ACTION = "@secrets.sel_move_interactive"
 CATCH_PIXELS = 5
 _under_mouse = None   # the DragMove of the view the mouse was last over, and where
 after_move_hooks = []  # f(view), called when a move is done
+
+
+def _safe(fn):
+    """DRD hints must never break editing: report a failure and carry on"""
+    def wrapper(*args, **kw):
+        try:
+            return fn(*args, **kw)
+        except Exception as e:
+            print(f"OpenLayout DRD ({fn.__name__}): {type(e).__name__}: {e}")
+    wrapper.__name__ = fn.__name__
+    return wrapper
 
 
 def notify_moved(view):
@@ -114,8 +129,13 @@ class DragMove(pya.Plugin):
         self.switching = False     # this service switches KLayout's mode (which cancels - not Esc)
         self.esc_filter = None     # watches the canvas for Esc while a box / move shows hints
         self._drd_moving = None    # (origin, {layer: [DPolygon]}, skip, cv) of the selection being moved
-        self._box_start = None     # first corner of a box being drawn in Box mode
-        self.box_new = False       # the box was just started (KLayout then cancels other drags)
+        self._drawing = None       # ("box" | "polygon", [points]) being drawn with KLayout's tools
+        self._stretching = None    # (origin, cv, layer, polygon, edge index, skip) of an edge stretch
+        self.box_new = False       # a box / polygon / stretch was just started (KLayout then cancels other drags)
+        self.drd_tried = False     # the selection being moved was looked at (it may have no checked layer)
+        self.last_p = None         # the mouse position of the previous move event
+        self.inst_cache = {}       # (cell name, angle, mirror) -> {layer: [DPolygon]} for Instance mode
+        self.inst_shown = False
 
     def _grab(self):
         if not self.grabbed:
@@ -230,15 +250,34 @@ class DragMove(pya.Plugin):
         self._grab()
         _under_mouse = (self, p)
         mode = self._view.mode_name()
+        last, self.last_p = self.last_p, p
         self.box_new = False
-        if mode != "box":
-            self.box_start = None
-        elif prio and self.box_start is not None:
-            self.drd_box(p)
+        if self._drawing is not None and mode != self._drawing[0]:
+            self.drawing = None
+        elif prio and self._drawing is not None:
+            self.drd_drawing(p)
+        if prio and mode == "instance":
+            self.drd_instance(p)
+            self.inst_shown = True
+        elif prio and self.inst_shown:     # left Instance mode
+            self.inst_shown = False
+            drd.clear(self._view)
+        if prio and mode == "partial" and not self.stretch_once and self._stretching is not None:
+            if self._move_in_progress():
+                self.drd_stretch(p)
+            else:
+                self.stretching = None
+                drd.clear(self._view)
         if prio and (mode == "move" or (mode == "partial" and self.stretch_once)):
             if self._move_in_progress():
                 self.moving = True
-                self.drd_update(p)
+                if mode == "partial":
+                    self.drd_stretch(p)
+                else:
+                    if self._drd_moving is None and not self.drd_tried:
+                        # a move KLayout started itself (its Move tool, copy): from where the mouse was
+                        self.drd_start(last or p)
+                    self.drd_update(p)
                 return False
             if self.moving:          # a move / stretch was just placed: back to Select mode
                 self._back_to_select()
@@ -257,8 +296,11 @@ class DragMove(pya.Plugin):
         self._grab()
         view = self._view
         if prio and view.mode_name() == "box" and self._plain_left(buttons):
-            self.box_start = self.snap(p)
+            self.drawing = ("box", [self.snap(p)])
             self.box_new = True
+            return False
+        if prio and view.mode_name() == "partial" and self._plain_left(buttons):
+            self.stretch_start(p)            # the edge KLayout's Partial mode picks there
             return False
         if not prio or self.dragging or not self._plain_left(buttons) or self.command:
             return False
@@ -273,8 +315,12 @@ class DragMove(pya.Plugin):
         return True
 
     def mouse_button_released_event(self, p, buttons, prio):
-        if prio and self.box_start is not None and self._view.mode_name() == "box":
-            self.box_start = None
+        if prio and self._drawing is not None and self._drawing[0] == "box":
+            self.drawing = None
+            drd.clear(self._view)
+            return False
+        if prio and self._stretching is not None and not self.stretch_once:
+            self.stretching = None
             drd.clear(self._view)
             return False
         if not (prio and self.dragging):
@@ -293,13 +339,24 @@ class DragMove(pya.Plugin):
         # This service sees a click first (prio, as it holds a grab) and again after KLayout's own
         # click selection (non-priority round).
         view = self._view
-        if prio and view.mode_name() == "box" and buttons & pya.ButtonState.LeftButton:
-            if self.box_start is None:
-                self.box_start = self.snap(p)
+        mode = view.mode_name()
+        if prio and mode == "box" and buttons & pya.ButtonState.LeftButton:
+            if self._drawing is None:
+                self.drawing = ("box", [self.snap(p)])
                 self.box_new = True
             else:
-                self.box_start = None
+                self.drawing = None
                 drd.clear(view)
+            return False
+        if prio and mode == "polygon" and buttons & pya.ButtonState.LeftButton:
+            if self._drawing is None:
+                self.drawing = ("polygon", [self.snap(p)])
+                self.box_new = True
+            else:
+                pts = self._drawing[1]
+                q = self._ortho(pts[-1], self.snap(p))
+                if q != pts[-1]:
+                    pts.append(q)
             return False
         if prio and self.command and buttons & pya.ButtonState.RightButton:
             self.end_command()
@@ -327,22 +384,37 @@ class DragMove(pya.Plugin):
                 view.object_selection = keep + [better]
         return False
 
+    def mouse_double_click_event(self, p, buttons, prio):
+        if prio and self._drawing is not None and self._drawing[0] == "polygon":
+            self.drawing = None            # the polygon is finished
+            drd.clear(self._view)
+        return False
+
     def drag_cancel(self):          # Esc (KLayout also cancels when the mode changes)
-        if self.box_new:           # the box tool starting its box (it cancels twice), not Esc
+        if self.box_new:           # the box / polygon tool starting its shape (it cancels twice), not Esc
             return
         if not self.switching:
             self.drd_stop()
-            self.box_start = None
+            self.drawing = None
             self.end_command()
 
     # ---- DRD hints -------------------------------------------------------------------------------
     @property
-    def box_start(self):
-        return self._box_start
+    def drawing(self):
+        return self._drawing
 
-    @box_start.setter
-    def box_start(self, value):
-        self._box_start = value
+    @drawing.setter
+    def drawing(self, value):
+        self._drawing = value
+        self._watch_esc()
+
+    @property
+    def stretching(self):
+        return self._stretching
+
+    @stretching.setter
+    def stretching(self, value):
+        self._stretching = value
         self._watch_esc()
 
     @property
@@ -357,7 +429,7 @@ class DragMove(pya.Plugin):
     def _watch_esc(self):
         """Esc ends a box or a move without telling this service (KLayout's tool takes the key):
         while hints may be up, an event filter on the canvas sees it"""
-        busy = self._box_start is not None or self._drd_moving is not None
+        busy = self._drawing is not None or self._drd_moving is not None or self._stretching is not None
         if busy and self.esc_filter is None and self._move_in_progress() is not None and self.canvas:
             self.esc_filter = EscFilter(self)
             self.canvas.installEventFilter(self.esc_filter)
@@ -367,7 +439,7 @@ class DragMove(pya.Plugin):
             self.esc_filter = None
 
     def escape(self):
-        self.box_start = None
+        self.drawing = None
         self.drd_stop()
 
     def _current_layer(self):
@@ -382,20 +454,154 @@ class DragMove(pya.Plugin):
             return None
         return cv, cv.layout().layer(lp.source_layer, lp.source_datatype)
 
-    def drd_box(self, p):
+    @staticmethod
+    def _ortho(last, q):
+        """the next polygon point as KLayout's Manhattan connections place it"""
+        if abs(q.x - last.x) >= abs(q.y - last.y):
+            return pya.DPoint(q.x, last.y)
+        return pya.DPoint(last.x, q.y)
+
+    @_safe
+    def drd_drawing(self, p):
+        """the box / polygon being drawn, up to the mouse"""
         target = self._current_layer()
         if target is None:
             return
         cv, li = target
         ctx = cv.context_dtrans()
-        box = pya.DBox(self.box_start, self.snap(p))
-        if box.width() <= 0 or box.height() <= 0:
+        kind, pts = self._drawing
+        q = self.snap(p)
+        if kind == "box":
+            box = pya.DBox(pts[0], q)
+            shape = pya.DPolygon(box) if box.width() > 0 and box.height() > 0 else None
+        else:
+            ring = pts + [self._ortho(pts[-1], q)]
+            ring = [a for i, a in enumerate(ring) if i == 0 or a != ring[i - 1]]
+            shape = pya.DPolygon(ring) if len(ring) >= 3 and pya.DPolygon(ring).area() > 0 else None
+        if shape is None:
             drd.clear(self._view)
             return
-        drd.show(self._view, cv.cell, li, [pya.DPolygon(box).transformed(ctx.inverted())], trans=ctx)
+        drd.show(self._view, cv.cell, li, [shape.transformed(ctx.inverted())], trans=ctx)
+
+    @_safe
+    def stretch_start(self, p):
+        """the shape edge nearest to p in the current cell (what Partial mode stretches)"""
+        self.stretching = None
+        view = self._view
+        cv = view.active_cellview()
+        if not cv.is_valid():
+            return
+        layout, cell = cv.layout(), cv.cell
+        ctx = cv.context_dtrans()
+        q = ctx.inverted() * p
+        tol = 6 / view.viewport_trans().mag
+        win = pya.DBox(q.x - tol, q.y - tol, q.x + tol, q.y + tol).to_itype(layout.dbu)
+        best = None
+        for li in layout.layer_indexes():
+            if not drd.checked(layout, li):
+                continue
+            for s in cell.shapes(li).each_touching(win):
+                if not (s.is_box() or s.is_polygon() or s.is_path()):
+                    continue
+                poly = s.dpolygon
+                for i, e in enumerate(poly.each_edge()):
+                    if e.dx() != 0 and e.dy() != 0:
+                        continue
+                    d = e.distance_abs(q)
+                    lo_x, hi_x = sorted((e.p1.x, e.p2.x))
+                    lo_y, hi_y = sorted((e.p1.y, e.p2.y))
+                    if not (lo_x - tol <= q.x <= hi_x + tol and lo_y - tol <= q.y <= hi_y + tol):
+                        continue
+                    if d <= tol and (best is None or d < best[0]):
+                        best = (d, li, s, poly, i)
+        if best is None:
+            return
+        self.box_new = True        # Partial mode now cancels the other drags: not an Esc
+        _, li, shape, poly, i = best
+        cidx = cell.cell_index()
+
+        def skip(it, shape=shape, cidx=cidx):
+            return it.cell_index() == cidx and it.shape() == shape
+        self.stretching = (p, cv, li, poly, i, skip)
+
+    @_safe
+    def drd_stretch(self, p):
+        if self._stretching is None:
+            return
+        origin, cv, li, poly, i, skip = self._stretching
+        d = self.snap(p) - self.snap(origin)
+        pts = list(poly.each_point_hull())
+        a, b = pts[i], pts[(i + 1) % len(pts)]
+        shift = pya.DVector(d.x, 0) if a.x == b.x else pya.DVector(0, d.y)   # the edge moves across itself
+        pts[i], pts[(i + 1) % len(pts)] = a + shift, b + shift
+        new = pya.DPolygon(pts)
+        if new.area() <= 0:
+            drd.clear(self._view)
+            return
+        drd.show(self._view, cv.cell, li, [new], skip, trans=cv.context_dtrans())
+
+    @_safe
+    def drd_instance(self, p):
+        """the cell the Instance tool is about to place, at the mouse (KLayout puts the corner of
+        its bounding box there unless "place origin" is set)"""
+        mw = pya.Application.instance().main_window()
+        cv = self._view.active_cellview()
+        name = mw.get_config("edit-inst-cell-name") if mw else ""
+        if not name or not cv.is_valid():
+            drd.clear(self._view)
+            return
+        angle = float(mw.get_config("edit-inst-angle") or 0)
+        mirror = mw.get_config("edit-inst-mirror") == "true"
+        key = (id(cv.layout()), name, angle, mirror)
+        if key not in self.inst_cache:
+            self.inst_cache[key] = self._instance_shapes(cv.layout(), name, pya.DCplxTrans(1, angle, mirror, 0, 0))
+        geo = self.inst_cache[key]
+        if not geo:
+            drd.clear(self._view)
+            return
+        shapes, bbox = geo
+        ctx = cv.context_dtrans()
+        q = ctx.inverted() * self.snap(p)
+        d = q - pya.DPoint(0, 0) if mw.get_config("edit-inst-place-origin") == "true" else q - bbox.p1
+        moved = {li: [poly.moved(d.x, d.y) for poly in polys] for li, polys in shapes.items()}
+        drd.show_layers(self._view, cv.cell, moved, None, trans=ctx)
+
+    @staticmethod
+    def _instance_shapes(layout, name, trans):
+        """({layer of `layout`: [DPolygon]}, bbox) of a cell of this layout or of a library
+        (standard cells; not PCells, whose parameters the tool keeps to itself)"""
+        src = layout.cell(name)
+        src_layout = layout
+        if src is None:
+            for lname in pya.Library.library_names():
+                lib = pya.Library.library_by_name(lname)
+                if lib is None:
+                    continue
+                c = lib.layout().cell(name)
+                if c is not None and not c.is_pcell_variant() and lib.layout().pcell_declaration(name) is None:
+                    src, src_layout = c, lib.layout()
+                    break
+        if src is None:
+            return None
+        shapes = {}
+        for sli in src_layout.layer_indexes():
+            info = src_layout.get_info(sli)
+            li = layout.find_layer(info)
+            if li is None or not drd.checked(layout, li):
+                continue
+            it = src.begin_shapes_rec(sli)
+            while not it.at_end():
+                s = it.shape()
+                if s.is_box() or s.is_polygon() or s.is_path():
+                    poly = s.polygon.transformed(it.trans()).to_dtype(src_layout.dbu)
+                    shapes.setdefault(li, []).append(poly.transformed(trans))
+                it.next()
+        bbox = (trans * src.dbbox()) if not src.bbox().empty() else pya.DBox(0, 0, 0, 0)
+        return shapes, bbox
 
     def drd_start(self, p):
         """remember the selection (per layer, cell coordinates) as the move starts"""
+        self.drd_tried = True
         try:
             self.drd_moving = None
             view = self._view
@@ -409,7 +615,7 @@ class DragMove(pya.Plugin):
                 if obj.is_cell_inst():
                     child = obj.inst().cell
                     for li in layout.layer_indexes():
-                        if drd.rule_for(layout, li)[1] is None:
+                        if not drd.checked(layout, li):
                             continue
                         it = child.begin_shapes_rec(li)
                         while not it.at_end():
@@ -418,7 +624,7 @@ class DragMove(pya.Plugin):
                                 poly = s.polygon.transformed(it.trans()).to_dtype(dbu)
                                 shapes.setdefault(li, []).append(poly.transformed(obj.dtrans()))
                             it.next()
-                elif not obj.shape.is_text() and drd.rule_for(layout, obj.layer)[1] is not None:
+                elif not obj.shape.is_text() and drd.checked(layout, obj.layer):
                     poly = obj.shape.polygon.to_dtype(dbu).transformed(obj.dtrans())
                     shapes.setdefault(obj.layer, []).append(poly)
             if cv is None or not shapes:
@@ -436,6 +642,7 @@ class DragMove(pya.Plugin):
             print(f"OpenLayout DRD: {e}")
             self.drd_moving = None
 
+    @_safe
     def drd_update(self, p):
         if self.drd_moving is None:
             return
@@ -446,6 +653,8 @@ class DragMove(pya.Plugin):
 
     def drd_stop(self):
         self.drd_moving = None
+        self.drd_tried = False
+        self.stretching = None
         drd.clear(self._view)
 
     def deactivated(self):

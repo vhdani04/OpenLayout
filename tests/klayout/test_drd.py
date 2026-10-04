@@ -1,6 +1,6 @@
-# DRD spacing hints: the rule values per layer, and the hints while drawing a path, drawing a box
-# and moving a shape (real mouse input through LayoutView.send_mouse_*), in KLayout with a main
-# window (headless):
+# DRD spacing hints: the rule values per layer and between layers, and the hints in every editing
+# tool - path, box, polygon, stretch, move, copy, instance and via placement (real mouse input
+# through LayoutView.send_mouse_*), in KLayout with a main window (headless):
 #   klayout -e -z -nc -r tests/klayout/test_drd.py
 import os
 import sys
@@ -12,8 +12,10 @@ sys.path.insert(0, str(HOME / "klayout" / "python"))
 
 import pya  # noqa: E402
 
-from openlayout_kl import drd, gui  # noqa: E402
+from openlayout_kl import drag_move, drd, gui  # noqa: E402
 from openlayout_kl.path_tool import PathTool  # noqa: E402
+from openlayout_kl.pcells import via_geometry  # noqa: E402
+from openlayout_kl.vias import ViaPlacer  # noqa: E402
 
 failures = []
 
@@ -52,6 +54,34 @@ check("V1 vias: 18 nm", hits(21, [(0, 0, 18, 18)], [(33, 0, 51, 18)]) == [(18, 1
 check("gates: 34 nm", hits(7, [(17, 0, 37, 300)], [(67, 0, 87, 300)]) == [(34, 30)])
 check("a touching shape is the same net: no hint", hits(19, [(0, 0, 18, 100)], [(18, 40, 60, 58)]) == [])
 check("layers without spacing rules: no hint", hits(12, [(0, 0, 100, 100)], [(105, 0, 200, 100)]) == [])
+
+
+def hits2(layer, static, moving):
+    """moving shapes on `layer` against static {layer: [boxes]}: [(required, actual, label)]"""
+    for li in c.layout().layer_indexes():
+        c.shapes(li).clear()
+    for num, boxes in static.items():
+        for b in boxes:
+            c.shapes(ly.layer(num, 0)).insert(pya.DBox(*[v / 1000 for v in b]))
+    return [(round(h[3], 1), round(h[4], 1), h[5]) for h in
+            drd.check(c, ly.layer(layer, 0), [pya.DPolygon(pya.DBox(*[v / 1000 for v in b])) for b in moving])]
+
+
+check("between layers: LIG 10 nm from LISD needs 14", hits2(16, {17: [(26, 0, 50, 100)]}, [(0, 0, 16, 100)])
+      == [(14, 10, "14 nm min to LISD")])
+check("between layers: LIG overlapping LISD (connected): no hint",
+      hits2(16, {17: [(10, 0, 34, 100)]}, [(0, 0, 16, 100)]) == [])
+check("between layers: SDT 3 nm from a gate needs 5", hits2(88, {7: [(71, 0, 91, 300)]}, [(44, 0, 68, 81)])
+      == [(5, 3, "5 nm min to GATE")])
+check("between layers: a gate 5 nm from ACTIVE needs 9 (the other way round too)",
+      hits2(7, {11: [(42, 27, 116, 108)]}, [(17, -50, 37, 300)]) == [(9, 5, "9 nm min to GATE".replace("GATE", "ACTIVE"))]
+      and hits2(11, {7: [(17, -50, 37, 300)]}, [(42, 27, 116, 108)]) == [(9, 5, "9 nm min to GATE")])
+check("between layers: LIG 10 nm above a gate end needs 14", hits2(16, {7: [(17, 0, 37, 200)]}, [(0, 210, 160, 226)])
+      == [(14, 10, "14 nm min to GATE")])
+check("between layers: ACTIVE 20 nm from WELL needs 27", hits2(11, {1: [(0, 0, 300, 300)]}, [(0, 320, 200, 401)])
+      == [(27, 20, "27 nm min to WELL")])
+check("between layers: LIG and LISD corner to corner, 15 nm", hits2(16, {17: [(26, 110, 50, 210)]}, [(0, 0, 16, 100)])
+      == [(15, 14.1, "15 nm min to LISD")])
 
 # ---- in the editor ----------------------------------------------------------------------------
 mw = pya.Application.instance().main_window()
@@ -155,6 +185,111 @@ check("moving a shape to 10 nm from another: hint while dragging", "18 nm min" i
 view.send_mouse_release_event(pb, L)
 view.send_mouse_move_event(pb + pya.DVector(40, 40), 0)
 check("the drop clears the hint", not shown.markers and not labels(), labels())
+
+B = pya.DBox(0.2, 0, 0.3, 0.1)
+
+
+def restore():
+    """A and B only"""
+    view.switch_mode("select")
+    view.clear_selection()
+    for s in list(cell.shapes(m1).each()):
+        if s.dbbox() != pya.DBox(0, 0, 0.1, 0.1):
+            s.delete()
+    cell.shapes(m1).insert(B)
+
+
+def click(x, y):
+    q = px(x, y)
+    view.send_mouse_move_event(q, 0)
+    view.send_mouse_press_event(q, L)
+    view.send_mouse_release_event(q, L)
+
+
+def esc():
+    pya.QCoreApplication.sendEvent(canvas, pya.QKeyEvent(pya.QEvent.KeyPress, pya.Qt.Key_Escape.to_i(),
+                                                         pya.Qt.NoModifier))
+    for _ in range(5):
+        pya.Application.instance().process_events()
+
+
+restore()
+
+# a polygon drawn in Polygon mode, its left side 15 nm from A
+view.switch_mode("polygon")
+for x, y in ((0.115, 0.0), (0.15, 0.0), (0.15, 0.1)):
+    click(x, y)
+view.send_mouse_move_event(px(0.115, 0.1), 0)
+check("drawing a polygon 15 nm from a wire: hint", "18 nm min" in labels(), labels())
+q = px(0.115, 0.1)
+view.send_mouse_press_event(q, L)
+view.send_mouse_release_event(q, L)
+dbl = pya.QMouseEvent(pya.QEvent.MouseButtonDblClick, pya.QPointF(q.x, q.y), pya.Qt.LeftButton,
+                      pya.Qt.LeftButton, pya.Qt.NoModifier)
+pya.QCoreApplication.sendEvent(canvas, dbl)
+for _ in range(5):
+    pya.Application.instance().process_events()
+view.send_mouse_move_event(px(0.4, 0.25), 0)
+check("the polygon finished (double click): hints cleared", not shown.markers and not labels(), labels())
+restore()
+
+# stretching B's left edge (s) to 15 nm from A, then placing it
+view.send_mouse_move_event(px(0.2, 0.05), 0)
+drag_move.stretch_under_mouse()
+view.send_mouse_move_event(px(0.15, 0.05), 0)
+view.send_mouse_move_event(px(0.115, 0.05), 0)
+check("stretching an edge to 15 nm from a wire: hint", "18 nm min" in labels(), labels())
+click(0.115, 0.05)
+view.send_mouse_move_event(px(0.4, 0.25), 0)
+check("the stretch placed: hints cleared", not shown.markers and not labels(), labels())
+restore()
+
+# KLayout's Partial tool: press on B's left edge, drag it to 15 nm from A, release
+view.switch_mode("partial")
+pa, pb = px(0.2, 0.05), px(0.115, 0.05)
+view.send_mouse_move_event(pa, 0)
+view.send_mouse_press_event(pa, L)
+for i in range(1, 7):
+    view.send_mouse_move_event(pa + (pb - pa) * (i / 6), L)
+check("dragging an edge in Partial mode to 15 nm from a wire: hint", "18 nm min" in labels(), labels())
+view.send_mouse_release_event(pb, L)
+view.send_mouse_move_event(px(0.4, 0.25), 0)
+check("the edge released: hints cleared", not shown.markers and not labels(), labels())
+restore()
+
+# copying B (c) to 10 nm from A: the copy is checked, the original stays an obstacle
+click(0.25, 0.05)
+view.send_mouse_move_event(px(0.25, 0.05), 0)
+mw.menu().action("@secrets.duplicate_interactive").trigger()
+pa, pb = px(0.25, 0.05), px(0.16, 0.05)
+for i in range(1, 7):
+    view.send_mouse_move_event(pa + (pb - pa) * (i / 6), 0)
+check("copying a shape to 10 nm from another: hint while placing the copy", "18 nm min" in labels(), labels())
+esc()
+view.send_mouse_move_event(px(0.4, 0.25), 0)
+check("Esc ends the copy: hints cleared", not shown.markers and not labels(), labels())
+restore()
+
+# Instance mode: a cell with an M1 square, its corner at the mouse 15 nm right of A
+layout = view.active_cellview().layout()
+sub = layout.create_cell("SUB")
+sub.shapes(layout.layer(19, 0)).insert(pya.DBox(0, 0, 0.05, 0.05))
+mw.set_config("edit-inst-cell-name", "SUB")
+view.switch_mode("instance")
+view.send_mouse_move_event(px(0.115, 0.0), 0)
+check("placing an instance 15 nm from a wire: hint", "18 nm min" in labels(), labels())
+view.switch_mode("select")
+view.send_mouse_move_event(px(0.4, 0.25), 0)
+check("leaving Instance mode clears the hint", not shown.markers and not labels(), labels())
+
+# the via placer (o): an M1-M2 via whose M1 pad comes 11 nm from A
+placer = ViaPlacer(view)
+geo = via_geometry("m1", "m2")
+placer.boxes = [(lay, pya.DBox(*[v / 1000 for v in b])) for lay, bs in geo["shapes"].items() for b in bs]
+placer.show(pya.DPoint(0.12, 0.05))
+check("placing a via 11 nm from a wire: hint (the pad's 28 nm side is a line end: 25 nm)", "25 nm min" in labels(),
+      labels())
+drd.clear(view)
 
 # off: no hints
 drd.set_enabled(False)

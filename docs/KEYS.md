@@ -169,14 +169,20 @@ The **LSW** (right side) is the only layer panel. *All layers* / *Used layers* t
 shapes in the current cell). Click a layer to make it the current drawing layer, untick to hide it.
 **AV** shows every layer; **NV** hides every layer except the current one.
 
-**DRD spacing hints** (like Virtuoso's DRD in notify mode): while you draw a path, draw a box or
-move shapes, every gap to a neighbouring shape on the same layer that is closer than the ASAP7
-minimum spacing is outlined in red with a dimension line labelled with the minimum ("18 nm min").
-The values are the DRC deck's: line-end vs. side spacing for LISD / LIG / M1-M3 / M8-M9, the
-horizontal / vertical values for WELL, ACTIVE, GATE, SDT, GCUT and the track metals M4-M7, the
-via spacings, and corner-to-corner where the DRM has it. Shapes touching the edited one are on its
-net and not checked. Nothing is constrained - the hints go when the edit ends. Switch them off with
-*OpenLayout > DRD Spacing Hints*.
+**DRD spacing hints** (like Virtuoso's DRD in notify mode): in every editing tool - path, box,
+polygon, stretch (`s` or the Partial tool), move (drag, `m`, KLayout's Move), copy (`c`), instance
+placement and via placement (`o`) - every gap between what you are drawing or moving and a
+neighbouring shape that is closer than the ASAP7 minimum spacing is outlined in red with a
+dimension line labelled with the minimum: "18 nm min" on the same layer, "14 nm min to LISD"
+between layers. The values are the DRC deck's: line-end vs. side spacing for LISD / LIG / M1-M3 /
+M8-M9, the horizontal / vertical values for WELL, ACTIVE, GATE, SDT, GCUT and the track metals
+M4-M7, the via spacings, corner-to-corner where the DRM has it, and between layers GATE-ACTIVE,
+LIG-LISD / SDT / GATE / GCUT, SDT-GATE, GCUT-GATE, GCUT-ACTIVE and ACTIVE-WELL. Shapes touching the
+edited one count as connected to it and are not checked (the hints know no netlist: LIG and LISD
+of the same net that do not touch are reported; Run DRC knows better). Instance placement covers
+cells of the layout and standard cells (not PCells, whose parameters KLayout's instance tool keeps
+to itself). Nothing is constrained - the hints go when the edit ends or on Esc. Switch them off
+with *OpenLayout > DRD Spacing Hints*.
 
 The **Connectivity** panel (right side) compares the layout with its schematic: open nets (with
 flight lines in the layout), shorts, and parts missing from / extra to the schematic. Click a net

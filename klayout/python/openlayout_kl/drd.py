@@ -1,20 +1,26 @@
-"""Design-rule-driven editing, like Virtuoso's DRD in notify mode: while a shape is being drawn
-(path, box) or moved, every gap between it and a neighbouring shape on the same layer that is
-closer than the ASAP7 minimum spacing is outlined, with a dimension line labelled with the minimum
-("18 nm min"). Nothing is constrained; the hints go away when the edit ends.
+"""Design-rule-driven editing, like Virtuoso's DRD in notify mode: while a shape is being drawn or
+moved - path, box, polygon, stretch, move, copy, instance and via placement - every gap between it
+and a neighbouring shape that is closer than the ASAP7 minimum spacing is outlined, with a
+dimension line labelled with the minimum ("18 nm min", or "14 nm min to LISD" between layers).
+Nothing is constrained; the hints go away when the edit ends.
 
-The spacing values are the DRC deck's (docs/DRC.md), per layer:
+The spacing values are the DRC deck's (docs/DRC.md).
+Same layer, per layer:
   lines  - LISD, LIG, M1-M3, M8-M9: by the lengths of the facing edges (long side vs. line end,
            and line-end width classes), plus corner-to-corner where the DRM has it
   hv     - a horizontal and a vertical spacing (WELL, ACTIVE, GATE, SDT, GCUT, M4-M7)
   plain  - one value (vias)
-Shapes that touch or overlap the edited shape are on its net and are not checked.
+Between layers (INTER): GATE-ACTIVE, LIG-LISD / SDT / GATE / GCUT, SDT-GATE, GCUT-GATE,
+GCUT-ACTIVE (channel), ACTIVE-WELL.
+Shapes that touch or overlap the edited shape are taken as connected to it (same net, or a
+contact / cut on purpose) and are not checked - the interactive check knows no netlist, so LIG
+and LISD on the same net but not touching are reported (the DRC deck knows better).
 """
 import math
 
 import pya
 
-from .asap7 import LAYER_NAME
+from .asap7 import LAYER_NAME, LAYERS
 
 # (kind, values ...) in nm
 #   lines: (long edge threshold, side-side, tip-side, tip-tip >= 24, tip-tip < 24, tip-tip mixed, corner)
@@ -26,7 +32,7 @@ RULES = {
     "m3": ("lines", 36, 18, 25, 27, 31, 31, 20),
     "m8": ("lines", 79.9, 40, 43, 46, 46, 46, None),
     "m9": ("lines", 79.9, 40, 43, 46, 46, 46, None),
-    #   hv: (horizontal spacing, vertical spacing); None = no rule that way
+    #   hv: (horizontal spacing, vertical spacing[, corner]); None = no rule that way
     "well": ("hv", 54, 108),
     "active": ("hv", 38, 27),
     "gate": ("hv", 34, 54),
@@ -47,18 +53,38 @@ RULES = {
     "v7": ("plain", 45, 45),
     "v8": ("plain", 57, 57),
 }
+# between layers: (layer a, layer b, horizontal, vertical, corner) in nm (DRM rule in the comment)
+INTER = [
+    ("gate", "active", 9, None, None),       # GATE.ACTIVE.S.4 (gate not over the ACTIVE)
+    ("lig", "lisd", 14, 14, 15),             # LIG.LISD.S.6 / S.7 (not on the same net)
+    ("lig", "sdt", 14, 14, None),            # LIG.SDT.S.8
+    ("lig", "gate", 17, 14, None),           # LIG.GATE.S.9B / S.9A (S.10: 5 nm to channel gates)
+    ("lig", "gcut", None, 5, None),          # LIG.GCUT.S.11
+    ("sdt", "gate", 5, None, None),          # SDT.GATE.S.2
+    ("gcut", "gate", 17, None, None),        # GCUT.GATE.S.2 (a gate it does not cut)
+    ("gcut", "active", None, 4, None),       # GCUT.ACTIVE.S.1 (to the channel)
+    ("active", "well", 27, 27, None),        # ACTIVE.WELL.S.4 (ACTIVE outside the WELL)
+]
 MAX_RULE = 120          # nm: how far around the edited shape to look
 MAX_HINTS = 12
 COLOR = 0xFF3B30        # the gap outline
 enabled = True
 
 
-def rule_for(layout, li):
+def layer_name(layout, li):
     info = layout.get_info(li)
-    if info.datatype != 0:
-        return None, None
-    name = LAYER_NAME.get(info.layer)
+    return LAYER_NAME.get(info.layer) if info.datatype == 0 else None
+
+
+def rule_for(layout, li):
+    name = layer_name(layout, li)
     return name, RULES.get(name)
+
+
+def checked(layout, li):
+    """the layer takes part in a same-layer or a between-layer rule"""
+    name = layer_name(layout, li)
+    return name is not None and (name in RULES or any(name in (a, b) for a, b, *_ in INTER))
 
 
 def required(spec, len_a, len_b, horizontal_gap):
@@ -79,7 +105,11 @@ def required(spec, len_a, len_b, horizontal_gap):
 
 
 def corner_rule(spec):
-    return spec[7] if spec[0] == "lines" else spec[2] if spec[0] == "plain" else None
+    if spec[0] == "lines":
+        return spec[7]
+    if spec[0] == "plain":
+        return spec[2]
+    return spec[3] if len(spec) > 3 else None
 
 
 def _outward(poly, e):
@@ -90,15 +120,19 @@ def _outward(poly, e):
     return n * -1.0 if poly.inside(mid + n * 0.0001) else n
 
 
+def _ortho_edges(poly):
+    return [(e, _outward(poly, e)) for e in poly.each_edge() if e.length() > 0 and (e.dx() == 0 or e.dy() == 0)]
+
+
 def violations(moving, static, spec):
     """Gaps between the moving polygons and the static ones (DPolygon, um) under the minimum.
     Returns [(gap DBox, p1, p2, required nm, actual nm)]."""
     out = []
     corner = corner_rule(spec)
     for mp in moving:
-        medges = [(e, _outward(mp, e)) for e in mp.each_edge() if e.dx() == 0 or e.dy() == 0]
+        medges = _ortho_edges(mp)
         for sp in static:
-            sedges = [(e, _outward(sp, e)) for e in sp.each_edge() if e.dx() == 0 or e.dy() == 0]
+            sedges = _ortho_edges(sp)
             for ea, na in medges:
                 for eb, nb in sedges:
                     if abs(na.x + nb.x) > 1e-9 or abs(na.y + nb.y) > 1e-9:
@@ -169,19 +203,39 @@ def static_polygons(cell, li, window, skip=None):
     return [p.to_dtype(dbu) for p in reg.merged().each()]
 
 
+def _against(cell, other_li, mreg, window, skip, dbu):
+    """the other layer's shapes near the moving ones, minus those touching them"""
+    return [sp for sp in static_polygons(cell, other_li, window, skip)
+            if not pya.Region(sp.to_itype(dbu)).interacting(mreg).count()]
+
+
 def check(cell, li, moving, skip=None):
-    """Violations of the moving polygons (DPolygon, um, cell coordinates) against layer li."""
+    """Violations of the moving polygons (DPolygon, um, cell coordinates) on layer li, against the
+    shapes of the same layer and of the layers with between-layer rules. Returns
+    [(gap DBox, p1, p2, required nm, actual nm, label)]."""
     layout = cell.layout()
-    name, spec = rule_for(layout, li)
-    if spec is None or not moving:
+    name = layer_name(layout, li)
+    if name is None or not moving:
         return []
     dbu = layout.dbu
     mreg = pya.Region([p.to_itype(dbu) for p in moving]).merged()
     mpolys = [p.to_dtype(dbu) for p in mreg.each()]
     window = mreg.bbox().to_dtype(dbu).enlarged(MAX_RULE / 1000, MAX_RULE / 1000)
-    static = [sp for sp in static_polygons(cell, li, window, skip)
-              if not pya.Region(sp.to_itype(dbu)).interacting(mreg).count()]   # touching = same net
-    return violations(mpolys, static, spec)
+    out = []
+    spec = RULES.get(name)
+    if spec is not None:
+        for h in violations(mpolys, _against(cell, li, mreg, window, skip, dbu), spec):
+            out.append(h + (f"{h[3]:g} nm min",))
+    for a, b, hs, vs, corner in INTER:
+        if name not in (a, b):
+            continue
+        other = b if name == a else a
+        oli = layout.find_layer(LAYERS[other], 0)
+        if oli is None:
+            continue
+        for h in violations(mpolys, _against(cell, oli, mreg, window, skip, dbu), ("hv", hs, vs, corner)):
+            out.append(h + (f"{h[3]:g} nm min to {other.upper()}",))
+    return out
 
 
 class Display:
@@ -205,7 +259,7 @@ class Display:
     def show(self, hits, trans=None):
         self.clear()
         t = trans or pya.DCplxTrans()
-        for box, p1, p2, req, actual in hits[:MAX_HINTS]:
+        for box, p1, p2, req, actual, label in hits[:MAX_HINTS]:
             m = pya.Marker(self.view)
             m.color = COLOR
             m.frame_color = COLOR
@@ -216,7 +270,7 @@ class Display:
             self.markers.append(m)
             a = pya.Annotation()
             a.p1, a.p2 = t * p1, t * p2
-            a.fmt = f"{req:g} nm min"
+            a.fmt = label
             a.style = pya.Annotation.StyleArrowBoth
             a.outline = pya.Annotation.OutlineDiag
             a.category = "_openlayout_drd"
@@ -259,7 +313,7 @@ def show_layers(view, cell, moving, skip=None, trans=None):
         if mw is not None:
             worst = hits[0]
             mw.message(f"DRD: {len(hits)} spacing(s) under the minimum - {worst[4]:.1f} nm where "
-                       f"{worst[3]:g} nm is needed", 2000)
+                       f"{worst[5]} is needed", 2000)
     return hits
 
 
