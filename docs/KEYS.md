@@ -36,9 +36,10 @@ instances selected, only the fields you change are applied to all of them.
 `p` asks for the pin name(s) (several separated by spaces) and the direction (input, output,
 input-output); the pins then follow the mouse until you click to place them.
 
-To resize a rectangle (such as the symbol's red selection box), press on one of its edges and drag:
-the edge slides along its axis, the rest of the box stays put. Grabbing a corner moves both of its
-edges.
+To resize a rectangle (such as the symbol's red selection box), point at one of its edges: the edge
+lights up. Press and drag it: a dashed outline shows the new size, and on release the rectangle
+snaps to it (the edge lands on the snap grid; `u` undoes it). A corner moves both of its edges.
+Pressing on a pin still moves the pin.
 
 xschem also runs in its Cadence-compatibility mode: persistent commands (a command stays active
 until `Esc`), orthogonal wiring (wires only; lines can be drawn at any angle) and a cursor that

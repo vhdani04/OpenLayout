@@ -93,22 +93,37 @@ check("toolbar circle after a line does not keep drawing lines", lines_after == 
       f"lines {lines_before} -> {lines_after}")
 
 
-# Grab an edge of the selection box and drag it (Virtuoso stretch): only that edge moves, along its
-# normal; a corner moves both of its edges; afterwards moves are unconstrained again.
-def drag(x0, y0, x1, y1):
+# Grab an edge of the selection box and drag it (Virtuoso stretch). Hovering highlights just that
+# edge; while dragging a dashed outline shows the new box; on release only the grabbed edge (or the
+# two edges of a corner) moved, on the grid, as one undo step. Pins are not dragged along.
+def mapped():
+    return send("lsort [lmap c [winfo children .drw] {if {[string match *olstrip_* $c] && [winfo ismapped $c]} "
+                "{string range $c [expr {[string first olstrip_ $c] + 8}] end} else continue}]")
+
+
+def drag(x0, y0, x1, y1, release=True, target=".drw", off=(0, 0)):
     cmds = [f"event generate .drw <Motion> -x {x0} -y {y0} -warp 1; update; after 30",
-            f"event generate .drw <ButtonPress-1> -x {x0} -y {y0}; update; after 30"]
+            f"event generate {target} <ButtonPress-1> -x {x0 - off[0]} -y {y0 - off[1]}; update; after 30"]
     for i in range(1, 6):
         x, y = x0 + (x1 - x0) * i // 5, y0 + (y1 - y0) * i // 5
         cmds.append(f"event generate .drw <Motion> -x {x} -y {y} -state 256 -warp 1; update; after 30")
-    cmds.append(f"event generate .drw <ButtonRelease-1> -x {x1} -y {y1} -state 256; update; after 50")
+    if release:
+        cmds.append(f"event generate .drw <ButtonRelease-1> -x {x1} -y {y1} -state 256; update; after 50")
     return "; ".join(cmds)
 
 
 def box():
-    r = send("xschem unselect_all; xschem select rect 7 0 fast; set r [xschem get bbox_selected]; "
-             "xschem unselect_all; set r")
-    return [float(v) for v in r.split()]
+    send("xschem unselect_all 0; xschem select rect 7 0 fast nodraw")
+    r = send("xschem selected_set rect")
+    send("xschem unselect_all 0")
+    return [float(v) for v in r.split()[2:]]
+
+
+def pins():
+    send("xschem unselect_all 0; for {set i 0} {$i < [xschem get rects 5]} {incr i} {xschem select rect 5 $i fast nodraw}")
+    r = send("xschem selected_set rect")
+    send("xschem unselect_all 0")
+    return r
 
 
 def to_px(x, y):
@@ -118,14 +133,25 @@ def to_px(x, y):
 
 send("xschem zoom_box -200 -150 200 150; update")
 x1, y1, x2, y2 = box()
-px, py = to_px(x2, (y1 + y2) / 2)
-send(drag(px, py, px + 60, py + 15))
+pins0 = pins()
+px, py = to_px(x2, (y1 + y2) / 2 + 7)
+send(f"event generate .drw <Motion> -x {px} -y {py} -warp 1; update; after 50; update")
+check("hovering an edge highlights just that edge", mapped() == "hi_r", mapped())
+send(drag(px, py, px + 60, py + 15, release=False))
+check("dragging shows a dashed outline with the grabbed edge highlighted",
+      mapped() == "dash_b dash_l dash_t hi_r", mapped())
+send(f"event generate .drw <ButtonRelease-1> -x {px + 60} -y {py + 15} -state 256; update; after 50")
 b = box()
 check("dragging the right edge resizes only the width", b[0] == x1 and b[1] == y1 and b[3] == y2 and b[2] > x2,
       f"{[x1, y1, x2, y2]} -> {b}")
+check("the dragged edge lands on the snap grid", b[2] % float(send("set cadsnap")) == 0, b)
+check("pins stay where they are", pins() == pins0)
 x1, y1, x2, y2 = b
-px, py = to_px((x1 + x2) / 2, y1)
-send(drag(px, py, px + 20, py - 40))
+# press on the highlight strip itself (it lies under the mouse): handed on to the drawing area
+px, py = to_px((x1 + x2) / 2 + 13, y1)
+send(f"event generate .drw <Motion> -x {px} -y {py} -warp 1; update; after 50; update")
+sx, sy = (int(v) for v in send("list [winfo x .drw.olstrip_hi_t] [winfo y .drw.olstrip_hi_t]").split())
+send(drag(px, py, px + 20, py - 40, target=".drw.olstrip_hi_t", off=(sx, sy)))
 b = box()
 check("dragging the top edge moves only the top", b[0] == x1 and b[2] == x2 and b[3] == y2 and b[1] < y1,
       f"{[x1, y1, x2, y2]} -> {b}")
@@ -135,6 +161,9 @@ send(drag(px, py, px - 30, py + 30))
 b = box()
 check("dragging a corner moves both of its edges", b[0] < x1 and b[3] > y2 and b[1] == y1 and b[2] == x2,
       f"{[x1, y1, x2, y2]} -> {b}")
-check("moves are unconstrained after a stretch", send("set constr_mv") == "0", send("set constr_mv"))
+send("xschem undo; update")
+check("a resize is one undo step", box() == [x1, y1, x2, y2], box())
+send(f"event generate .drw <Motion> -x 5 -y 5 -warp 1; update; after 50; update")
+check("no overlay left over", mapped() == "", mapped())
 
 print("PASS xschem edit" if not failures else f"FAIL xschem edit: {', '.join(failures)}")

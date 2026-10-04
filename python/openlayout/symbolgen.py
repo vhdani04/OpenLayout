@@ -3,7 +3,8 @@
 Inputs go on the left, outputs on the right, supply pins (VDD/VSS/...) on top/bottom and other
 input-outputs on the right below the outputs, each on a stub with its name inside the body. The
 body is a green rectangle with @name above and @symname below it, and a red selection box (outline
-only) encloses everything. Pins keep the schematic's top-to-bottom order.
+only) encloses the body and pins, with the pins on its edges.
+Pins keep the schematic's top-to-bottom order.
 
   openlayout make-symbol <cell.sch> [--force]
 """
@@ -93,11 +94,12 @@ def symbol_text(pins: list) -> str:
     texts.append(f"T {{@name}} {x1} {name_y} 0 0 {LABEL} {LABEL} {{}}")
     texts.append(f"T {{@symname}} {x1} {cell_y} 0 0 {LABEL} {LABEL} {{}}")
 
-    # red selection box around body, pins and labels (outline only)
-    bx1 = x1 - (STUB if left else 0) - 10
-    bx2 = x2 + (STUB if right else 0) + 10
-    by1 = name_y - 8
-    by2 = cell_y + 22
+    # red selection box (outline only) like Virtuoso's: the body plus the pin stubs, with the pins on
+    # its edges; labels stay outside. On the 10 grid, so its edges can be dragged on the grid.
+    bx1 = x1 - (STUB if left else 0)
+    bx2 = x2 + (STUB if right else 0)
+    by1 = y1 - (STUB if top else 0)
+    by2 = y2 + (STUB if bottom else 0)
     selection = f"B 7 {bx1} {by1} {bx2} {by2} {{fill=false}}"
 
     k = 'K {type=subcircuit\nformat="@name @pinlist @symname"\ntemplate="name=x1"\n}\n'

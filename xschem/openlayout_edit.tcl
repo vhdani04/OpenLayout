@@ -335,115 +335,324 @@ if {!([info exists env(OPENLAYOUT_KEYS)] && $env(OPENLAYOUT_KEYS) eq "xschem")} 
 ol_wrap_tool_commands
 
 # ---- grab a rectangle edge and slide it (Virtuoso stretch) -----------------------------------
-# Press on (or within a few pixels of) an edge of a rectangle and drag: that edge follows the mouse
-# along its normal; grabbing a corner moves both of its edges. Uses xschem's own stretch machinery:
-# only the grabbed corners are selected (enable_stretch area select), then a move from the mouse
-# position, constrained to the edge's axis. Releasing the button drops the edge.
-set ol_stretch(active) 0
-set ol_stretch(pixels) 6
+# Hovering over an edge of a rectangle highlights just that edge (a corner: both of its edges). Press
+# and drag it: a dashed outline shows the resized rectangle, with the grabbed edge highlighted, and
+# the edge snaps to the grid. On release the rectangle takes the outline's size (one undo step).
+# Pins (layer 5) are left alone: pressing on a pin still moves it. xschem has no overlay drawing, so
+# the outline and highlight are thin Tk canvases placed over the drawing area; they pass the mouse
+# on to it.
+array set ol_stretch {active 0 pixels 6 key {} rects {}}
 
-# Bounding box {x1 y1 x2 y2} of a rectangle (any layer) with an edge within tol of (mx, my), or {}.
-proc ol_rect_edge_at {mx my tol} {
-  for {set c 0} {$c < 22} {incr c} {
-    set n [xschem get rects $c]
-    if {![string is integer -strict $n]} continue
-    for {set i 0} {$i < $n} {incr i} {
-      xschem select rect $c $i fast
-      lassign [xschem get bbox_selected] x1 y1 x2 y2
-      xschem unselect_all
-      if {$x1 eq {}} continue
-      set near_v [expr {(abs($mx - $x1) <= $tol || abs($mx - $x2) <= $tol) && $my >= $y1 - $tol && $my <= $y2 + $tol}]
-      set near_h [expr {(abs($my - $y1) <= $tol || abs($my - $y2) <= $tol) && $mx >= $x1 - $tol && $mx <= $x2 + $tol}]
-      if {$near_v || $near_h} { return [list $x1 $y1 $x2 $y2] }
+proc ol_stretch_colors {} {
+  # background, dashed outline, highlighted edge
+  if {![info exists ::dark_colorscheme] || $::dark_colorscheme} {
+    set bg [expr {[info exists ::dark_colors] ? [lindex $::dark_colors 0] : "#000000"}]
+    return [list $bg #ffffff #ffd23f]
+  }
+  set bg [expr {[info exists ::light_colors] ? [lindex $::light_colors 0] : "#ffffff"}]
+  return [list $bg #000000 #ff8c00]
+}
+
+# {c i x1 y1 x2 y2} of every rectangle. xschem only reports coordinates of selected rectangles, so
+# each one is selected and unselected without drawing; rectangles already selected stay selected.
+# Cached until the drawing may have changed (see ol_rects_changed).
+proc ol_rect_list {} {
+  global ol_stretch
+  set counts {}
+  for {set c 0} {$c < $::cadlayers} {incr c} { lappend counts [xschem get rects $c] }
+  set key [list [xschem get schname] $counts]
+  if {$key eq $ol_stretch(key)} { return $ol_stretch(rects) }
+  set selected {}
+  foreach r [split [xschem selected_set rect] \n] {
+    if {[llength $r] == 6} { dict set selected [lrange $r 0 1] $r }
+  }
+  set had [xschem get lastsel]
+  set rects {}
+  for {set c 0} {$c < $::cadlayers} {incr c} {
+    for {set i 0} {$i < [lindex $counts $c]} {incr i} {
+      if {[dict exists $selected [list $c $i]]} {
+        lappend rects [dict get $selected [list $c $i]]
+        continue
+      }
+      xschem select rect $c $i fast nodraw
+      foreach r [split [xschem selected_set rect] \n] {
+        if {[lindex $r 0] == $c && [lindex $r 1] == $i} { lappend rects $r }
+      }
+      xschem select rect $c $i clear fast nodraw
     }
   }
+  if {$had == 0} { xschem unselect_all 0 }
+  set ol_stretch(key) $key
+  set ol_stretch(rects) $rects
+  return $rects
+}
+
+proc ol_rects_changed {} { set ::ol_stretch(key) {} }
+
+# The rectangle edge nearest to drawing-area pixel (x, y): {c i x1 y1 x2 y2 edges} with edges a
+# subset of {l r t b} (two for a corner), or {} if none is within reach or (x, y) is on a pin.
+proc ol_edge_hit {x y} {
+  global ol_stretch
+  set z [xschem get zoom]
+  set mx [expr {$x * $z - [xschem get xorigin]}]
+  set my [expr {$y * $z - [xschem get yorigin]}]
+  set tol [expr {$ol_stretch(pixels) * $z}]
+  set rects [ol_rect_list]
+  foreach r $rects {
+    lassign $r c i x1 y1 x2 y2
+    if {$c == 5 && $mx >= $x1 - $tol / 2 && $mx <= $x2 + $tol / 2 &&
+        $my >= $y1 - $tol / 2 && $my <= $y2 + $tol / 2} { return {} }
+  }
+  set best {}
+  set bestd $tol
+  foreach r $rects {
+    lassign $r c i x1 y1 x2 y2
+    # pins, and rectangles too small on screen to tell an edge from the inside, move as a whole
+    if {$c == 5 || $x2 - $x1 < 3 * $tol || $y2 - $y1 < 3 * $tol} continue
+    if {$mx < $x1 - $tol || $mx > $x2 + $tol || $my < $y1 - $tol || $my > $y2 + $tol} continue
+    set edges {}
+    set d $tol
+    foreach {e dist} [list l [expr {abs($mx - $x1)}] r [expr {abs($mx - $x2)}] \
+                           t [expr {abs($my - $y1)}] b [expr {abs($my - $y2)}]] {
+      if {$dist <= $tol} {
+        lappend edges $e
+        if {$dist < $d} { set d $dist }
+      }
+    }
+    if {$edges ne {} && ($best eq {} || $d < $bestd)} {
+      set best [list $c $i $x1 $y1 $x2 $y2 $edges]
+      set bestd $d
+    }
+  }
+  return $best
+}
+
+# -- overlay: straight screen-space segments drawn on thin canvases over the drawing area
+proc ol_strip {w name} {
+  set cw $w.olstrip_$name
+  if {![winfo exists $cw]} {
+    canvas $cw -highlightthickness 0 -bd 0 -width 1 -height 1
+    $cw create line 0 0 0 0 -tags l -capstyle butt
+    # the strips sit right under the mouse: hand everything on to the drawing area
+    bind $cw <Motion> {ol_strip_fwd %W motion %x %y %b %s}
+    bind $cw <ButtonPress-1> {ol_strip_fwd %W press %x %y %b %s}
+    bind $cw <B1-Motion> {ol_strip_fwd %W drag %x %y %b %s}
+    bind $cw <ButtonRelease-1> {ol_strip_fwd %W release %x %y %b %s}
+    bind $cw <ButtonPress> {ol_strip_fwd %W ButtonPress %x %y %b %s}
+    bind $cw <ButtonRelease> {ol_strip_fwd %W ButtonRelease %x %y %b %s}
+  }
+  return $cw
+}
+
+proc ol_strip_fwd {cw kind x y b s} {
+  set w [winfo parent $cw]
+  set x [expr {$x + [winfo x $cw]}]
+  set y [expr {$y + [winfo y $cw]}]
+  switch -- $kind {
+    motion  { event generate $w <Motion> -x $x -y $y -state $s }
+    press   { ol_press $w $x $y $b $s }
+    drag    { ol_motion $w $x $y $s }
+    release { ol_release $w $x $y $b $s }
+    default { event generate $w <$kind> -x $x -y $y -state $s -button $b }
+  }
+}
+
+# horizontal or vertical segment (x1,y1)-(x2,y2) in pixels, t pixels thick
+proc ol_seg {w name x1 y1 x2 y2 color t dash cursor} {
+  set cw [ol_strip $w $name]
+  lassign [ol_stretch_colors] bg
+  set h [expr {abs($y2 - $y1) < abs($x2 - $x1)}]
+  set len [expr {round(abs($h ? $x2 - $x1 : $y2 - $y1)) + $t}]
+  set x0 [expr {round(min($x1, $x2) - $t / 2)}]
+  set y0 [expr {round(min($y1, $y2) - $t / 2)}]
+  set m [expr {$t / 2}]   ;# integer: Tk rounds .5 up, which would put a 1 px line outside the strip
+  if {$h} {
+    $cw configure -width $len -height $t
+    $cw coords l 0 $m $len $m
+  } else {
+    $cw configure -width $t -height $len
+    $cw coords l $m 0 $m $len
+  }
+  $cw configure -bg $bg -cursor $cursor
+  $cw itemconfigure l -fill $color -width $t -dash $dash
+  place $cw -in $w -x $x0 -y $y0
+  raise $cw
+}
+
+proc ol_overlay_clear {w {keep {}}} {
+  foreach cw [winfo children $w] {
+    if {[string match *.olstrip_* $cw] && $cw ni $keep} { place forget $cw }
+  }
+}
+
+proc ol_edge_cursor {edges} {
+  switch -- [lsort $edges] {
+    {l} - {r} { return sb_h_double_arrow }
+    {b} - {t} { return sb_v_double_arrow }
+    {b l} { return bottom_left_corner }
+    {b r} { return bottom_right_corner }
+    {l t} { return top_left_corner }
+    {r t} { return top_right_corner }
+  }
   return {}
+}
+
+# Rectangle (x1 y1 x2 y2, schematic units) as a dashed outline with the given edges highlighted;
+# a dashed outline only when dashed is set, otherwise just the highlighted edges.
+proc ol_overlay_rect {w x1 y1 x2 y2 edges dashed} {
+  set z [xschem get zoom]
+  set xo [xschem get xorigin]
+  set yo [xschem get yorigin]
+  set px1 [expr {($x1 + $xo) / $z}]
+  set px2 [expr {($x2 + $xo) / $z}]
+  set py1 [expr {($y1 + $yo) / $z}]
+  set py2 [expr {($y2 + $yo) / $z}]
+  lassign [ol_stretch_colors] bg line hilite
+  set cursor [ol_edge_cursor $edges]
+  set used {}
+  foreach {e a b c d} [list t $px1 $py1 $px2 $py1  b $px1 $py2 $px2 $py2 \
+                            l $px1 $py1 $px1 $py2  r $px2 $py1 $px2 $py2] {
+    if {$e in $edges} {
+      ol_seg $w hi_$e $a $b $c $d $hilite 3 {} $cursor
+      lappend used $w.olstrip_hi_$e
+    } elseif {$dashed} {
+      ol_seg $w dash_$e $a $b $c $d $line 1 {4 4} $cursor
+      lappend used $w.olstrip_dash_$e
+    }
+  }
+  # strips in use are moved, never unmapped (one may hold the mouse grab)
+  ol_overlay_clear $w $used
+}
+
+# -- hover: highlight the edge under the mouse
+proc ol_hover {w x y s} {
+  global ol_stretch
+  if {$ol_stretch(active)} return
+  set hit {}
+  if {($s & 0x1f0d) == 0 && ([xschem get ui_state] & ~8) == 0} { set hit [ol_edge_hit $x $y] }
+  if {$hit eq {}} {
+    if {$ol_stretch(hover) ne {}} {
+      set ol_stretch(hover) {}
+      ol_overlay_clear $w
+      $w configure -cursor {}
+    }
+    return
+  }
+  lassign $hit c i x1 y1 x2 y2 edges
+  if {$hit eq $ol_stretch(hover)} return
+  set ol_stretch(hover) $hit
+  ol_overlay_rect $w $x1 $y1 $x2 $y2 $edges 0
+  $w configure -cursor [ol_edge_cursor $edges]
+}
+set ol_stretch(hover) {}
+
+# the mouse left the drawing area (and is not on one of the overlay strips)
+proc ol_hover_leave {w} {
+  set in [winfo containing {*}[winfo pointerxy $w]]
+  if {$in eq $w || [string match $w.olstrip_* $in] || $::ol_stretch(active)} return
+  set ::ol_stretch(hover) {}
+  ol_overlay_clear $w
 }
 
 proc ol_press {w x y b s} {
   global ol_stretch
   focus $w
-  xschem callback $w 4 $x $y 0 $b 0 $s
-  # Only when nothing else is going on. In Cadence mode xschem's press on an object selects it and
-  # starts dragging it (SELECTION 8 + STARTMOVE 32); on an edge that drag is replaced by the stretch.
-  set st [xschem get ui_state]
-  if {$b != 1 || $s != 0 || ($st & ~40) != 0} { return }
-  set z [xschem get zoom]
-  set mx [expr {$x * $z - [xschem get xorigin]}]
-  set my [expr {$y * $z - [xschem get yorigin]}]
-  set tol [expr {$ol_stretch(pixels) * $z}]
-  set sel [xschem selected_rect]
-  if {[llength $sel] == 1 && [xschem get lastsel] == 1} {
-    lassign [xschem get bbox_selected] x1 y1 x2 y2
-  } elseif {[xschem get lastsel] == 0} {
-    # xschem's hit test found nothing (it can miss an edge of an unfilled rectangle): look for a
-    # rectangle edge under the mouse ourselves
-    set hit [ol_rect_edge_at $mx $my $tol]
-    if {$hit eq {}} { return }
-    lassign $hit x1 y1 x2 y2
-  } else {
+  # plain left press (no Shift/Ctrl/Alt) on a rectangle edge while no command is running
+  set hit {}
+  if {$b == 1 && ($s & 0x0d) == 0 && ([xschem get ui_state] & ~8) == 0} {
+    set hit [ol_edge_hit $x $y]
+  }
+  if {$hit eq {}} {
+    xschem callback $w 4 $x $y 0 $b 0 $s
     return
   }
-  set left [expr {abs($mx - $x1) <= $tol}]
-  set right [expr {abs($mx - $x2) <= $tol}]
-  set top [expr {abs($my - $y1) <= $tol}]
-  set bottom [expr {abs($my - $y2) <= $tol}]
-  set inside_x [expr {$mx >= $x1 - $tol && $mx <= $x2 + $tol}]
-  set inside_y [expr {$my >= $y1 - $tol && $my <= $y2 + $tol}]
-  if {!(($left || $right) && $inside_y) && !(($top || $bottom) && $inside_x)} { return }
-  # corners of the grabbed edge(s)
-  set gx [expr {$left ? $x1 : ($right ? $x2 : {})}]
-  set gy [expr {$top ? $y1 : ($bottom ? $y2 : {})}]
-  set d [expr {$tol / 2.0}]
-  if {$gx ne {} && $gy ne {}} {
-    set area [list [expr {$gx - $d}] [expr {$gy - $d}] [expr {$gx + $d}] [expr {$gy + $d}]]
-    set constraint {}
-  } elseif {$gx ne {}} {
-    set area [list [expr {$gx - $d}] [expr {$y1 - $d}] [expr {$gx + $d}] [expr {$y2 + $d}]]
-    set constraint 104   ;# h: horizontal only
-  } else {
-    set area [list [expr {$x1 - $d}] [expr {$gy - $d}] [expr {$x2 + $d}] [expr {$gy + $d}]]
-    set constraint 118   ;# v: vertical only
-  }
-  if {$st & 32} { xschem abort_operation }   ;# cancel xschem's whole-object drag
-  set saved_stretch [expr {[info exists ::enable_stretch] ? $::enable_stretch : 0}]
-  set ::enable_stretch 1
+  lassign $hit c i x1 y1 x2 y2 edges
+  set z [xschem get zoom]
+  array set ol_stretch [list active 1 hover {} c $c i $i rect [list $x1 $y1 $x2 $y2] new [list $x1 $y1 $x2 $y2] \
+    edges $edges mx0 [expr {$x * $z - [xschem get xorigin]}] my0 [expr {$y * $z - [xschem get yorigin]}]]
   xschem unselect_all
-  xschem select_inside {*}$area
-  set ::enable_stretch $saved_stretch
-  if {[xschem get lastsel] == 0} { return }
-  # start the move at the mouse (infix style) and constrain it to the edge's axis
-  set infix [expr {[info exists ::infix_interface] ? $::infix_interface : 0}]
-  set ::infix_interface 1
-  xschem callback $w 2 $x $y 109 0 0 0
-  set ::infix_interface $infix
-  if {$constraint ne {}} { xschem callback $w 2 $x $y $constraint 0 0 0 }
-  set ol_stretch(constraint) $constraint
-  set ol_stretch(active) 1
+  ol_overlay_rect $w $x1 $y1 $x2 $y2 $edges 1
+  $w configure -cursor [ol_edge_cursor $edges]
+}
+
+proc ol_motion {w x y s} {
+  global ol_stretch
+  if {!$ol_stretch(active)} {
+    xschem callback $w 6 $x $y 0 0 0 $s
+    return
+  }
+  set z [xschem get zoom]
+  set dx [expr {$x * $z - [xschem get xorigin] - $ol_stretch(mx0)}]
+  set dy [expr {$y * $z - [xschem get yorigin] - $ol_stretch(my0)}]
+  set g [expr {[info exists ::cadsnap] && [string is double -strict $::cadsnap] && $::cadsnap > 0 ? $::cadsnap : 10}]
+  lassign $ol_stretch(rect) x1 y1 x2 y2
+  set e $ol_stretch(edges)
+  # the grabbed edges move by the mouse offset and land on the grid; the rectangle can't turn over
+  if {"l" in $e} { set x1 [expr {min(round(($x1 + $dx) / $g) * $g, $x2 - $g)}] }
+  if {"r" in $e} { set x2 [expr {max(round(($x2 + $dx) / $g) * $g, $x1 + $g)}] }
+  if {"t" in $e} { set y1 [expr {min(round(($y1 + $dy) / $g) * $g, $y2 - $g)}] }
+  if {"b" in $e} { set y2 [expr {max(round(($y2 + $dy) / $g) * $g, $y1 + $g)}] }
+  set ol_stretch(new) [list $x1 $y1 $x2 $y2]
+  ol_overlay_rect $w $x1 $y1 $x2 $y2 $e 1
 }
 
 proc ol_release {w x y b s} {
   global ol_stretch
-  if {$ol_stretch(active) && $b == 1} {
-    set ol_stretch(active) 0
-    # drop the edge where the button was released (a click ends xschem's move)
-    xschem callback $w 4 $x $y 0 1 0 0
-    xschem callback $w 5 $x $y 0 1 0 0
-    # clear the h/v move constraint (and the stretch selection) so later moves are free again
-    xschem abort_operation
+  if {!($ol_stretch(active) && $b == 1)} {
+    xschem callback $w 5 $x $y 0 $b 0 $s
+    ol_rects_changed
     return
   }
-  xschem callback $w 5 $x $y 0 $b 0 $s
+  set ol_stretch(active) 0
+  ol_overlay_clear $w
+  $w configure -cursor {}
+  lassign $ol_stretch(rect) x1 y1 x2 y2
+  lassign $ol_stretch(new) n1 m1 n2 m2
+  set c $ol_stretch(c)
+  set i $ol_stretch(i)
+  if {$ol_stretch(rect) eq $ol_stretch(new)} {
+    # a click on an edge selects the rectangle
+    xschem select rect $c $i
+    return
+  }
+  ol_resize_rect $c $i $x1 $y1 $x2 $y2 $n1 $m1 $n2 $m2
+  # a fresh hover state at the release point
+  ol_hover $w $x $y 0
 }
 
-# While an edge is being dragged, motion goes to xschem without the button-held flag: with it,
-# xschem would turn the drag into a rubber-band selection whenever its own click hit nothing.
-proc ol_motion {w x y s} {
-  if {$::ol_stretch(active)} {
-    xschem callback $w 6 $x $y 0 0 0 0
+# Resize rectangle (c, i) from x1 y1 x2 y2 to n1 m1 n2 m2 (one or two edges moved) with xschem's own
+# stretch: only the corners on the moved edges are selected (stretch area select) and moved, which
+# records one undo step.
+proc ol_resize_rect {c i x1 y1 x2 y2 n1 m1 n2 m2} {
+  set moves {}
+  set dx [expr {$n1 != $x1 ? $n1 - $x1 : $n2 - $x2}]
+  set dy [expr {$m1 != $y1 ? $m1 - $y1 : $m2 - $y2}]
+  set gx [expr {$n1 != $x1 ? $x1 : ($n2 != $x2 ? $x2 : {})}]
+  set gy [expr {$m1 != $y1 ? $y1 : ($m2 != $y2 ? $y2 : {})}]
+  if {$gx ne {} && $gy ne {}} {
+    set corners [list $gx $gy]
+  } elseif {$gx ne {}} {
+    set corners [list $gx $y1 $gx $y2]
+    set dy 0
   } else {
-    xschem callback $w 6 $x $y 0 0 0 $s
+    set corners [list $x1 $gy $x2 $gy]
+    set dx 0
   }
+  set saved [expr {[info exists ::enable_stretch] ? $::enable_stretch : 0}]
+  set ::enable_stretch 1
+  xschem unselect_all 0
+  set e 1e-3
+  foreach {px py} $corners {
+    xschem select_inside [expr {$px - $e}] [expr {$py - $e}] [expr {$px + $e}] [expr {$py + $e}]
+  }
+  set ::enable_stretch $saved
+  # anything else that happens to have a point on those corners stays where it is
+  foreach r [xschem selected_rect] {
+    if {$r ne [list $c $i]} { xschem select rect {*}$r clear fast }
+  }
+  if {[xschem selected_rect] eq [list [list $c $i]]} { xschem move_objects $dx $dy }
+  xschem unselect_all
+  ol_rects_changed
 }
 
 proc ol_bind_stretch {{w .drw}} {
@@ -451,6 +660,12 @@ proc ol_bind_stretch {{w .drw}} {
   bind $w <ButtonPress-1> {ol_press %W %x %y %b %s; break}
   bind $w <ButtonRelease-1> {ol_release %W %x %y %b %s; break}
   bind $w <B1-Motion> {ol_motion %W %x %y %s; break}
+  if {[string first ol_hover [bind $w <Motion>]] < 0} {
+    bind $w <Motion> "+ol_hover %W %x %y %s"
+    bind $w <Leave> "+after 50 [list ol_hover_leave $w]"
+    bind $w <Enter> "+ol_rects_changed"
+    bind $w <KeyRelease> "+ol_rects_changed"
+  }
 }
 ol_bind_stretch
 

@@ -83,7 +83,9 @@ def test_symbol_generated_from_schematic_pins(wa):
     sel = re.search(r"^B 7 (\S+) (\S+) (\S+) (\S+) \{fill=false\}", sym, re.M)
     assert sel, "outline-only selection box"
     x1, y1, x2, y2 = map(float, sel.groups())
-    assert all(x1 < x < x2 and y1 < y < y2 for x, y, _ in pins.values())  # encloses the pins
+    assert all(x1 <= x <= x2 and y1 <= y <= y2 for x, y, _ in pins.values())  # encloses the pins
+    assert all(v % 10 == 0 for v in (x1, y1, x2, y2))             # on the grid
+    assert (x1, x2, y1, y2) == (ax, yx, pins["VDD"][1], pins["VSS"][1])  # pins sit on its edges
     assert "@symname" in sym and "@name" in sym
 
 
