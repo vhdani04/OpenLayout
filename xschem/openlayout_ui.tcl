@@ -152,7 +152,6 @@ proc ol_add_menu {} {
   }
   set m $mb.openlayout
   $m add command -label "Open Layout in KLayout" -command {ol_hubcmd open layout}
-  $m add command -label "Generate Layout from Schematic" -command {ol_hubcmd generate}
   $m add command -label "Open Symbol" -command {ol_hubcmd open symbol}
   $m add command -label "Generate Symbol from Schematic" -command ol_make_symbol
   $m add command -label "Open Schematic" -command {ol_hubcmd open schematic}

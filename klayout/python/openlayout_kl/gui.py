@@ -10,7 +10,7 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from . import align_tool, axes, stdcell, vias
+from . import align_tool, axes, generate_form, stdcell, vias
 from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
@@ -204,22 +204,32 @@ class OpenLayoutUI:
                     out[os.path.realpath(cv.filename())] = (i, cv)
         return out
 
-    def generate_for(self, schematic):
-        """Generate/update the layout of a schematic's cell inside this session and show it."""
+    def generate_for(self, schematic, ask=False):
+        """Generate/update the layout of a schematic's cell inside this session and show it. With
+        ask, the Generate Layout form chooses the pins (and their layers) and the frame first;
+        returns None if it is cancelled."""
         sch = Path(schematic).resolve()
         gds = sch.with_suffix(".gds")
         opened = self.open_views().get(os.path.realpath(gds))
+        options = {}
+        if ask:
+            info = gen.read_schematic(sch)
+            table = gen.pin_table(info, opened[1].layout() if opened is not None else None)
+            choice = generate_form.ask_generate(self.mw, info["cell"].name, table)
+            if choice is None:
+                return None
+            options = {"pins": choice["pins"], "frame": choice["frame"], "info": info}
         if opened is not None:
             index, cv = opened
             self.mw.select_view(index)
             view = self.mw.current_view()
             view.transaction("Update layout from schematic")
             try:
-                report = gen.generate(sch, layout=cv.layout())
+                report = gen.generate(sch, layout=cv.layout(), **options)
             finally:
                 view.commit()
         else:
-            report = gen.generate(sch)
+            report = gen.generate(sch, **options)
             self.mw.load_layout(str(gds), "asap7", 1)
         view = self.mw.current_view()
         cv = view.active_cellview()
@@ -251,7 +261,7 @@ class OpenLayoutUI:
             pya.MessageBox.warning("OpenLayout", f"No schematic {sch.name} next to this layout.", pya.MessageBox.Ok)
             return
         try:
-            self.generate_for(sch)
+            self.generate_for(sch, ask=True)
         except Exception as e:
             pya.MessageBox.warning("OpenLayout", f"Update from schematic failed:\n{e}", pya.MessageBox.Ok)
 

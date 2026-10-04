@@ -132,9 +132,15 @@ devices have at most 3 fins (use fingers for more). The transistor PCells draw n
 gate is cut depends on the cell, so draw GCUT where yours needs it (the frame already cuts at the
 rails and at its edge dummy gates).
 
-**Generating from the schematic** adds the schematic's pins as M1 pins: a square of the layer's
-minimum width (18 nm) on the pin purpose, with the label - only the pin, no drawing shape under
-it; draw (or route) the metal the pin sits on. It puts the cell's boundary corner at (0, 0): a transistor-level cell
+**Generating from the schematic** (KLayout only: *OpenLayout ▸ Generate / Update Layout from
+Schematic*, or *Update from Schematic* in the Connectivity panel) first opens the **Generate Layout**
+form, like Virtuoso's Generate All From Source: one row per pin (the ports, then the supplies the
+cell uses) with *Create*, direction, metal layer and size; *Layer for the checked pins* + *Apply*
+sets them all at once. Pins the layout has already start unchecked, and so do VDD / VSS when the
+standard-cell frame's rails provide them. A pin is a square of its layer's minimum width (18 nm on
+M1-M3, 24 on M4/M5, 32 on M6/M7, 40 on M8/M9) on the pin purpose, with the label - no drawing shape
+under it. The form also offers the standard-cell frame / boundary when the cell has none.
+It puts the cell's boundary corner at (0, 0): a transistor-level cell
 gets the frame (sized for its transistors chained per row) unless it has one already, a cell of
 only sub-cells a plain boundary. Generated parts are parked below the cell, never overlapping: the
 pMOS in a row at y = -0.54, the nMOS under them at y = -0.81 (other cells further down), left to
@@ -167,10 +173,11 @@ to highlight its flight lines, double-click to zoom to it.
 
 Both tools have an **OpenLayout** menu that goes through the hub:
 
-- xschem: *Open Layout in KLayout*, *Generate Layout from Schematic*, *Open Symbol/Schematic*,
+- xschem: *Open Layout in KLayout*, *Generate Symbol from Schematic*, *Open Symbol/Schematic*,
   *Show in Library Manager*,
   *Netlist (hub)*, *Simulate (hub)*
-- KLayout: *Generate / Update Layout from Schematic*, *Check Connectivity*, *Open Schematic*,
+- KLayout: *Generate / Update Layout from Schematic* (the only place layouts are generated - a form
+  asks which pins to create on which metal), *Check Connectivity*, *Open Schematic*,
   *Open Symbol*, *Show in Library Manager*, *Show LSW*, *Show Connectivity*
 
 ## Hub
@@ -181,5 +188,4 @@ Both tools have an **OpenLayout** menu that goes through the hub:
 | `Ctrl+O` | open | `Del` | delete (to trash) |
 | `F2` | rename cell | `Ctrl+Shift+C` | copy cell |
 | `F7` | netlist | `F8` | simulate |
-| `F9` | generate layout from schematic | | |
 | `F5` | refresh | `F1` | this page |

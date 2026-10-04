@@ -241,17 +241,21 @@ def _add_pin(top: pya.Cell, name: str, at: pya.DPoint, metal: str = "m1"):
 
 
 def _top_pin_names(top: pya.Cell) -> set:
-    li = top.layout().find_layer(LAYERS["m1"], PIN)
-    if li is None:
-        return set()
-    return {s.text_string for s in top.shapes(li).each(pya.Shapes.STexts)}
+    """Names of the cell's pins: labels on any metal's pin or label purpose (e.g. the frame's rails)."""
+    layout = top.layout()
+    names = set()
+    for metal in METALS:
+        for dt in (PIN, 2):
+            li = layout.find_layer(LAYERS[metal], dt)
+            if li is not None:
+                names |= {s.text_string for s in top.shapes(li).each(pya.Shapes.STexts)}
+    return names
 
 
 # ---- generate / update ---------------------------------------------------------------------------
 
-def generate(schematic, layout: pya.Layout | None = None) -> dict:
-    """Create or update the layout view of the schematic's cell. If `layout` is given (a layout
-    open in the GUI) it is edited in place and not saved; otherwise the .gds file is written."""
+def read_schematic(schematic) -> dict:
+    """The schematic's cell, layout file and netlist: {sch, wa, cell, gds, net, has_mos}."""
     register_library()
     sch = Path(schematic).resolve()
     Workarea = _workarea()
@@ -261,16 +265,43 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
     cell = wa.cell_for_path(sch)
     if cell is None or cell.library.readonly:
         raise RuntimeError(f"{sch} is not a cell of a writable design library")
-    gds = cell.path / f"{cell.name}.gds"
     net = parse_netlist(netlist_schematic(sch, wa.root), cell.name)
+    has_mos = any(d["model"].partition("_")[0] in ("nmos", "pmos") for d in net["devices"])
+    return {"sch": sch, "wa": wa, "cell": cell, "gds": cell.path / f"{cell.name}.gds", "net": net, "has_mos": has_mos}
+
+
+def pin_table(info: dict, layout: pya.Layout | None = None) -> dict:
+    """What the Generate form shows: the schematic's pins (ports, then the supplies the cell uses)
+    with direction and whether the layout has them already, and whether it has a frame.
+    {"pins": [{"name", "dir", "supply", "exists"}], "frame": bool, "has_mos": bool}"""
+    layout, _ = _layout_for(info["sch"], info["cell"].name, info["gds"], layout)
+    top = layout.cell(info["cell"].name) or (layout.top_cell() if layout.cells() else None)
+    have = _top_pin_names(top) if top is not None else set()
+    net = info["net"]
+    pins = [{"name": p, "dir": net["dirs"].get(p, "B"), "supply": p in net["supplies"], "exists": p in have}
+            for p in net["ports"] + net["supplies"]]
+    return {"pins": pins, "frame": top is not None and has_frame(top), "has_mos": info["has_mos"]}
+
+
+def generate(schematic, layout: pya.Layout | None = None, pins: dict | None = None, frame: bool = True,
+             info: dict | None = None) -> dict:
+    """Create or update the layout view of the schematic's cell. If `layout` is given (a layout
+    open in the GUI) it is edited in place and not saved; otherwise the .gds file is written.
+    pins: {pin name: metal} - the pins to create and their layer (as chosen in the Generate form);
+    None creates every missing pin on M1. frame: create the standard-cell frame / boundary at the
+    origin if the cell has none."""
+    info = info or read_schematic(schematic)
+    sch, wa, cell, gds, net, has_mos = (info[k] for k in ("sch", "wa", "cell", "gds", "net", "has_mos"))
 
     layout, standalone = _layout_for(sch, cell.name, gds, layout)
     top = layout.cell(cell.name) or (layout.top_cell() if layout.cells() else None) or layout.create_cell(cell.name)
     existing = {instance_name(i): i for i in top.each_inst()}
     existing.pop(None, None)
-    has_mos = any(d["model"].partition("_")[0] in ("nmos", "pmos") for d in net["devices"])
     placer = Placer(top, has_mos)
-    row = _ensure_boundary(top, net, sum(_cell_width(layout, x) for x in net["cells"]))
+    if frame:
+        row = _ensure_boundary(top, net, sum(_cell_width(layout, x) for x in net["cells"]))
+    else:
+        row = has_frame(top)
     report = {"added": [], "updated": [], "unchanged": [], "extra": [], "skipped": [], "pins_added": [],
               "warnings": []}
     conn = {"version": 1, "schematic": sch.name, "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -352,8 +383,9 @@ def generate(schematic, layout: pya.Layout | None = None) -> dict:
     have_pins = _top_pin_names(top)      # e.g. the frame's VDD / VSS rails
     y = placer.base_y
     for p in net["ports"] + net["supplies"]:
-        if p not in have_pins:
-            _add_pin(top, p, pya.DPoint(-0.324, y))
+        metal = "m1" if pins is None else pins.get(p)
+        if metal and p not in have_pins:
+            _add_pin(top, p, pya.DPoint(-0.324, y), metal.lower())
             report["pins_added"].append(p)
         y += 0.108
 
