@@ -10,7 +10,7 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from . import align_tool, axes, stdcell
+from . import align_tool, axes, stdcell, vias
 from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
@@ -23,8 +23,8 @@ UI, CANVAS = THEME["ui"], THEME["canvas"]
 
 # KLayout menu path -> Virtuoso key. Interactive copy is KLayout's "secret" action that works like
 # Virtuoso's c; m / s are OpenLayout's move / stretch of what is under the mouse (see drag_move),
-# a is align (align_tool). P is bound to OpenLayout's path tool once it is registered (see
-# bind_path_tool).
+# a is align (align_tool), o is Create Via (vias). P is bound to OpenLayout's path tool once it is
+# registered (see bind_path_tool).
 VIRTUOSO_KEYS = {
     "edit_menu.mode_menu.box": "R",
     "edit_menu.mode_menu.polygon": "Shift+P",
@@ -35,6 +35,7 @@ VIRTUOSO_KEYS = {
     "edit_menu.clear_all_rulers": "Shift+K",
     "openlayout_menu.move": "M",
     "openlayout_menu.align": "A",
+    "openlayout_menu.via": "O",
     "@secrets.duplicate_interactive": "C",
     "edit_menu.show_properties": "Q",
     "edit_menu.undo": "U",
@@ -176,6 +177,7 @@ class OpenLayoutUI:
         if os.environ.get("OPENLAYOUT_KEYS") != "klayout":
             self.drag_factory = DragMoveFactory()   # Virtuoso drag and drop in Select mode
         self.align_factory = align_tool.AlignToolFactory()
+        self.via_factory = vias.ViaPlacerFactory()
         self.axes_factory = axes.AxesFactory(int(CANVAS["axis"].lstrip("#"), 16))
         after_move_hooks.append(self.after_move)
         try:
@@ -301,6 +303,7 @@ class OpenLayoutUI:
             ("move", self.action("Move (object under the mouse)", move_under_mouse)),
             ("stretch", self.action("Stretch (edge under the mouse)", stretch_under_mouse)),
             ("align", self.action("Align (edge to edge)", align_tool.start)),
+            ("via", self.action("Create Via…", vias.create_via)),
             (None, None),
             ("stdcell_frame", self.action("Standard-Cell Frame…", self.frame_dialog)),
             ("chain", self.action("Chain Selected Transistors", self.chain_selected)),

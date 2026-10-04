@@ -25,7 +25,7 @@ M1 + LIG rails with GCUT over them, and dummy gates at both cell edges.
 """
 import pya
 
-from .asap7 import DBU, LAYERS, NM, VIAS, VT_LAYER
+from .asap7 import CONDUCTOR_STACK, DBU, LAYERS, NM, VIA_DEFS, VT_LAYER
 
 LIBRARY = "OpenLayout_ASAP7"
 CPP, FIN_PITCH, CELL_HEIGHT, MID = 54, 27, 270, 135
@@ -143,17 +143,57 @@ def stdcell_geometry(cpp: int, vt: str = "rvt") -> dict:
     return {"shapes": s, "rails": {"VSS": (0, 0), "VDD": (0, CELL_HEIGHT)}}
 
 
+def via_levels(bottom: str, top: str) -> list:
+    """Adjacent (lower, upper) pairs from bottom up to top, e.g. lisd-m3: (lisd, m1), (m1, m2), (m2, m3)."""
+    if (bottom, top) in VIA_DEFS:
+        return [(bottom, top)]
+    if bottom not in ("lisd", "lig") + tuple(CONDUCTOR_STACK) or top not in CONDUCTOR_STACK:
+        raise ValueError(f"no via from {bottom} to {top}")
+    start = 0 if bottom in ("lisd", "lig") else CONDUCTOR_STACK.index(bottom) + 1
+    stop = CONDUCTOR_STACK.index(top)
+    if stop < start:
+        raise ValueError(f"no via from {bottom} to {top}")
+    pairs = [(bottom, CONDUCTOR_STACK[start])] if bottom in ("lisd", "lig") else []
+    pairs += [(CONDUCTOR_STACK[i - 1], CONDUCTOR_STACK[i]) for i in range(max(start, 1), stop + 1)]
+    return pairs
+
+
 def via_geometry(bottom: str, top: str, rows: int = 1, cols: int = 1) -> dict:
-    """Via array between two adjacent conductors, with enclosing pads on both."""
-    via, size = VIAS[(bottom, top)]
-    pitch = size + 30
-    vias = [(c * pitch, r * pitch, c * pitch + size, r * pitch + size) for r in range(rows) for c in range(cols)]
-    x2, y2 = (cols - 1) * pitch + size, (rows - 1) * pitch + size
-    enc = {"lisd": (3, 5), "lig": (2, 2), "m1": (2, 5)}
-    ex, ey = enc.get(bottom, (2, 5))
-    tx, ty = enc.get(top, (5, 2))
-    return {"shapes": {via: vias, bottom: [(-ex, -ey, x2 + ex, y2 + ey)], top: [(-tx, -ty, x2 + tx, y2 + ty)]},
-            "terminals": {"t": [(x2 / 2, y2 / 2, top)]}}
+    """Via (array, or stack of arrays) from bottom to top, centred on the origin: the cuts of each
+    level with their pads on the layers below and above, sized as the LEF's default vias."""
+    shapes = {}
+    for lower, upper in via_levels(bottom, top):
+        d = VIA_DEFS[(lower, upper)]
+        x1, y1, x2, y2 = d["box"]
+        w, h = x2 - x1, y2 - y1
+        px, py = w + d["space"], h + d["space"]
+        ox, oy = -(cols - 1) * px / 2, -(rows - 1) * py / 2       # array centred on the origin
+        cuts = [(ox + c * px + x1, oy + r * py + y1, ox + c * px + x2, oy + r * py + y2)
+                for r in range(rows) for c in range(cols)]
+        shapes.setdefault(d["cut"], []).extend(cuts)
+        ax1, ay1 = ox + x1, oy + y1
+        ax2, ay2 = ox + (cols - 1) * px + x2, oy + (rows - 1) * py + y2
+        for layer, (bx1, by1, bx2, by2) in ((lower, d["bottom"]), (upper, d["top"])):
+            # the default pad's enclosure of the cut, around the whole array
+            shapes.setdefault(layer, []).append((ax1 + (bx1 - x1), ay1 + (by1 - y1), ax2 + (bx2 - x2), ay2 + (by2 - y2)))
+    return {"shapes": shapes, "terminals": {"t": [(0, 0, top)]}}
+
+
+def via_choices() -> list:
+    """[(title, "bottom-top")] of every via and via stack, single vias first."""
+    singles = [(f"{d['cut'].upper()}  {b.upper()} → {t.upper()}   {d['box'][2] - d['box'][0]:g}×"
+                f"{d['box'][3] - d['box'][1]:g} nm", f"{b}-{t}") for (b, t), d in VIA_DEFS.items()]
+    stacks = []
+    for b in ("lisd", "lig") + tuple(CONDUCTOR_STACK[:-1]):
+        for t in CONDUCTOR_STACK:
+            try:
+                levels = via_levels(b, t)
+            except ValueError:
+                continue
+            if len(levels) > 1:
+                cuts = "+".join(VIA_DEFS[lv]["cut"].upper() for lv in levels)
+                stacks.append((f"Stack  {b.upper()} → {t.upper()}  ({cuts})", f"{b}-{t}"))
+    return singles + stacks
 
 
 def nm_box(b) -> pya.Box:
@@ -220,12 +260,13 @@ class StdCellFrame(pya.PCellDeclarationHelper):
 
 
 class Via(pya.PCellDeclarationHelper):
-    PAIRS = [f"{b}-{t}" for b, t in VIAS]
+    """Via, via array or via stack, centred on its origin (ASAP7 default via sizes)."""
+    PAIRS = [v for _, v in via_choices()]
 
     def __init__(self):
         super().__init__()
-        self.param("layers", self.TypeString, "Layers", default="lisd-m1",
-                   choices=[[p.upper().replace("-", " → "), p] for p in self.PAIRS])
+        self.param("layers", self.TypeString, "Via", default="lisd-m1",
+                   choices=[[t, v] for t, v in via_choices()])
         self.param("rows", self.TypeInt, "Rows", default=1)
         self.param("cols", self.TypeInt, "Columns", default=1)
 

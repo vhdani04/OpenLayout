@@ -57,7 +57,7 @@ snaps to pins. The mouse cursor is the normal pointer.
 | `k` | ruler | `Shift+K` | clear rulers |
 | `m` | move | `c` | copy |
 | `s` | stretch | `q` | properties |
-| `a` | align | | |
+| `a` | align | `o` | create via |
 | `u` / `Shift+U` | undo / redo | `Esc` | cancel |
 | `f` | fit | `Ctrl+Z` / `Shift+Z` | zoom in / out |
 | `Shift+F` | show all levels | `Ctrl+F` | top level only |
@@ -90,6 +90,14 @@ reference), then click a parallel edge of anything else: the selection moves so 
 up - sideways for vertical edges, up/down for horizontal ones. Edges are instance outlines and
 shapes, also inside instances (e.g. a transistor's diffusion or gate; near an outline the outline
 wins). The edge under the mouse is highlighted; `Esc` or a right click cancels; `u` undoes.
+
+**Vias (`o`)**: *Create Via* lists the ASAP7 vias with their cut sizes - V0 from LISD or LIG up to
+M1 (18 x 18 nm), V1 and V2 (18 x 18), V3 (18 x 24), V4 (24 x 24), V5 (24 x 32), V6 and V7
+(32 x 32), V8 (40 x 40) - followed by via stacks (e.g. LIG -> M2 = V0 + V1), with rows and columns
+for arrays. After *Place* the via follows the mouse, centred on it, and every click drops one; `Esc`
+or a right click finishes. Metal pads are the tech LEF's default vias (VIA12 ... VIA89), running
+along each metal's direction. A placed via is an OpenLayout_ASAP7 `via` PCell: `q` changes its
+via, rows and columns.
 
 **Custom standard cells.** *OpenLayout ▸ Standard-Cell Frame…* draws the cell template at the origin
 of the open cell, as plain shapes in the cell itself (no extra hierarchy level - every shape can be
