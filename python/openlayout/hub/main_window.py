@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QInputDialog, 
                                QMessageBox, QSplitter, QStyle, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import __version__
-from ..tools import KLayoutBridge, XschemBridge, netlist_command, simulate_command
+from ..tools import KLayoutBridge, XschemBridge, drc_command, netlist_command, simulate_command
 from ..workarea import Cell, View, Workarea, WorkareaError, view_type
 from . import theme
 from .ciw import CIW
@@ -21,6 +21,7 @@ from .library_manager import LibraryManager
 
 SIM_FAIL_RE = re.compile(r"^(Error\b|.*\bFAIL\b)", re.M)
 SIM_RESULT_RE = re.compile(r"^(PASS|FAIL)\b.*$", re.M)
+DRC_RESULT_RE = re.compile(r"^RESULT DRC \S+ violations=(\d+) rules=(\d+)", re.M)
 
 
 class HubAPI:
@@ -35,6 +36,7 @@ class HubAPI:
     ol.new_view(lib, cell, view="schematic")   view: schematic | symbol | layout
     ol.netlist(lib, cell)             netlist the schematic into sim/netlist/
     ol.sim(lib, cell)                 netlist + ngspice batch run in sim/<lib>/<cell>/
+    ol.drc(lib, cell)                 design rule check of the layout (results in verify/<lib>/<cell>/)
     ol.xschem(tcl)                    send a Tcl command to the running xschem
     ol.klayout(cmd, **args)           send a request to the running KLayout bridge
     ol.wa                             the Workarea object (full Python API)
@@ -78,6 +80,7 @@ class HubAPI:
 
     def netlist(self, lib, cell): self._win.netlist(self._cell(lib, cell))
     def sim(self, lib, cell): self._win.simulate(self._cell(lib, cell))
+    def drc(self, lib, cell): self._win.drc(self._cell(lib, cell))
     def xschem(self, tcl): return self._win.xschem.send(tcl)
     def klayout(self, cmd, **args): return self._win.klayout.request({"cmd": cmd, **args})
 
@@ -164,8 +167,8 @@ class MainWindow(QMainWindow):
                                S.SP_MediaPlay, "Netlist and simulate the cell in ngspice")
         self.a_gensym = self._act("Generate Symbol", lambda: self.generate_symbol(self.lm.current_cell()),
                                   None, None, "Create the cell's symbol from its schematic pins (Virtuoso style)")
-        self.a_drc =self._act("DRC", None, None, S.SP_DialogApplyButton, "Design rule check — coming in Phase 5",
-                               enabled=False)
+        self.a_drc = self._act("DRC", lambda: self.drc(self.lm.current_cell()), None, S.SP_DialogApplyButton,
+                               "Design rule check of the cell's layout (ASAP7 deck); results in KLayout")
         self.a_lvs = self._act("LVS", None, None, S.SP_DialogYesButton,
                                "Layout vs. schematic — coming in Phase 6", enabled=False)
         self.a_pex = self._act("PEX", None, None, None, "Parasitic extraction — coming in Phase 6", enabled=False)
@@ -511,6 +514,40 @@ class MainWindow(QMainWindow):
 
         self.netlist(cell, then=sim)
 
+    # ---- design rule check -----------------------------------------------------------------------
+    def drc(self, cell):
+        """Batch DRC of the cell's layout (as saved); the summary goes to the CIW, the markers to
+        KLayout's marker browser (like Calibre results in RVE)."""
+        if not cell:
+            return
+        try:
+            argv, cwd, report, layout = drc_command(self.workarea, cell)
+        except WorkareaError as e:
+            self.ciw.error(str(e))
+            return
+
+        def done(code, text):
+            m = DRC_RESULT_RE.search(text)
+            if code != 0 or not m:
+                self.workarea.set_state(cell, "drc", False, f"run failed (exit {code})")
+                self.ciw.error(f"DRC {cell.key}: the run failed")
+                self.lm.refresh()
+                return
+            n, rules = int(m.group(1)), int(m.group(2))
+            self.workarea.set_state(cell, "drc", n == 0, f"{n} violation(s) of {rules} rule(s)" if n else "clean")
+            if n == 0:
+                self.ciw.ok(f"DRC {cell.key}: clean")
+            else:
+                self.ciw.warn(f"DRC {cell.key}: {n} violation(s) of {rules} rule(s) — opening the results in KLayout")
+                self._in_thread(self.klayout, lambda: (
+                    self.klayout.ensure_started(),
+                    self.klayout.request({"cmd": "drc_results", "file": str(layout.path),
+                                          "cell": layout.gds_cell or cell.name, "report": str(report)}, timeout=60),
+                    f"DRC results of {cell.key} in KLayout's marker browser")[2])
+            self.lm.refresh()
+
+        self._run(argv, cwd, f"DRC {cell.key}", done)
+
     # ---- symbol from schematic ------------------------------------------------------------------
     def generate_symbol(self, cell):
         """Virtuoso "from cellview": build <cell>.sym from the schematic's pins and open it."""
@@ -547,6 +584,7 @@ class MainWindow(QMainWindow):
         self.a_netlist.setEnabled(has_sch and idle)
         self.a_sim.setEnabled(has_sch and idle)
         self.a_gensym.setEnabled(has_sch and writable_cell)
+        self.a_drc.setEnabled(bool(cell and cell.view("layout")) and idle and self.klayout is not None)
         self.a_start_xs.setEnabled(has_wa)
         self.a_start_kl.setEnabled(has_wa)
 

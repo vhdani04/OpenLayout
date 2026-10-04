@@ -182,7 +182,8 @@ Both tools have an **OpenLayout** menu that goes through the hub:
   *Show in Library Manager*,
   *Netlist (hub)*, *Simulate (hub)*
 - KLayout: *Generate / Update Layout from Schematic* (the only place layouts are generated - a form
-  asks which pins to create on which metal), *Check Connectivity*, *Open Schematic*,
+  asks which pins to create on which metal), *Check Connectivity*, *Run DRC* (ASAP7 deck on the cell
+  being edited, markers in the marker browser - see [DRC.md](DRC.md)), *Open Schematic*,
   *Open Symbol*, *Show in Library Manager*, *Show LSW*, *Show Connectivity*
 
 ## Hub

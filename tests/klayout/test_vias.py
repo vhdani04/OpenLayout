@@ -23,10 +23,13 @@ def check(name, cond, detail=""):
         failures.append(name)
 
 
-# geometry: the tech LEF's default vias
+# geometry: the tech LEF's default vias, with pads as large as the DRM needs
 g = via_geometry("m1", "m2")["shapes"]
-check("V1 is the LEF's VIA12 (18x18 cut, M1 / M2 pads)",
-      g == {"v1": [(-9, -9, 9, 9)], "m1": [(-9, -11, 9, 11)], "m2": [(-14, -9, 14, 9)]}, g)
+check("V1 is the LEF's VIA12 (18x18 cut, M2 pad) with an M1 pad 5 nm past both ends (V1.M1.EN.1)",
+      g == {"v1": [(-9, -9, 9, 9)], "m1": [(-9, -14, 9, 14)], "m2": [(-14, -9, 14, 9)]}, g)
+g = via_geometry("m8", "m9")["shapes"]
+check("V8 pads enclose the 40x40 cut by 20 nm on two sides", g == {"v8": [(-20, -20, 20, 20)],
+      "m8": [(-40, -20, 40, 20)], "m9": [(-20, -40, 20, 40)]}, g)
 g = via_geometry("m4", "m5")["shapes"]
 check("V4 is 24x24 (VIA45)", g["v4"] == [(-12, -12, 12, 12)], g)
 g = via_geometry("m3", "m4")["shapes"]

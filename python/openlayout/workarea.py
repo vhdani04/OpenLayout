@@ -363,6 +363,10 @@ class Workarea:
     def run_dir(self, cell: Cell) -> Path:
         return self.root / "sim" / cell.library.name / cell.name
 
+    def verify_dir(self, cell: Cell) -> Path:
+        """DRC / LVS results of a cell (kept out of the library, which may be read-only)."""
+        return self.root / "verify" / cell.library.name / cell.name
+
 
 XSCHEM_HEADER = "v {xschem version=3.4.8RC file_version=1.3}\nG {}\n"
 

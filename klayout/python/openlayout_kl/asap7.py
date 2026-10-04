@@ -19,18 +19,20 @@ MIN_WIDTH = {"gate": 20, "lig": 16, "lisd": 24, "m1": 18, "m2": 18, "m3": 18, "m
 # Default vias (nm, centred on the origin), from the ASAP7 tech LEF (VIA12 ... VIA89) and, for V0,
 # the library cells: cut box, cut spacing for arrays, and the pad on the layer below / above.
 # Pads run along each metal's routing direction (M1, M3, M5, M7, M9 vertical; M2, M4, M6, M8
-# horizontal), as in the LEF.
+# horizontal), as in the LEF, but are made as large as the DRM's enclosure / width rules need where
+# the LEF's are smaller: the M1 pad under V1 (5 nm both ends, V1.M1.EN.1), the M4 pad over V3
+# (44 nm long, M4.W.5) and both V8 pads (20 nm on two sides, V8.M8.EN.1 / V8.M9.EN.2).
 VIA_DEFS = {
     ("lisd", "m1"): {"cut": "v0", "box": (-9, -9, 9, 9), "space": 18,
                      "bottom": (-12, -9, 12, 9), "top": (-9, -11, 9, 11)},
     ("lig", "m1"): {"cut": "v0", "box": (-9, -9, 9, 9), "space": 18,
                     "bottom": (-10, -11, 10, 11), "top": (-9, -11, 9, 11)},
     ("m1", "m2"): {"cut": "v1", "box": (-9, -9, 9, 9), "space": 18,
-                   "bottom": (-9, -11, 9, 11), "top": (-14, -9, 14, 9)},
+                   "bottom": (-9, -14, 9, 14), "top": (-14, -9, 14, 9)},
     ("m2", "m3"): {"cut": "v2", "box": (-9, -9, 9, 9), "space": 18,
                    "bottom": (-14, -9, 14, 9), "top": (-9, -14, 9, 14)},
     ("m3", "m4"): {"cut": "v3", "box": (-9, -12, 9, 12), "space": 18,
-                   "bottom": (-9, -17, 9, 17), "top": (-20, -12, 20, 12)},
+                   "bottom": (-9, -17, 9, 17), "top": (-22, -12, 22, 12)},
     ("m4", "m5"): {"cut": "v4", "box": (-12, -12, 12, 12), "space": 24,
                    "bottom": (-23, -12, 23, 12), "top": (-12, -23, 12, 23)},
     ("m5", "m6"): {"cut": "v5", "box": (-12, -16, 12, 16), "space": 24,
@@ -40,7 +42,7 @@ VIA_DEFS = {
     ("m7", "m8"): {"cut": "v7", "box": (-16, -16, 16, 16), "space": 46,
                    "bottom": (-16, -27, 16, 27), "top": (-27, -20, 27, 20)},
     ("m8", "m9"): {"cut": "v8", "box": (-20, -20, 20, 20), "space": 57,
-                   "bottom": (-20, -20, 20, 20), "top": (-20, -20, 20, 20)},
+                   "bottom": (-40, -20, 40, 20), "top": (-20, -40, 20, 40)},
 }
 CONDUCTOR_STACK = ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9"]   # above LISD / LIG
 

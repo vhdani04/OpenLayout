@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["XDG_CONFIG_HOME"] = tempfile.mkdtemp()  # Qt caches this path: keep the user's hub settings untouched
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from openlayout.workarea import SCHEMATIC, Workarea  # noqa: E402
+from openlayout.workarea import SCHEMATIC, Workarea, view_type  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -70,6 +70,43 @@ def test_simulate_records_state(win, app):
     state = win.workarea.cell_state(cell)
     assert state["netlist"]["ok"] and state["sim"]["ok"]
     assert state["sim"]["detail"].startswith("PASS")
+
+
+def wait_state(win, app, cell, step, timeout=120):
+    end = time.time() + timeout
+    while time.time() < end and step not in win.workarea.cell_state(cell):
+        app.processEvents()
+        time.sleep(0.02)
+    return win.workarea.cell_state(cell).get(step)
+
+
+def test_drc_records_state(win, app):
+    # a library cell: clean; results under verify/, the read-only library untouched
+    inv = win.workarea.library("asap7sc7p5t_28_R").cell("INVx1_ASAP7_75t_R")
+    win.lm.select("asap7sc7p5t_28_R", "INVx1_ASAP7_75t_R")
+    assert win.a_drc.isEnabled()
+    win.drc(inv)
+    state = wait_state(win, app, inv, "drc")
+    assert state and state["ok"] and state["detail"] == "clean"
+    assert (win.workarea.verify_dir(inv) / "INVx1_ASAP7_75t_R.drc.lyrdb").is_file()
+    # a cell with an M1 width error: not clean, and the results go to KLayout
+    import subprocess
+    cell = win.workarea.new_view(win.workarea.library("cpu8"), "bad", view_type("layout")).cell
+    script = cell.path / "mk.py"
+    script.write_text("\n".join([
+        "import pya",
+        "ly = pya.Layout(); ly.dbu = 0.00025; c = ly.create_cell('bad')",
+        "c.shapes(ly.layer(19, 0)).insert(pya.DBox(0, 0, 0.016, 0.2))",
+        f"ly.write({str(cell.path / 'bad.gds')!r})", ""]))
+    subprocess.run(["klayout", "-b", "-r", str(script)], check=True)
+    script.unlink()
+    sent = []
+    win._in_thread = lambda bridge, fn: sent.append(bridge.name)
+    win.drc(cell)
+    state = wait_state(win, app, cell, "drc")
+    assert state and not state["ok"] and state["detail"].startswith("1 violation")
+    assert sent == ["klayout"]
+    assert "M1.W.1" in win.ciw.log.toPlainText()
 
 
 def test_command_server(win, app):

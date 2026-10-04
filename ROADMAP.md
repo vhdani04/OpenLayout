@@ -27,7 +27,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] Library/Cell/View browser; double-click opens view in right tool
 - [x] New library/cell/view, copy/rename/delete (keeps sch/sym/layout in sync)
 - [x] Console/log pane (CIW with Python `ol` API); Netlist + Simulate; per-cell status badges
-- [ ] DRC / LVS / PEX buttons are placeholders until Phases 5–6
+- [x] DRC button (Phase 5); LVS / PEX buttons are placeholders until Phase 6
 - [x] App-menu entry; tools run as single sessions driven over localhost
 
 ## Phase 4 — Look & feel (one consistent environment)  [DONE]
@@ -45,12 +45,14 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] Generate / Update Layout from Schematic with a persistent schematic link
 - [x] Connectivity panel: open nets with flight lines, shorts, missing/extra parts (live re-check)
 
-## Phase 5 — DRC   <- NEXT
-- [ ] KLayout DRC deck written from the ASAP7 DRM, rule by rule, with pass/fail test layouts
-- [ ] Regression: all std-cell GDS must be DRC-clean
-- [ ] Cross-check against Calibre deck when it arrives; results browser in KLayout
+## Phase 5 — DRC  [DONE]
+- [x] KLayout DRC deck written from the ASAP7 DRM, rule by rule, with pass/fail test layouts (docs/DRC.md)
+- [x] Regression: all std-cell GDS DRC-clean in context (848 cells; one documented library waiver)
+- [x] Results in KLayout's marker browser: OpenLayout > Run DRC, hub DRC button, `openlayout drc`
+- [x] Generators DRC-clean: frame + transistor PCells, via PCells (pads enlarged to the DRM where the LEF's are smaller)
+- [ ] Cross-check against the Calibre deck if it arrives
 
-## Phase 6 — LVS + extraction
+## Phase 6 — LVS + extraction   <- NEXT
 - [ ] FinFET device extractor (fin counting -> nfin), VT flavor recognition
 - [ ] Regression: every std cell passes LVS vs its CDL
 - [ ] Parasitic extraction -> post-layout ngspice simulation

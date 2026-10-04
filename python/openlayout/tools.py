@@ -151,6 +151,16 @@ def netlist_command(wa: Workarea, cell: Cell) -> tuple[list[str], Path, Path]:
     return argv, wa.root, out / f"{cell.name}.spice"
 
 
+def drc_command(wa: Workarea, cell: Cell) -> tuple[list[str], Path, Path, View]:
+    """`openlayout drc` on a cell's layout. Returns (argv, cwd, report path, layout view)."""
+    layout = cell.view("layout")
+    if layout is None:
+        raise WorkareaError(f"{cell.key} has no layout")
+    report = wa.verify_dir(cell) / f"{cell.name}.drc.lyrdb"
+    argv = ["openlayout", "drc", str(layout.path), "--cell", layout.gds_cell or cell.name, "--report", str(report)]
+    return argv, wa.root, report, layout
+
+
 def simulate_command(wa: Workarea, cell: Cell, netlist: Path) -> tuple[list[str], Path]:
     run = wa.run_dir(cell)
     run.mkdir(parents=True, exist_ok=True)

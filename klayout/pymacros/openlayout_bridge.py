@@ -7,6 +7,7 @@
 # line per connection, one JSON reply line back.
 #   {"cmd": "ping"}
 #   {"cmd": "open", "file": "/path/cell.gds", "cell": "INVx1", "readonly": false}
+#   {"cmd": "drc_results", "file": "/path/cell.gds", "cell": "INVx1", "report": "/path/x.lyrdb"}
 import json
 import os
 
@@ -52,6 +53,9 @@ class OpenLayoutBridge:
             from openlayout_kl import gui
             report = gui.instance.generate_for(req["schematic"])
             return {"ok": True, "report": report, "message": gui.OpenLayoutUI.describe(report)}
+        if cmd == "drc_results":  # {"file", "cell", "report"} - a batch DRC's results in the marker browser
+            from openlayout_kl import drc
+            return {"ok": True, "violations": drc.show_results(req["file"], req.get("cell"), req["report"])}
         if cmd == "connectivity":  # summary of the Connectivity panel's last check
             from openlayout_kl import connectivity, gui
             gui.instance.nets.run_check(force=True)

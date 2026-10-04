@@ -43,7 +43,11 @@ canvases, shared accent colors. Both tools use **Virtuoso bindkeys** (see [docs/
 or F1 in the hub) and get an **OpenLayout** menu:
 
 - xschem: Open Layout in KLayout, Open Symbol/Schematic, Show in Library Manager, Netlist, Simulate
-- KLayout: Open Schematic/Symbol, Show in Library Manager, LSW (Virtuoso-style layer palette)
+- KLayout: Open Schematic/Symbol, Show in Library Manager, LSW (Virtuoso-style layer palette),
+  Run DRC
+
+**DRC**: a KLayout deck written rule by rule from the ASAP7 DRM, run from KLayout, the hub or
+`openlayout drc` - see [docs/DRC.md](docs/DRC.md).
 
 Cross-tool menus call `openlayout hubcmd`, which talks to the hub over localhost
 (`<workarea>/.openlayout/session.json` holds its port); the hub starts the other tool if needed.

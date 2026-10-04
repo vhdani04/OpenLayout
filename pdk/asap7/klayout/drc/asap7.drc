@@ -1,0 +1,442 @@
+# ASAP7 design rule check for KLayout (OpenLayout).
+#
+# Written rule by rule from the ASAP7 Design Rule Manual, PDK release 1p7 (asap7_drm_201207a.pdf,
+# in $ASAP7_PDK/docs). Each check is output under the DRM's rule name; docs/DRC.md lists every rule
+# with how it is checked (and the few that are not).
+#
+# Batch:  klayout -b -r asap7.drc -rd input=cell.gds [-rd topcell=NAME] [-rd report=out.lyrdb]
+#         [-rd deep=1] [-rd threads=4]
+# In the GUI (OpenLayout > Run DRC, or Tools > DRC): runs on the current cell and opens the
+# results in the marker browser.
+#
+# The layout is checked flat by default: the fin / gate / metal-track grid rules work on absolute
+# coordinates, which a hierarchical (deep) run would see in each cell's own coordinates.
+
+if $input
+  $topcell ? source($input, $topcell) : source($input)
+end
+report("ASAP7 DRC (DRM r1p7)", $report)
+$deep ? deep : flat
+threads(($threads || 4).to_i)
+verbose(false)
+
+DBU = 0.00025                               # um per database unit (4 per nm)
+def n(v) (v * 4).round end                  # nm -> dbu (integer)
+def eps() DBU end                           # one dbu, in um
+
+# ---- layers (DRM tables 2.1.1 - 2.4.1) --------------------------------------------------------
+well    = input(1, 0)
+fin     = input(2, 0)
+gate    = input(7, 0)
+gcut    = input(10, 0)
+active  = input(11, 0)
+nsel    = input(12, 0)
+psel    = input(13, 0)
+lig     = input(16, 0)
+lisd    = input(17, 0)
+v0      = input(18, 0)
+m1      = input(19, 0)
+m2      = input(20, 0)
+v1      = input(21, 0)
+v2      = input(25, 0)
+m3      = input(30, 0)
+v3      = input(35, 0)
+m4      = input(40, 0)
+v4      = input(45, 0)
+m5      = input(50, 0)
+v5      = input(55, 0)
+m6      = input(60, 0)
+v6      = input(65, 0)
+m7      = input(70, 0)
+v7      = input(75, 0)
+m8      = input(80, 0)
+v8      = input(85, 0)
+m9      = input(90, 0)
+v9      = input(95, 0)
+pad     = input(96, 0)
+sdt     = input(88, 0)
+slvt    = input(97, 0)
+lvt     = input(98, 0)
+sramdrc = input(99, 0)
+sramvt  = input(110, 0)
+
+# derived layers
+gate_nc = gate - gcut                       # "GATE not cut by GCUT"
+channel = gate & active                     # DRM 1.2.2 note 6
+sd      = active - gate                     # source / drain
+
+# ---- helpers ------------------------------------------------------------------------------------
+# Horizontal / vertical edges. A horizontal width or spacing is measured between vertical edges.
+def hor(l) l.edges.with_angle(0) end
+def ver(l) l.edges.with_angle(90) end
+
+def hwidth(l, d) ver(l).width(d, projection) end
+def vwidth(l, d) hor(l).width(d, projection) end
+def hspace(l, d) ver(l).space(d, projection) end
+def vspace(l, d) hor(l).space(d, projection) end
+def hsep(a, b, d) ver(a).separation(ver(b), d, projection) end
+def vsep(a, b, d) hor(a).separation(hor(b), d, projection) end
+# `outer` extends past `inner` by at least d, horizontally / vertically: the inner's edges that lie
+# inside the outer (or on its boundary) against the outer's edges
+def hext(outer, inner, d) ver(outer).enclosing(ver(inner) & outer, d, projection) end
+def vext(outer, inner, d) hor(outer).enclosing(hor(inner) & outer, d, projection) end
+
+# Corner-to-corner checks: euclidian checks limited to edges that do not project onto each other,
+# e.g. a.space(d, euclidian, projection_limits(nil, eps)).
+
+# Spacing by the lengths of the facing edges (LISD, LIG, M1-M3): long > 36 nm, tips <= 36 nm,
+# split into wide tips (24..36 nm) and narrow tips (< 24 nm).
+def line_space(l, name, side, tip_side, tt_wide, tt_narrow = nil, tt_mixed = nil, wide_name = nil)
+  e = l.edges
+  long = e.with_length(36.nm + eps, nil)
+  tip = e.with_length(nil, 36.nm + eps)
+  wide = tip.with_length(24.nm, nil)
+  narrow = tip.with_length(nil, 24.nm)
+  long.space(side.nm, projection).output("#{name}.S.1", "#{name}: side-to-side spacing (both edges > 36 nm) >= #{side} nm")
+  long.separation(tip, tip_side.nm, projection).output("#{name}.S.2", "#{name}: tip-to-side spacing (one edge <= 36 nm, the other > 36 nm) >= #{tip_side} nm")
+  wide.space(tt_wide.nm, projection).output(wide_name || "#{name}.S.3", "#{name}: tip-to-tip spacing (both edges 24..36 nm) >= #{tt_wide} nm")
+  if tt_narrow
+    narrow.space(tt_narrow.nm, projection).output("#{name}.S.4", "#{name}: tip-to-tip spacing (both edges < 24 nm) >= #{tt_narrow} nm")
+    narrow.separation(wide, tt_mixed.nm, projection).output("#{name}.S.5", "#{name}: tip-to-tip spacing (one edge < 24 nm, the other 24..36 nm) >= #{tt_mixed} nm")
+  end
+end
+
+# Polygons whose rounded bbox values (in dbu) fail a test, e.g. grid positions or exact sizes.
+def bad_boxes(l, &block)
+  l.merged.select { |p| b = p.bbox; !block.call(n(b.left * 1000), n(b.bottom * 1000), n(b.right * 1000), n(b.top * 1000)) }
+end
+
+# The vias (or via parts) enclosed by the metal on two opposite sides, by d on one and d2 on the
+# other (d, d2 at most the via size): the via stretched by d one way and d2 the other way along
+# x or y lies inside the metal.
+def end_caps(via, metal, d, d2)
+  ok = (via | via.moved(d, 0) | via.moved(-d2, 0)).inside(metal) |
+       (via | via.moved(-d, 0) | via.moved(d2, 0)).inside(metal) |
+       (via | via.moved(0, d) | via.moved(0, -d2)).inside(metal) |
+       (via | via.moved(0, -d) | via.moved(0, d2)).inside(metal)
+  via.inside(ok)
+end
+# Vias exactly as wide as the metal across it: both edges along one axis coincide with metal edges.
+def exact_width(via, metal)
+  common = via.edges & metal.edges
+  via.interacting(common.with_angle(90), 2) | via.interacting(common.with_angle(0), 2)
+end
+
+# ---- 3.1 Geometry ------------------------------------------------------------------------------
+offgrid = polygon_layer
+[well, fin, gate, gcut, active, nsel, psel, lig, lisd, v0, m1, m2, v1, v2, m3, v3, m4, v4, m5, v5, m6,
+ v6, m7, v7, m8, v8, m9, v9, pad, sdt, slvt, lvt, sramdrc, sramvt].each { |l| offgrid += l.non_rectilinear }
+offgrid.output("GEOMETRY.NONORTHOGONAL", "Non-orthogonal shapes are not allowed")
+
+# ---- 3.2 WELL ------------------------------------------------------------------------------------
+hwidth(well, 108.nm).output("WELL.W.1", "Minimum horizontal width of WELL >= 108 nm")
+vwidth(well, 54.nm).output("WELL.W.2", "Minimum vertical width of WELL >= 54 nm")
+vspace(well, 108.nm).output("WELL.S.1", "Minimum vertical spacing between WELL polygons >= 108 nm")
+hspace(well, 54.nm).output("WELL.S.2", "Minimum horizontal spacing between WELL polygons >= 54 nm")
+well.with_area(nil, 0.005832).output("WELL.A.1A", "Minimum area of WELL >= 5832 nm2")
+well.holes.with_area(nil, 0.005832).output("WELL.A.1B", "Minimum enclosed area of WELL >= 5832 nm2")
+hext(well, gate_nc, 7.nm).output("WELL.GATE.EX.1", "Minimum horizontal extension of WELL past GATE (not cut by GCUT) >= 7 nm")
+vext(well, gate_nc.not_interacting(sramdrc), 7.nm).output("WELL.GATE.EX.2", "Minimum vertical extension of WELL past GATE (not cut by GCUT, outside SRAMDRC) >= 7 nm")
+
+# ---- 3.3 FIN -------------------------------------------------------------------------------------
+fin.non_rectangles.output("FIN.AUX.1", "FIN may not bend")
+fin_r = fin.rectangles
+fin_r.without_bbox_height(7.nm).output("FIN.W.1", "Exact vertical FIN width == 7 nm")
+fin_r.with_bbox_width(nil, 108.nm).output("FIN.W.2", "Minimum horizontal FIN width >= 108 nm")
+# The fins of all cells form one array: centrelines at 13.5 nm + k * 27 nm (the cell rows are 270 nm).
+bad_boxes(fin_r) { |l, b, r, t| (b + t - n(27)) % n(54) == 0 }.output("FIN.S.1", "Exact vertical FIN pitch == 27 nm (fin centrelines on the 27 nm fin grid, offset 13.5 nm)")
+
+# ---- 3.4 GATE ------------------------------------------------------------------------------------
+gate.non_rectangles.output("GATE.AUX.1", "GATE may not bend")
+gate_r = gate.rectangles
+gate_r.without_bbox_width(20.nm).output("GATE.W.1", "Exact horizontal GATE width == 20 nm")
+gate.with_bbox_height(nil, 40.nm).output("GATE.W.2", "Minimum vertical GATE width >= 40 nm")
+# gate centrelines on the 54 nm contacted poly pitch, offset 27 nm (one half pitch from the cell edge)
+bad_boxes(gate_r) { |l, b, r, t| (l + r - n(54)) % n(108) == 0 }.output("GATE.S.1", "Exact horizontal GATE pitch == 54 nm (gate centrelines on the 54 nm grid, offset 27 nm)")
+hspace(gate, 34.nm).output("GATE.S.2", "Minimum horizontal GATE spacing >= 34 nm")
+g3 = gate_nc.not_interacting(sramdrc)
+g3.interacting(g3.sized(17.nm, 0).interacting(g3, 1, 1)).output("GATE.S.3", "Every GATE (not cut by GCUT, outside SRAMDRC) needs another GATE within 54 nm (centre to centre) horizontally")
+vspace(gate, 54.nm).output("GATE.AUX.2", "GATE may not be discontinuous along the vertical axis: use GCUT to cut it (gate line ends facing each other)")
+(ver(active) & gate).output("GATE.ACTIVE.AUX.3", "ACTIVE vertical edge may not lie inside, or coincide with, GATE")
+vext(gate_nc, channel, 4.nm).output("GATE.ACTIVE.EX.1", "Minimum vertical extension of GATE (not cut by GCUT) past ACTIVE >= 4 nm")
+hext(active.interacting(gate_nc), channel & gate_nc, 25.nm).output("GATE.ACTIVE.EX.2", "Minimum horizontal extension of ACTIVE past GATE (not cut by GCUT) >= 25 nm")
+hsep(active, gate_nc.not_interacting(active), 9.nm).output("GATE.ACTIVE.S.4", "Minimum horizontal spacing between ACTIVE and GATE (not cut by GCUT, not over ACTIVE) >= 9 nm")
+
+# ---- 3.5 ACTIVE ----------------------------------------------------------------------------------
+act_ns = active.not_interacting(sramdrc)
+act_s = active.interacting(sramdrc)
+vext(active, fin, 10.nm).output("ACTIVE.FIN.EX.1", "Minimum vertical extension of ACTIVE past FIN >= 10 nm")
+vwidth(active, 27.nm).output("ACTIVE.W.1", "Minimum vertical width of ACTIVE >= 27 nm")
+active.merged.select { |p| p.each_edge.all? { |e| e.dy == 0 || (n(e.dy.abs * 1000) % n(27)) == 0 } ? false : true }
+  .output("ACTIVE.W.2", "ACTIVE vertical width increments are integer multiples of 27 nm")
+hwidth(active, 16.nm).output("ACTIVE.W.3", "Minimum horizontal width of ACTIVE >= 16 nm")
+vspace(active, 27.nm).output("ACTIVE.S.1", "Minimum vertical spacing of ACTIVE >= 27 nm")
+hspace(active, 38.nm).output("ACTIVE.S.2B", "Minimum horizontal spacing of ACTIVE >= 38 nm")
+act_ns.separation(well, 27.nm).output("ACTIVE.WELL.S.4", "Minimum spacing of ACTIVE (outside SRAMDRC) to WELL >= 27 nm")
+act_s.separation(well, 13.5.nm).output("SRAM.ACTIVE.WELL.S.5", "Minimum spacing of ACTIVE (in SRAMDRC) to WELL >= 13.5 nm")
+well.enclosing(act_ns, 27.nm).output("ACTIVE.WELL.EN.1", "Minimum enclosure of ACTIVE (outside SRAMDRC) by WELL >= 27 nm")
+active.overlapping(well).not_inside(well).output("ACTIVE.WELL.EN.1", "ACTIVE crossing the WELL edge")
+well.enclosing(act_s, 13.5.nm).output("SRAM.ACTIVE.WELL.EN.2", "Minimum enclosure of ACTIVE (in SRAMDRC) by WELL >= 13.5 nm")
+act_ns.with_area(nil, 0.000864).output("ACTIVE.A.1A", "Minimum area of ACTIVE (outside SRAMDRC) >= 864 nm2")
+act_ns.holes.with_area(nil, 0.000864).output("ACTIVE.A.1B", "Minimum enclosed area of ACTIVE (outside SRAMDRC) >= 864 nm2")
+act_s.with_area(nil, 0.000432).output("SRAM.ACTIVE.A.2A", "Minimum area of ACTIVE (in SRAMDRC) >= 432 nm2")
+act_s.holes.with_area(nil, 0.000432).output("SRAM.ACTIVE.A.2B", "Minimum enclosed area of ACTIVE (in SRAMDRC) >= 432 nm2")
+implant = nsel | psel
+(active.not_inside(implant) | active.interacting(active.edges & implant.edges))
+  .output("ACTIVE.AUX.1", "ACTIVE must be enclosed by NSELECT or PSELECT with no coincident edges")
+active.not_overlapping(sramdrc).interacting(sramdrc).output("SRAM.ACTIVE.AUX.2", "ACTIVE outside SRAMDRC may not touch SRAMDRC")
+active.notch(1.um, projection).select { |p| p.first.dy == 0 }
+  .output("ACTIVE.AUX.3", "A notch in ACTIVE along the vertical axis is not allowed")
+# ACTIVE.S.2A: the source / drain regions on either side of a gap between two ACTIVE polygons
+# (a diffusion break) closer than 92 nm must be on the same net. Net-aware checks see through
+# shapes of other nets, so only the pairs spanning exactly such a gap count.
+connect(sd, sdt)
+connect(sdt, lisd)
+connect(gate_nc, lig)
+connect(lig, lisd)
+connect(lig, v0)
+connect(lisd, v0)
+[m1, v1, m2, v2, m3, v3, m4, v4, m5, v5, m6, v6, m7, v7, m8, v8, m9].each_cons(2) { |a, b| connect(a, b) }
+connect(v0, m1)
+sd_n = sd.nets
+breaks = hspace(active, 92.nm).polygons
+sd_n.space(92.nm, projection, props_ne).polygons.inside(breaks)
+  .output("ACTIVE.S.2A", "Minimum horizontal spacing between source/drain ACTIVE (different transistors) on different nets >= 92 nm")
+
+# ---- 3.6 GCUT ------------------------------------------------------------------------------------
+vwidth(gcut, 17.nm).output("GCUT.W.1", "Minimum vertical width of GCUT >= 17 nm")
+vsep(gcut, channel, 4.nm).output("GCUT.ACTIVE.S.1", "Minimum vertical spacing between GCUT and channel >= 4 nm")
+hext(gcut, gate & gcut, 17.nm).output("GCUT.GATE.EX.1", "Minimum horizontal extension of GCUT past GATE >= 17 nm")
+ver(gcut).outside_part(gate).separation(ver(gate).outside_part(gcut), 17.nm, projection)
+  .output("GCUT.GATE.S.2", "Minimum spacing of GCUT to a GATE it does not cut >= 17 nm")
+vspace(gcut, 35.nm).output("GCUT.S.3", "Minimum vertical spacing between GCUT polygons >= 35 nm")
+gcut.not_interacting(gate).output("GCUT.AUX.1", "GCUT may not exist without GATE")
+(ver(gcut) & gate).output("GCUT.AUX.2", "GCUT vertical edge may not lie inside, or coincide with, GATE")
+gcut.interacting(channel).output("GCUT.AUX.3", "GCUT may not interact with channel")
+
+# ---- 3.7 NSELECT / PSELECT / SLVT / LVT / SRAMVT -------------------------------------------------
+[["NSELECT", nsel], ["PSELECT", psel], ["SLVT", slvt], ["LVT", lvt], ["SRAMVT", sramvt]].each do |nm, l|
+  hwidth(l, 108.nm).output("#{nm}.W.1", "Minimum horizontal width of #{nm} >= 108 nm")
+  vwidth(l, 54.nm).output("#{nm}.W.2", "Minimum vertical width of #{nm} >= 54 nm")
+  a_ns = act_ns & l
+  a_s = act_s & l
+  hext(l, a_ns, 46.nm).output("#{nm}.ACTIVE.EN.1", "Minimum horizontal enclosure of ACTIVE (outside SRAMDRC) by #{nm} >= 46 nm")
+  vext(l, a_ns, 27.nm).output("#{nm}.ACTIVE.EN.2", "Minimum vertical enclosure of ACTIVE (outside SRAMDRC) by #{nm} >= 27 nm")
+  hext(l, a_s, 13.5.nm).output("SRAM.#{nm}.ACTIVE.EN.3", "Minimum horizontal enclosure of ACTIVE (in SRAMDRC) by #{nm} >= 13.5 nm")
+  vext(l, a_s, 13.5.nm).output("SRAM.#{nm}.ACTIVE.EN.4", "Minimum vertical enclosure of ACTIVE (in SRAMDRC) by #{nm} >= 13.5 nm")
+  hext(l, gate_nc, 7.nm).output("#{nm}.GATE.EX.1", "Minimum horizontal extension of #{nm} past GATE (not cut by GCUT) >= 7 nm")
+  vext(l, gate_nc, 7.nm).output("#{nm}.GATE.EX.2", "Minimum vertical extension of #{nm} past GATE (not cut by GCUT) >= 7 nm")
+end
+(nsel & psel).output("NSELECT.PSELECT.AUX.1", "NSELECT and PSELECT may not overlap")
+((lvt & slvt) | (lvt & sramvt) | (slvt & sramvt)).output("VT.AUX.2", "VT layers (LVT, SLVT, SRAMVT) may not overlap")
+
+# ---- 3.8 SDT -------------------------------------------------------------------------------------
+sdt_ns = sdt.not_interacting(sramdrc)
+sdt_s = sdt.interacting(sramdrc)
+hwidth(sdt, 24.nm).output("SDT.W.1", "Minimum horizontal width of SDT >= 24 nm")
+vwidth(sdt_ns, 27.nm).output("SDT.W.2", "Minimum vertical width of SDT (outside SRAMDRC) >= 27 nm")
+sdt_ns.merged.select { |p| p.each_edge.all? { |e| e.dy == 0 || (n(e.dy.abs * 1000) % n(27)) == 0 } ? false : true }
+  .output("SDT.W.3", "SDT (outside SRAMDRC) vertical width increments are integer multiples of 27 nm")
+vwidth(sdt_s, 17.nm).output("SRAM.SDT.W.4", "Minimum vertical width of SDT (in SRAMDRC) >= 17 nm")
+hspace(sdt, 30.nm).output("SDT.S.1", "Minimum horizontal spacing between SDT polygons >= 30 nm")
+hsep(sdt, gate, 5.nm).output("SDT.GATE.S.2", "Minimum horizontal spacing between SDT and GATE >= 5 nm")
+vwidth(sdt_ns & active, 27.nm).output("SDT.ACTIVE.OV.1", "Minimum vertical overlap between SDT and ACTIVE >= 27 nm")
+vwidth(sdt_ns & lisd, 27.nm).output("SDT.LISD.OV.2", "Minimum vertical overlap between SDT and LISD >= 27 nm")
+vwidth(sdt_s & active, 17.nm).output("SRAM.SDT.ACTIVE.OV.3", "Minimum vertical overlap between SDT (in SRAMDRC) and ACTIVE >= 17 nm")
+vwidth(sdt_s & lisd, 17.nm).output("SRAM.SDT.LISD.OV.4", "Minimum vertical overlap between SDT (in SRAMDRC) and LISD >= 17 nm")
+sdt.interacting(gate).output("SDT.GATE.AUX.1", "SDT and GATE may not overlap or touch")
+# SDT top / bottom on the level of a horizontal edge of the ACTIVE it is on
+sdt_bad = edge_layer
+act_r = active.data.merged
+sdt_ns.data.merged.each do |sp|
+  levels = {}
+  act_r.interacting(RBA::Region::new(sp)).each { |ap| ap.each_edge { |e| levels[e.p1.y] = true if e.dy == 0 } }
+  sp.each_edge { |e| sdt_bad.data.insert(e) if e.dy == 0 && !levels[e.p1.y] }
+end
+sdt_bad.output("SDT.ACTIVE.AUX.2", "SDT (outside SRAMDRC) horizontal edges must coincide with ACTIVE horizontal edges")
+sdt.not_interacting(active).output("SDT.ACTIVE.AUX.3", "SDT may not be entirely outside ACTIVE")
+(sdt - lisd).output("SDT.LISD.AUX.4", "SDT must always be inside LISD")
+
+# ---- 3.9 LISD ------------------------------------------------------------------------------------
+lisd.width(24.nm, projection).output("LISD.W.1", "Minimum width of LISD >= 24 nm")
+line_space(lisd.not_interacting(sramdrc), "LISD", 18, 25, 27)
+lisd_s = lisd.interacting(sramdrc)
+lisd_s.edges.with_length(nil, 36.nm + eps).space(27.nm, projection).output("SRAM.LISD.S.4", "LISD (in SRAMDRC): tip-to-tip spacing (both edges <= 36 nm) >= 27 nm")
+lisd.with_area(nil, 0.000648).output("LISD.A.1", "Minimum LISD area >= 648 nm2")
+lisd.not_overlapping(sramdrc).interacting(sramdrc).output("SRAM.LISD.AUX.1", "LISD outside SRAMDRC may not touch SRAMDRC")
+
+# ---- 3.10 LIG ------------------------------------------------------------------------------------
+lig_ns = lig.not_interacting(sramdrc)
+lig_s = lig.interacting(sramdrc)
+lig.width(16.nm, projection).output("LIG.W.1", "Minimum width of LIG >= 16 nm")
+line_space(lig_ns, "LIG", 18, 25, 27, 31, 31)
+lig_n = lig.nets
+lisd_n = lisd.nets
+sdt_n = sdt.nets
+lig_n.separation(lisd_n, 14.nm, projection, props_ne).output("LIG.LISD.S.6", "Minimum spacing between LIG and LISD not on the same net >= 14 nm")
+lig_n.separation(lisd_n, 15.nm, euclidian, projection_limits(nil, eps), props_ne).output("LIG.LISD.S.7", "Minimum corner-to-corner spacing between LIG and LISD not on the same net >= 15 nm")
+lig_n.separation(sdt_n, 14.nm, props_ne).output("LIG.SDT.S.8", "Minimum spacing between LIG and SDT not on the same net >= 14 nm")
+vsep(lig, gate_nc, 14.nm).output("LIG.GATE.S.9A", "Minimum vertical spacing between LIG and GATE (not cut by GCUT) >= 14 nm")
+hsep(lig, gate_nc, 17.nm).output("LIG.GATE.S.9B", "Minimum horizontal spacing between LIG and GATE (not cut by GCUT) >= 17 nm")
+lig.separation(gate_nc.interacting(channel), 5.nm).output("LIG.GATE.S.10", "Minimum spacing between LIG and GATE (not cut by GCUT) forming a channel >= 5 nm")
+vsep(lig, gcut, 5.nm).output("LIG.GCUT.S.11", "Minimum vertical spacing between LIG and GCUT >= 5 nm")
+lig.with_area(nil, 0.000324).output("LIG.A.1", "Minimum LIG area >= 324 nm2")
+(lig & lisd).with_area(nil, 0.000128).output("LIG.LISD.A.2", "Minimum area of overlap between LIG and LISD >= 128 nm2")
+(lig_ns & gate_nc).with_area(nil, 0.000320).output("LIG.GATE.A.3", "Minimum area of overlap between LIG (outside SRAMDRC) and GATE (not cut by GCUT) >= 320 nm2")
+(lig_s & gate_nc).with_area(nil, 0.000240).output("SRAM.LIG.GATE.A.4", "Minimum area of overlap between LIG (in SRAMDRC) and GATE (not cut by GCUT) >= 240 nm2")
+(ver(lig_ns) & gate).output("LIG.GATE.AUX.1", "LIG (outside SRAMDRC) vertical edge may not lie inside, or coincide with, GATE")
+lig.not_overlapping(sramdrc).interacting(sramdrc).output("SRAM.LIG.AUX.2", "LIG outside SRAMDRC may not touch SRAMDRC")
+hext(lig_ns, gate_nc, 1.nm).output("LIG.GATE.EX.1", "Minimum extension of LIG (outside SRAMDRC) over GATE (not cut by GCUT) on both sides >= 1 nm")
+(lig & lisd).width(8.nm, projection).output("LIG.LISD.OV.1", "Minimum overlap between LIG and LISD connected together >= 8 nm")
+hwidth(lig_s & gate_nc, 15.nm).output("SRAM.LIG.GATE.OV.2", "Minimum overlap of LIG (in SRAMDRC) and GATE (not cut by GCUT) >= 15 nm")
+
+# ---- 3.11 V0 -------------------------------------------------------------------------------------
+v0.width(18.nm, projection).output("V0.W.1", "Minimum width of V0 >= 18 nm")
+v0.space(18.nm, projection).output("V0.S.1", "Minimum spacing between V0 >= 18 nm")
+v0_cap = end_caps(v0, m1, 5.nm, 5.nm)                 # with a 5 nm M1 end-cap
+v0_open = v0.not_interacting(v0_cap)
+v0_cap.space(23.nm, euclidian, projection_limits(nil, eps)).output("V0.S.2", "Minimum corner-to-corner spacing between V0, both with a 5 nm M1 end-cap >= 23 nm")
+v0_open.space(30.nm, euclidian, projection_limits(nil, eps)).output("V0.S.3", "Minimum corner-to-corner spacing between V0, both without a 5 nm M1 end-cap >= 30 nm")
+v0_cap.separation(v0_open, 27.nm, euclidian, projection_limits(nil, eps)).output("V0.S.4", "Minimum corner-to-corner spacing between V0, one with and one without a 5 nm M1 end-cap >= 27 nm")
+v0.not_interacting(end_caps(v0, m1, 5.nm, 0)).output("V0.M1.EN.1", "Minimum enclosure of V0 by M1 on two opposite sides >= (5 & 5) | (5 & 0) nm")
+v0_lisd = v0.interacting(lisd).not_interacting(lig)
+(v0_lisd.not_inside(lisd) | v0_lisd.not_interacting(end_caps(v0_lisd, lisd, 3.nm, 3.nm)))
+  .output("V0.LISD.EN.2", "V0 on LISD (not on LIG) must lie inside LISD, enclosed by 3 nm on two opposite sides")
+v0_part = v0.interacting(lisd).interacting(lig).not_inside(lisd)
+part = v0_part & lisd.interacting(lig)
+v0_part.interacting(part - end_caps(part, lisd, 3.nm, 3.nm))
+  .output("V0.LISD.EN.3", "V0 partly on LISD (LISD touching LIG): LISD encloses its part by 3 nm on two opposite sides")
+v0_lig = v0.interacting(lig).not_inside(lig).not_inside(lisd)
+v0_lig.edges.enclosing(lig.edges.inside_part(v0_lig), 1.nm, projection)
+  .output("V0.LIG.EN.4", "V0 crossing LIG (not inside LISD) extends past LIG by >= 1 nm on two opposite sides")
+(v0_lig & lig).with_area(nil, 0.000288).output("V0.LIG.A.1", "Minimum area of overlap between V0 (on LIG, not inside LISD) and LIG >= 288 nm2")
+(v0.not_interacting(m1) | v0.not_interacting(lisd | lig)).output("V0.AUX.1", "V0 must always interact with M1 and LISD or LIG")
+v0_lig.edges.inside(lig).output("V0.LIG.AUX.2", "V0 crossing LIG: an edge along LIG may not lie inside, or touch, LIG")
+v0.not_interacting(exact_width(v0, m1)).output("V0.M1.AUX.3", "V0 must be exactly as wide as M1 (across the M1 direction)")
+
+# ---- 3.12 M1-M3 ----------------------------------------------------------------------------------
+[["M1", m1], ["M2", m2], ["M3", m3]].each do |nm, l|
+  l.width(18.nm, projection).output("#{nm}.W.1", "Minimum width of #{nm} >= 18 nm")
+  line_space(l, nm, 18, 25, 27, 31, 31)
+  l.space(20.nm, euclidian, projection_limits(nil, eps)).output("#{nm}.S.6", "Minimum corner-to-corner spacing between #{nm} polygons >= 20 nm")
+  l.with_area(nil, 0.000504).output("#{nm}.A.1", "Minimum #{nm} area >= 504 nm2")
+end
+
+# ---- 3.13 V1-V3 ----------------------------------------------------------------------------------
+# bottom / top enclosure: [one side, opposite side] in nm
+[["V1", v1, "M1", m1, "M2", m2, [5, 2], [5, 0]],
+ ["V2", v2, "M2", m2, "M3", m3, [5, 5], [5, 0]],
+ ["V3", v3, "M3", m3, "M4", m4, [5, 5], [11, 11]]].each do |nm, v, bn, bot, tn, top, eb, et|
+  v.width(18.nm, projection).output("#{nm}.W.1", "Minimum width of #{nm} >= 18 nm")
+  v.space(18.nm, projection).output("#{nm}.S.1", "Minimum spacing between #{nm} >= 18 nm")
+  cap = end_caps(v, top, 5.nm, 5.nm)
+  open = v.not_interacting(cap)
+  cap.space(23.nm, euclidian, projection_limits(nil, eps)).output("#{nm}.S.2", "Minimum corner-to-corner spacing between #{nm}, both with a 5 nm #{tn} end-cap >= 23 nm")
+  open.space(30.nm, euclidian, projection_limits(nil, eps)).output("#{nm}.S.3", "Minimum corner-to-corner spacing between #{nm}, both without a 5 nm #{tn} end-cap >= 30 nm")
+  cap.separation(open, 27.nm, euclidian, projection_limits(nil, eps)).output("#{nm}.S.4", "Minimum corner-to-corner spacing between #{nm}, one with and one without a 5 nm #{tn} end-cap >= 27 nm")
+  v.inside(bot).not_interacting(end_caps(v, bot, eb[0].nm, eb[1].nm))
+    .output("#{nm}.#{bn}.EN.1", "Minimum enclosure of #{nm} by #{bn} on two opposite sides >= #{eb[0]} & #{eb[1]} nm")
+  v.inside(top).not_interacting(end_caps(v, top, et[0].nm, et[1].nm))
+    .output("#{nm}.#{tn}.EN.2", "Minimum enclosure of #{nm} by #{tn} on two opposite sides >= #{et[0]} & #{et[1]} nm")
+  (v.not_inside(bot) | v.not_inside(top)).output("#{nm}.AUX.1", "#{nm} must be inside #{bn} and #{tn}")
+  v.not_interacting(exact_width(v, top)).output("#{nm}.#{tn}.AUX.2", "#{nm} must be exactly as wide as #{tn} (across the #{tn} direction)")
+end
+
+# ---- 3.14 / 3.16 M4-M7 (SADP, on routing tracks) -------------------------------------------------
+# w: minimum width (across the routing direction), wmax: maximum width, s: spacing across.
+# M4 / M6 run horizontally, M5 / M7 vertically. Tracks: minimum-width wires at 2 * w * k (offset 0).
+def track_metal(nm, l, w, wmax, s, horizontal)
+  dir = horizontal ? "vertical" : "horizontal"
+  odir = horizontal ? "horizontal" : "vertical"
+  rect = l.rectangles
+  across = lambda { |l_, b, r, t| horizontal ? t - b : r - l_ }
+  start = lambda { |l_, b, r, t| horizontal ? b : l_ }
+  (horizontal ? vwidth(l, w.nm) : hwidth(l, w.nm)).output("#{nm}.W.1", "Minimum #{dir} width of #{nm} >= #{w} nm")
+  bad_boxes(rect) { |*c| across.call(*c) <= n(wmax) }.output("#{nm}.W.2", "Maximum #{dir} width of #{nm} <= #{wmax} nm")
+  # allowed widths span 1, 3, 5 ... tracks: (2N+1) * w with N even
+  bad_boxes(rect) { |*c| a = across.call(*c); a % n(w) != 0 || (a / n(w)).odd? }
+    .output("#{nm}.W.3", "#{nm} #{dir} width may not be an even multiple of its minimum width")
+  bad_boxes(rect) { |*c| a = across.call(*c); a % n(w) != 0 || (a / n(w)) % 4 != 3 }
+    .output("#{nm}.W.4", "#{nm} #{dir} width spanning an even number of routing tracks is not allowed")
+  (horizontal ? hwidth(l, 44.nm) : vwidth(l, 44.nm)).output("#{nm}.W.5", "Minimum #{odir} width of #{nm} >= 44 nm")
+  (horizontal ? vspace(l, s.nm) : hspace(l, s.nm)).output("#{nm}.S.1", "Minimum #{dir} spacing between #{nm} polygons >= #{s} nm")
+  (horizontal ? hspace(l, 40.nm) : vspace(l, 40.nm)).output("#{nm}.S.2", "Minimum #{odir} spacing between #{nm} polygons >= 40 nm")
+  # line ends on adjacent tracks: 40 nm apart along the tracks
+  l.space(80.nm, euclidian, projection_limits(nil, eps)).select do |p|
+    a = p.first.bbox
+    b = p.second.bbox
+    xgap = [b.left - a.right, a.left - b.right].max
+    ygap = [b.bottom - a.top, a.bottom - b.top].max
+    along, across_gap = horizontal ? [xgap, ygap] : [ygap, xgap]
+    along < 0.040 - 1e-6 && across_gap < (2 * s + w) * 0.001 - 1e-6
+  end.output("#{nm}.S.3", "Minimum tip-to-tip spacing between #{nm} polygons on adjacent tracks (no parallel run) >= 40 nm")
+  # wires on adjacent tracks running side by side do so for >= 44 nm
+  (horizontal ? hor(l) : ver(l)).space((s + 0.25).nm, projection).select { |p| p.first.length < 0.044 - 1e-6 }
+    .output("#{nm}.S.5", "Minimum parallel run length of #{nm} polygons on adjacent tracks >= 44 nm (#{nm}.S.4: their line ends >= 40 nm apart)")
+  l.merged.select { |p| p.each_edge.any? { |e| (horizontal ? e.dy : e.dx) == 0 && n((horizontal ? e.p1.y : e.p1.x) * 1000) % n(w) != 0 } }
+    .output("#{nm}.AUX.1", "#{nm} #{odir} edges must be on the #{w} nm grid")
+  bad_boxes(rect) { |*c| across.call(*c) != n(w) || start.call(*c) % n(2 * w) == 0 }
+    .output("#{nm}.AUX.2", "Minimum-width #{nm} wires must lie on the routing tracks (#{2 * w} nm pitch, offset 0)")
+  l.non_rectangles.output("#{nm}.AUX.3", "#{nm} may not bend")
+end
+track_metal("M4", m4, 24, 480, 24, true)
+track_metal("M5", m5, 24, 480, 24, false)
+track_metal("M6", m6, 32, 640, 32, true)
+track_metal("M7", m7, 32, 640, 32, false)
+
+# ---- 3.15 / 3.17 V4-V7 ---------------------------------------------------------------------------
+# size: exact width along the upper metal; axis: the upper metal's direction
+[["V4", v4, "M4", m4, "M5", m5, 24, 33, :y],
+ ["V5", v5, "M5", m5, "M6", m6, 24, 33, :x],
+ ["V6", v6, "M6", m6, "M7", m7, 32, 45, :y],
+ ["V7", v7, "M7", m7, "M8", m8, 32, 45, :x]].each do |nm, v, bn, bot, tn, top, size, sp, axis|
+  bad_boxes(v) { |l, b, r, t| (axis == :y ? t - b : r - l) == n(size) }
+    .output("#{nm}.W.1", "Exact width of #{nm} along the length of #{tn} == #{size} nm")
+  v.space(sp.nm, projection).output("#{nm}.S.1", "Minimum spacing between #{nm} >= #{sp} nm (same or different nets: #{nm}.S.2)")
+  v.space(sp.nm, euclidian, projection_limits(nil, eps)).output("#{nm}.S.3", "Minimum corner-to-corner spacing between #{nm} >= #{sp} nm")
+  v.inside(bot).not_interacting(end_caps(v, bot, 11.nm, 11.nm)).output("#{nm}.#{bn}.EN.1", "Minimum enclosure of #{nm} by #{bn} on two opposite sides >= 11 nm")
+  v.inside(top).not_interacting(end_caps(v, top, 11.nm, 11.nm)).output("#{nm}.#{tn}.EN.2", "Minimum enclosure of #{nm} by #{tn} on two opposite sides >= 11 nm")
+  (v.not_inside(bot) | v.not_inside(top)).output("#{nm}.AUX.1", "#{nm} must be inside #{bn} and #{tn}")
+  if nm != "V7"   # M8 has no routing direction and is wider than V7
+    v.not_interacting(exact_width(v, top)).output("#{nm}.#{tn}.AUX.2", "#{nm} must be exactly as wide as #{tn} (across the #{tn} direction)")
+  end
+end
+
+# ---- 3.18 M8-M9 ----------------------------------------------------------------------------------
+[["M8", m8], ["M9", m9]].each do |nm, l|
+  l.width(40.nm, projection).output("#{nm}.W.1", "Minimum width of #{nm} >= 40 nm")
+  l.edges.with_length(400.nm, 1200.nm).width(60.nm, projection).output("#{nm}.W.2", "Minimum width of #{nm} >= 60 nm when its length is 400..1200 nm")
+  l.edges.with_length(1200.nm, 1800.nm).width(80.nm, projection).output("#{nm}.W.3", "Minimum width of #{nm} >= 80 nm when its length is 1200..1800 nm")
+  l.edges.with_length(1800.nm, nil).width(120.nm, projection).output("#{nm}.W.4", "Minimum width of #{nm} >= 120 nm when its length is >= 1800 nm")
+  l.interacting(l.sized(-(1.um + eps))).output("#{nm}.W.5", "Maximum width of #{nm} <= 2000 nm")
+  long = l.edges.with_length(80.nm, nil)
+  tip = l.edges.with_length(nil, 80.nm)
+  long.space(40.nm, projection).output("#{nm}.S.1", "#{nm}: side-to-side spacing (both edges >= 80 nm) >= 40 nm")
+  long.separation(tip, 43.nm, projection).output("#{nm}.S.2", "#{nm}: tip-to-side spacing (one edge < 80 nm, the other >= 80 nm) >= 43 nm")
+  tip.space(46.nm, projection).output("#{nm}.S.3", "#{nm}: tip-to-tip spacing (both edges < 80 nm) >= 46 nm")
+  # wide-metal spacing, by the width of the wire
+  [[60, "S.4"], [80, "S.5"], [120, "S.6"], [500, "S.7"], [1000, "S.8"]].each do |w, r|
+    wide = l.sized(-(w / 2.0).nm + eps).sized((w / 2.0).nm - eps)
+    wide.edges.separation(l.edges, w.nm, projection).output("#{nm}.#{r}", "Minimum spacing of #{nm} at least #{w} nm wide to #{nm} >= #{w} nm")
+  end
+  l.with_area(nil, 0.00752).output("#{nm}.A.1", "Minimum area of #{nm} >= 7520 nm2")
+  l.edges.with_length(nil, 40.nm).output("#{nm}.L.1", "Minimum feature length of #{nm} >= 40 nm")
+end
+
+# ---- 3.19 V8-V9 ----------------------------------------------------------------------------------
+[["V8", v8, "M8", m8, "M9", m9], ["V9", v9, "M9", m9, "PAD", pad]].each do |nm, v, bn, bot, tn, top|
+  bad_boxes(v) { |l, b, r, t| [[n(40), n(40)], [n(40), n(120)], [n(120), n(40)]].include?([r - l, t - b]) }
+    .output("#{nm}.W.1", "Exact size of #{nm} == 40x40 | 40x120 | 120x40 nm")
+  v.space(57.nm, projection).output("#{nm}.S.1", "Minimum spacing between #{nm} >= 57 nm")
+  v.space(57.nm, euclidian, projection_limits(nil, eps)).output("#{nm}.S.2", "Minimum corner-to-corner spacing between #{nm} >= 57 nm")
+  v.inside(bot).not_interacting(end_caps(v, bot, 20.nm, 20.nm)).output("#{nm}.#{bn}.EN.1", "Minimum enclosure of #{nm} by #{bn} on two opposite sides >= 20 nm")
+  v.inside(top).not_interacting(end_caps(v, top, 20.nm, 20.nm)).output("#{nm}.#{tn}.EN.2", "Minimum enclosure of #{nm} by #{tn} on two opposite sides >= 20 nm")
+  (v.not_inside(bot) | v.not_inside(top)).output("#{nm}.AUX.1", "#{nm} must be inside #{bn} and #{tn}")
+end
+
+# ---- OpenLayout ----------------------------------------------------------------------------------
+# Pin shapes (pin purpose, datatype 251) must sit on drawn metal of their layer, or they connect nothing.
+[["M1", 19, m1], ["M2", 20, m2], ["M3", 30, m3], ["M4", 40, m4], ["M5", 50, m5], ["M6", 60, m6],
+ ["M7", 70, m7], ["M8", 80, m8], ["M9", 90, m9]].each do |nm, num, l|
+  input(num, 251).not_inside(l).output("OL.PIN.#{nm}", "#{nm} pin shape not on drawn #{nm}")
+end
