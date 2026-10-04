@@ -135,4 +135,35 @@ check("a later click does not pick the shape up", m2_box() == moved and "SizeAll
 check("m is bound to the OpenLayout move", mw.get_key_bindings().get("openlayout_menu.move") == "M",
       mw.get_key_bindings().get("openlayout_menu.move"))
 
+# stretch: s over the right edge of the M2 box picks it up, the mouse moves it, a click places it
+view.clear_selection()
+before = m2_box()
+view.send_mouse_move_event(px(before.right, 0.05), 0)
+mw.menu().action("openlayout_menu.stretch").trigger()            # the s key
+for x in (0.02, 0.05, 0.1):
+    view.send_mouse_move_event(px(before.right + x, 0.05), 0)
+click_at = px(before.right + 0.1, 0.05)
+view.send_mouse_press_event(click_at, L)
+view.send_mouse_release_event(click_at, L)
+view.send_mouse_move_event(px(-0.15, 0.3), 0)
+b = m2_box()
+check("s stretches the edge under the mouse", abs(b.right - before.right - 0.1) < 1e-6 and b.left == before.left,
+      (str(before), str(b)))
+check("back in Select mode after a stretch", view.mode_name() == "select", view.mode_name())
+
+# in Partial (stretch) mode, a dragged edge is placed where the button is released
+view.switch_mode("partial")
+before = b
+drag((before.left, 0.05), (before.left - 0.05, 0.05))
+b = m2_box()
+check("a dragged edge drops on release in stretch mode", abs(b.left - before.left + 0.05) < 1e-6
+      and b.right == before.right, (str(before), str(b)))
+before = b
+drag((before.right, 0.05), (before.right + 0.05, 0.05))
+b = m2_box()
+check("the next drag stretches only its own edge", abs(b.right - before.right - 0.05) < 1e-6
+      and b.left == before.left, (str(before), str(b)))
+check("s is bound to the OpenLayout stretch", mw.get_key_bindings().get("openlayout_menu.stretch") == "S")
+view.switch_mode("select")
+
 print("PASS drag_move" if not failures else f"FAIL drag_move: {', '.join(failures)}")

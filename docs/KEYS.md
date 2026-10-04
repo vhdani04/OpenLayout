@@ -56,7 +56,8 @@ snaps to pins. The mouse cursor is the normal pointer.
 | `i` | instance | `l` | label |
 | `k` | ruler | `Shift+K` | clear rulers |
 | `m` | move | `c` | copy |
-| `s` | stretch (partial edit) | `q` | properties |
+| `s` | stretch | `q` | properties |
+| `a` | align | | |
 | `u` / `Shift+U` | undo / redo | `Esc` | cancel |
 | `f` | fit | `Ctrl+Z` / `Shift+Z` | zoom in / out |
 | `Shift+F` | show all levels | `Ctrl+F` | top level only |
@@ -79,6 +80,16 @@ four-way move arrow. Or point at it (or at the selection), press `m`, and click 
 (the first click places it). After a move the editor is back in select mode. Clicking selects the
 top-level object - a whole transistor, not a shape inside it (descend with `x` to edit inside a
 cell).
+
+**Stretch (`s`)**: point at an edge (or a corner) of a shape and press `s` - it follows the mouse and a
+click places it; afterwards the editor is back in select mode. In stretch mode (toolbar *Partial*)
+an edge can also be dragged and is placed where the button is released.
+
+**Align (`a`)**: select what should move (or just point at it), press `a`, click an edge of it (the
+reference), then click a parallel edge of anything else: the selection moves so the two edges line
+up - sideways for vertical edges, up/down for horizontal ones. Edges are instance outlines and
+shapes, also inside instances (e.g. a transistor's diffusion or gate; near an outline the outline
+wins). The edge under the mouse is highlighted; `Esc` or a right click cancels; `u` undoes.
 
 The **LSW** (right side) is the only layer panel. *All layers* / *Used layers* tabs (used = has
 shapes in the current cell). Click a layer to make it the current drawing layer, untick to hide it.

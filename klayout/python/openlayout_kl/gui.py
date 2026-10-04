@@ -1,4 +1,4 @@
-"""OpenLayout inside KLayout: theme and preferences, Virtuoso keys and drag-and-drop, the path tool,
+"""OpenLayout inside KLayout: theme and preferences, Virtuoso keys, drag-and-drop and align, the path tool,
 the ASAP7 PCell library, the LSW and Connectivity panels, and the OpenLayout menu (incl.
 schematic-driven layout)."""
 import json
@@ -10,7 +10,8 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from .drag_move import DragMoveFactory, move_under_mouse
+from . import align_tool
+from .drag_move import DragMoveFactory, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
 from .path_tool import TOOL_NAME, PathToolFactory
@@ -21,17 +22,19 @@ THEME = json.loads((FLOW / "share" / "theme" / "openlayout.json").read_text())
 UI, CANVAS = THEME["ui"], THEME["canvas"]
 
 # KLayout menu path -> Virtuoso key. Interactive copy is KLayout's "secret" action that works like
-# Virtuoso's c; m is OpenLayout's move of the object under the mouse (see drag_move). P is bound to
-# OpenLayout's path tool once it is registered (see bind_path_tool).
+# Virtuoso's c; m / s are OpenLayout's move / stretch of what is under the mouse (see drag_move),
+# a is align (align_tool). P is bound to OpenLayout's path tool once it is registered (see
+# bind_path_tool).
 VIRTUOSO_KEYS = {
     "edit_menu.mode_menu.box": "R",
     "edit_menu.mode_menu.polygon": "Shift+P",
     "edit_menu.mode_menu.instance": "I",
     "edit_menu.mode_menu.text": "L",
     "edit_menu.mode_menu.ruler": "K",
-    "edit_menu.mode_menu.partial": "S",
+    "openlayout_menu.stretch": "S",
     "edit_menu.clear_all_rulers": "Shift+K",
     "openlayout_menu.move": "M",
+    "openlayout_menu.align": "A",
     "@secrets.duplicate_interactive": "C",
     "edit_menu.show_properties": "Q",
     "edit_menu.undo": "U",
@@ -170,6 +173,7 @@ class OpenLayoutUI:
         self.path_factory = PathToolFactory()
         if os.environ.get("OPENLAYOUT_KEYS") != "klayout":
             self.drag_factory = DragMoveFactory()   # Virtuoso drag and drop in Select mode
+        self.align_factory = align_tool.AlignToolFactory()
         try:
             bind_path_tool(mw)
         except Exception as e:
@@ -278,6 +282,8 @@ class OpenLayoutUI:
             ("keys", self.action("Virtuoso Keys…", self.show_keys)),
             (None, None),
             ("move", self.action("Move (object under the mouse)", move_under_mouse)),
+            ("stretch", self.action("Stretch (edge under the mouse)", stretch_under_mouse)),
+            ("align", self.action("Align (edge to edge)", align_tool.start)),
         ]
         for i, (name, action) in enumerate(items):
             if name is None:
