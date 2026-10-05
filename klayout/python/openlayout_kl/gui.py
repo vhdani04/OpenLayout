@@ -67,8 +67,11 @@ PREFS = {
     # Rulers: a dark halo around line and text keeps the (vivid orange) ruler readable over any layer.
     "ruler-halo": "true",
     # DRC results: clicking a violation in the marker browser zooms to it and
-    # draws it bold - thick yellow outline, hatched, with a halo - so it stands out on the dark canvas
+    # draws it bold - thick yellow outline, hatched, with a halo - so it stands out on the dark canvas.
+    # The zoom leaves 60 nm (about a gate pitch) around the violation: KLayout's default margin is
+    # 1 um on every side, which on ASAP7 shows the whole cell, tiny.
     "rdb-window-mode": "fit-marker",
+    "rdb-window-dim": "0.06",
     "rdb-marker-color": "#ffd60a",
     "rdb-marker-line-width": "3",
     "rdb-marker-vertex-size": "0",
@@ -76,6 +79,7 @@ PREFS = {
     "rdb-marker-dither-pattern": "5",
     # LVS results: a net / device picked in the netlist browser, highlighted the same way
     "l2ndb-window-mode": "fit-net",
+    "l2ndb-window-dim": "0.1",
     "l2ndb-marker-color": "#ffd60a",
     "l2ndb-marker-line-width": "3",
     "l2ndb-marker-halo": "1",
