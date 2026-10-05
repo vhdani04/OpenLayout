@@ -62,6 +62,9 @@ def test_cross_delay_edges():
     a, b = ramp()
     assert calc.cross(a, 0.35) == pytest.approx(1.5e-10, rel=1e-3)
     assert calc.delay(a, b, 0.35, 0.35, "rise", "fall") == pytest.approx(1.0e-10, rel=1e-3)
+    assert calc.propDelay(a, b, 0.35, 0.35, "fall") == pytest.approx(1.0e-10, rel=1e-3)   # either polarity
+    with pytest.raises(CalcError, match="no input crossing"):
+        calc.propDelay(b, a, 0.35, 0.35, "rise")         # a rises before b ever crosses
     assert calc.riseTime(a) == pytest.approx(0.8e-10, rel=1e-3)        # 10..90 %
     assert calc.fallTime(b) == pytest.approx(1.6e-10, rel=1e-3)
     with pytest.raises(CalcError, match="crosses"):

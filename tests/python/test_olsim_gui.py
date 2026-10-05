@@ -179,6 +179,115 @@ def test_vector_check_and_parametric_plots(hub, app, tmp_path):
     m.close()
 
 
+def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
+    """OLSim on a circuit offers it a testbench (supply source, loads, vectors); the hierarchy
+    chooses schematic / extracted per cell; Select on Schematic adds what is selected in xschem."""
+    from PySide6.QtWidgets import QMessageBox
+    from openlayout.hub.olsim_dialogs import HierarchyDialog, SchematicPicker
+    from openlayout.symbolgen import make_symbol
+    wa = hub.workarea
+    d = wa.library("cpu8").path / "inv2"
+    d.mkdir()
+    (d / "inv2.sch").write_text((Path(os.environ["OPENLAYOUT_HOME"]) / "tests/klayout/inv_globals.sch").read_text())
+    make_symbol(d / "inv2.sch")
+    inv2 = wa.library("cpu8").cell("inv2")
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    w = hub.open_olsim(inv2)
+    tb = wa.library("cpu8").cell("tb_inv2")
+    assert tb is not None and tb.view("olsim") and w.setup_path == tb.view("olsim").path
+    sch = tb.view("schematic").path.read_text()
+    assert r"{name=VDD value=\{vdd\}}" in sch and "{cpu8/inv2/inv2.sym}" in sch and "capa.sym" in sch
+    s = w.setup
+    assert s.variables == {"vdd": "0.7", "cload": "1f"} and s.tests[0].vectors == ["tb_inv2.vec"]
+    assert {o.name for o in s.outputs} >= {"A", "Z", "t_out_fall", "t_out_rise"}
+    # the expected output filled in (Z = not A), then a run: the vectors pass, the delays come out
+    vec = tb.path / "tb_inv2.vec"
+    vec.write_text("\n".join(l[:-1] + ("1" if l.split()[0] == "0" else "0") if l.startswith("  ") else l
+                             for l in vec.read_text().splitlines()) + "\n")
+    w.start_run()
+    wait_run(app, w)
+    r = w.history.result(0)
+    assert r["vector errors"]["value"] == 0 and 2e-12 < r["t_out_fall"]["value"] < 3e-11, r
+    # the hierarchy: inv2 simulates its schematic until it has a PEX netlist
+    t = w.setup.test("tran")
+    dlg = HierarchyDialog(w, w._netlist_run(), t, wa)
+    (entry, combo), = dlg.rows
+    assert entry == "cpu8/inv2" and not combo.model().item(1).isEnabled()
+    pex = wa.verify_dir(inv2) / "inv2.pex.spice"
+    pex.parent.mkdir(parents=True)
+    pex.write_text(".subckt inv2 A Z\nN1 Z A VSS VSS nmos_rvt l=20n nfin=2\nN2 Z A VDD VDD pmos_rvt l=20n nfin=2\n"
+                   "C1 Z VSS 0.1f\n.ends\n")
+    dlg = HierarchyDialog(w, w._netlist_run(), t, wa)
+    (entry, combo), = dlg.rows
+    assert combo.model().item(1).isEnabled()
+    combo.setCurrentIndex(1)
+    assert dlg.extracted() == ["cpu8/inv2"]
+
+    # Select on Schematic: what xschem reports as selected becomes plotted outputs (once)
+    class FakeXschem:
+        def __init__(self):
+            self.sent = []
+
+        def ensure_started(self):
+            pass
+
+        def open(self, view):
+            self.sent.append(f"open {view.path.name}")
+
+        def send(self, tcl, timeout=5):
+            self.sent.append(tcl)
+            return {"xschem selected_wire": "{Z} {#net3}", "xschem selected_set": "{l1} {VDD}",
+                    "xschem getprop instance {l1} lab": "A"}.get(tcl, "")
+
+    fake = FakeXschem()
+    before = w.outputs.rowCount()
+    picker = SchematicPicker(w, fake, lambda e, n: w._add_output(e, n, plot=True), {'v("Z")'})
+    picker.start(tb.view("schematic"))
+    picker.poll()
+    picker.poll()
+    added = [w.outputs.item(r, 2).text() for r in range(before, w.outputs.rowCount())]
+    assert added == ['v("net3")', 'v("A")', 'i("VDD")'] and "open tb_inv2.sch" in fake.sent
+    picker.close()
+
+
+def test_viewer_visibility_checkboxes(hub, app, tmp_path):
+    from openlayout.olsim.engine import Run
+    from openlayout.olsim.setup import Analysis, Setup
+    from openlayout.olsim.setup import Test as MTest
+    (tmp_path / "rc.sp").write_text("* RC\nV1 in 0 pwl(0 0 10p 0 11p 1)\nR1 in out 1k\nC1 out 0 10f\n")
+    s = Setup(tests=[MTest("t", {"netlist": "rc.sp"}, [Analysis("tran", True, {"step": "0.1p", "stop": "50p"})])])
+    s.path = str(tmp_path / "rc.olsim")
+    h = Run(s, tmp_path / "res").run()
+    v = hub.viewer()
+    v.clear_all()
+    v.add_history(h)
+    src = next(i for i, x in enumerate(v.sources) if x.history is not None and x.history.path == h.path)
+    top = next(v.tree.topLevelItem(i) for i in range(v.tree.topLevelItemCount())
+               if v.tree.topLevelItem(i).text(0).startswith(h.name))
+    point = top.child(0)
+    v._expand(point)
+    out_item = next(point.child(0).child(i) for i in range(point.child(0).childCount())
+                    if point.child(0).child(i).text(0) == "v(out)")
+    assert out_item.checkState(0) == Qt.Unchecked
+    v._tree_double(out_item, 0)
+    v._tree_double(out_item, 0)                          # a second double-click adds no copy
+    curves = [c for st in v.strips for c in st.curves]
+    assert len(curves) == 1 and out_item.checkState(0) == Qt.Checked
+    out_item.setCheckState(0, Qt.Unchecked)              # untick: hidden, not deleted
+    assert not curves[0].visible and not curves[0].item.isVisible() and len(v.strips[0].curves) == 1
+    out_item.setCheckState(0, Qt.Checked)
+    assert curves[0].visible
+    # the readout's checkbox does the same, and the browser follows
+    row = v._readout_curves.index(curves[0])
+    v.readout.item(row, 0).setCheckState(Qt.Unchecked)
+    assert not curves[0].visible and out_item.checkState(0) == Qt.Unchecked
+    # a curve removed: the browser checkbox clears
+    v.readout.item(row, 0).setCheckState(Qt.Checked)
+    v.select_curve(v.strips[0], curves[0].item)
+    v.delete_selected()
+    assert out_item.checkState(0) == Qt.Unchecked and (src, "tran", "v(out)") not in v.keyed
+
+
 def test_raw_file_in_viewer(app, tmp_path):
     import subprocess
     from openlayout.hub.waveview import Viewer

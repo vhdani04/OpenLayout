@@ -69,10 +69,14 @@ def _kv(text) -> dict:
 
 
 class OLSimWindow(QMainWindow):
-    def __init__(self, setup_path, workarea: Workarea | None = None, results_dir=None, viewer=None, parent=None):
+    def __init__(self, setup_path, workarea: Workarea | None = None, results_dir=None, viewer=None, parent=None,
+                 xschem=None, open_cell=None):
         super().__init__(parent)
         self.setup_path = Path(setup_path)
         self.workarea = workarea
+        self._xschem = xschem                  # the hub's xschem (Select on Schematic); else one of our own
+        self._open_cell = open_cell            # the hub opens a new testbench's OLSim; else a new window
+        self._picker = None
         self.setup = Setup.load(self.setup_path) if self.setup_path.is_file() else default_setup()
         self.setup.path = str(self.setup_path)
         cell = workarea.cell_for_path(self.setup_path) if workarea else None
@@ -115,6 +119,10 @@ class OLSimWindow(QMainWindow):
         tb.addSeparator()
         act("Plot Outputs", self.plot_outputs, None, "Plot the outputs marked Plot (all points) in the viewer")
         act("Viewer", lambda: self.viewer().show(), None, "The waveform viewer")
+        tb.addSeparator()
+        act("New Testbench…", self.new_testbench, None,
+            "A testbench for a cell: its symbol, the VDD = {vdd} supply, a load on every output, a vector "
+            "file and an OLSim setup")
         tb.addSeparator()
         tb.addWidget(QLabel(" Parallel jobs "))
         self.jobs = QSpinBox()
@@ -220,7 +228,13 @@ class OLSimWindow(QMainWindow):
         self.t_extracted = QLineEdit()
         self.t_extracted.setPlaceholderText("cells simulated with their PEX netlist instead of their schematic: "
                                             "cpu8/inv nand2 ...  (run PEX on their layouts first)")
-        form.addRow("Post-layout", self.t_extracted)
+        hier = QPushButton("Hierarchy…")
+        hier.setToolTip("Choose, per cell of the testbench, its schematic or its extracted (PEX) view")
+        hier.clicked.connect(self.edit_hierarchy)
+        prow = QHBoxLayout()
+        prow.addWidget(self.t_extracted, 1)
+        prow.addWidget(hier)
+        form.addRow("Post-layout", prow)
         for w in (self.t_name, self.t_file, self.t_temp, self.t_saves, self.t_options, self.t_extracted):
             w.textEdited.connect(self._mark)
         self.t_enabled.toggled.connect(self._mark)
@@ -237,7 +251,8 @@ class OLSimWindow(QMainWindow):
         self.outputs.itemChanged.connect(self._mark)
         ob = QHBoxLayout()
         for text, slot in (("Add Expression", lambda: self._add_output("")),
-                           ("Add Signal…", self._add_signal), ("Remove", lambda: self._remove_rows(self.outputs)),
+                           ("Add Signal…", self._add_signal), ("Select on Schematic…", self.select_on_schematic),
+                           ("Remove", lambda: self._remove_rows(self.outputs)),
                            ("Calculator Help", self._calc_help)):
             b = QPushButton(text)
             b.clicked.connect(slot)
@@ -953,6 +968,102 @@ class OLSimWindow(QMainWindow):
             return
         delete_history(self.history.path)
         self._load_histories(select_last=True)
+
+    # ---- hierarchy, schematic picking, testbenches ----------------------------------------------
+    def _netlist_run(self):
+        r = Run(self.read_setup(), self.results_dir, self.workarea.root if self.workarea else None, name=".netlist")
+        r.path.mkdir(parents=True, exist_ok=True)
+        return r
+
+    def edit_hierarchy(self):
+        """Per cell of the testbench: schematic or extracted view (the test's Post-layout list)."""
+        from .olsim_dialogs import HierarchyDialog
+        self._read_test()
+        t = self.setup.test(self._current_test)
+        try:
+            dlg = HierarchyDialog(self, self._netlist_run(), t, self.workarea)
+        except Exception as e:
+            QMessageBox.warning(self, "Hierarchy", f"Could not netlist the testbench:\n{e}")
+            return None
+        if dlg.exec():
+            self.t_extracted.setText(" ".join(dlg.extracted()))
+            self._mark()
+            self._read_test()
+            self._refresh_tree()
+        return dlg
+
+    def xschem(self):
+        if self._xschem is None and self.workarea is not None:
+            from ..tools import XschemBridge
+            self._xschem = XschemBridge(self.workarea)
+        return self._xschem
+
+    def select_on_schematic(self):
+        """Open the test's testbench in xschem; what is selected there becomes plotted outputs."""
+        from .olsim_dialogs import SchematicPicker
+        self._read_test()
+        t = self.setup.test(self._current_test)
+        bridge = self.xschem()
+        if bridge is None:
+            QMessageBox.information(self, "Select on Schematic", "Selecting on the schematic needs a workarea "
+                                    "(xschem runs in it).")
+            return None
+        view = path = None
+        if "lib" in t.design:
+            lib = self.workarea.library(t.design["lib"])
+            cell = lib.cell(t.design["cell"]) if lib else None
+            view = cell.view("schematic") if cell else None
+        elif "schematic" in t.design:
+            path = self._netlist_run()._resolve(t.design["schematic"])
+        if view is None and path is None:
+            QMessageBox.information(self, "Select on Schematic", "This test simulates a netlist, not a schematic.")
+            return None
+        have = {self.outputs.item(r, 2).text() for r in range(self.outputs.rowCount()) if self.outputs.item(r, 2)}
+        if self._picker is not None:
+            self._picker.close()
+        self._picker = SchematicPicker(self, bridge, lambda expr, name: self._add_output(expr, name, plot=True), have)
+        try:
+            self._picker.start(view, path)
+        except Exception as e:
+            QMessageBox.warning(self, "Select on Schematic", f"Could not open the schematic in xschem:\n{e}")
+            return None
+        return self._picker
+
+    def new_testbench(self, dut=None):
+        """tb_<cell> for a cell (default: the current test's design, if it is a circuit with pins)."""
+        from ..olsim.testbench import is_testbench, make_testbench
+        if self.workarea is None:
+            QMessageBox.information(self, "New Testbench", "Testbenches are made in a workarea.")
+            return None
+        if dut is None:
+            self._read_test()
+            t = self.setup.test(self._current_test)
+            choices = [f"{lb.name}/{c.name}" for lb in self.workarea.libraries() if not lb.readonly
+                       for c in lb.cells() if c.view("schematic") and not is_testbench(c)]
+            if not choices:
+                QMessageBox.information(self, "New Testbench", "No circuit with pins in the writable libraries.")
+                return None
+            cur = f"{t.design.get('lib')}/{t.design.get('cell')}" if t and "lib" in t.design else ""
+            from PySide6.QtWidgets import QInputDialog
+            dut, ok = QInputDialog.getItem(self, "New Testbench", "Cell to test", choices,
+                                           choices.index(cur) if cur in choices else 0, False)
+            if not ok:
+                return None
+        lib_name, cell_name = dut.split("/")
+        try:
+            tb = make_testbench(self.workarea, self.workarea.library(lib_name), cell_name)
+        except Exception as e:
+            QMessageBox.warning(self, "New Testbench", str(e))
+            return None
+        self.statusBar().showMessage(f"created {tb.key}: supply VDD = {{vdd}}, loads {{cload}}, vectors in "
+                                     f"{tb.name}.vec (fill in the expected outputs)", 10000)
+        if self._open_cell:
+            self._open_cell(tb)
+        else:
+            w = OLSimWindow(tb.path / f"{tb.name}.olsim", self.workarea, viewer=self._viewer)
+            w.show()
+            self._children = getattr(self, "_children", []) + [w]
+        return tb
 
     def viewer(self):
         if self._viewer is None:

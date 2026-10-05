@@ -84,6 +84,10 @@ class Curve:
         self.label, self.unit, self.xunit = label, unit, xunit
         self.lane = None                  # digital lanes: the lane's base (y), values 0 / 1 above it
         self.bus = None                   # bus lanes: [(t0, t1, value text)]
+        self.key = None                   # (source index, analysis, signal) when plotted from the browser
+        self.strip = None
+        self.in_legend = True
+        self.visible = True
 
     def text_at(self, x):
         """The readout text at x: a number, a logic level, or a bus value."""
@@ -137,6 +141,7 @@ class Strip:
         item.curve.setClickable(True, width=6)
         item.sigClicked.connect(lambda *_: self.viewer.select_curve(self, item))
         c = Curve(item, np.asarray(x, float), np.asarray(y, float), label, unit, xunit)
+        c.strip, c.in_legend = self, legend
         self.curves.append(c)
         if self.xunit is None:
             self.xunit, self.xkind = xunit, xkind
@@ -145,10 +150,23 @@ class Strip:
         self.plot.setLabel("left", units=units.pop() if len(units) == 1 else "")
         return c
 
+    def set_visible(self, curve, on):
+        """Show / hide a curve (hidden: off the plot and the legend, kept for showing again)."""
+        if curve.visible == on:
+            return
+        curve.visible = on
+        curve.item.setVisible(on)
+        if curve.in_legend:
+            if on:
+                self.legend.addItem(curve.item, curve.label)
+            else:
+                self.legend.removeItem(curve.item)
+
     def remove(self, curve):
         self.plot.removeItem(curve.item)
         self.legend.removeItem(curve.item)
         self.curves.remove(curve)
+        self.viewer.forget(curve)
 
     def clear(self):
         for c in list(self.curves):
@@ -171,6 +189,8 @@ class Viewer(QMainWindow):
         self._color = 0
         self.cursor_x = {"A": None, "B": None}
         self.markers = []
+        self.keyed = {}                  # (source index, analysis, signal) -> [Curve] plotted from it
+        self._readout_curves = []
         self.layout_widget = pg.GraphicsLayoutWidget()
         self.layout_widget.ci.setSpacing(4)
         self.setCentralWidget(self.layout_widget)
@@ -182,7 +202,8 @@ class Viewer(QMainWindow):
         self.layout_widget.scene().sigMouseClicked.connect(self._scene_clicked)
         self._mouse = None
         self.new_strip()
-        self.statusBar().showMessage("Double-click a signal to plot it; A / B place the cursors, F fits")
+        self.statusBar().showMessage("Double-click a signal (or tick it) to plot it, untick to hide it; "
+                                     "A / B place the cursors, F fits")
 
     # ---- UI -------------------------------------------------------------------------------------
     def _build_browser(self):
@@ -199,6 +220,7 @@ class Viewer(QMainWindow):
         self.tree.setSelectionMode(QTreeWidget.ExtendedSelection)
         self.tree.itemDoubleClicked.connect(self._tree_double)
         self.tree.itemExpanded.connect(self._expand)
+        self.tree.itemChanged.connect(self._tree_checked)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._tree_menu)
         lay.addWidget(self.filter)
@@ -211,10 +233,11 @@ class Viewer(QMainWindow):
 
     def _build_readout(self):
         self.readout = QTableWidget(0, 5)
-        self.readout.setHorizontalHeaderLabels(["curve", "A", "B", "B - A", ""])
+        self.readout.setHorizontalHeaderLabels(["curve (visible)", "A", "B", "B - A", ""])
         self.readout.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.readout.verticalHeader().setVisible(False)
         self.readout.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.readout.itemChanged.connect(self._readout_checked)
         self.cursor_label = QLabel("cursors: press A / B over a strip")
         w = QWidget()
         lay = QVBoxLayout(w)
@@ -342,13 +365,78 @@ class Viewer(QMainWindow):
         except Exception as e:
             QTreeWidgetItem(item, [f"cannot read: {e}"])
             return
+        self.tree.blockSignals(True)
         for p in plots:
             a = QTreeWidgetItem(item, [f"{p.kind}  ({len(p.x)} points)"])
             for name in p.signals(self.internal.isChecked()):
                 s = QTreeWidgetItem(a, [name])
                 s.setData(0, Qt.UserRole, ("signal", data[1], p.kind, name))
+                s.setFlags(s.flags() | Qt.ItemIsUserCheckable)          # checked = visible on the plot
+                s.setCheckState(0, Qt.Checked if self._shown((data[1], p.kind, name)) else Qt.Unchecked)
             a.setExpanded(True)
+        self.tree.blockSignals(False)
         self._apply_filter()
+
+    # ---- visibility -----------------------------------------------------------------------------
+    def _shown(self, key):
+        return any(c.visible for c in self.keyed.get(key, []))
+
+    def _signal_items(self, key):
+        found = []
+
+        def walk(it):
+            d = it.data(0, Qt.UserRole)
+            if d and d[0] == "signal" and tuple(d[1:]) == key:
+                found.append(it)
+            for i in range(it.childCount()):
+                walk(it.child(i))
+
+        for i in range(self.tree.topLevelItemCount()):
+            walk(self.tree.topLevelItem(i))
+        return found
+
+    def _sync(self, key):
+        """The browser checkbox of a signal follows its curves."""
+        if key is None:
+            return
+        self.tree.blockSignals(True)
+        for it in self._signal_items(key):
+            it.setCheckState(0, Qt.Checked if self._shown(key) else Qt.Unchecked)
+        self.tree.blockSignals(False)
+
+    def set_signal_visible(self, key, on, new_strip=False):
+        """Show (plotting it the first time) or hide a browser signal - never a second copy."""
+        curves = self.keyed.get(key, [])
+        if on and not curves:
+            self.plot_signal(*key, new_strip=new_strip)
+            return
+        for c in curves:
+            c.strip.set_visible(c, on)
+        self._sync(key)
+        self.update_readout()
+
+    def set_curve_visible(self, curve, on):
+        curve.strip.set_visible(curve, on)
+        self._sync(curve.key)
+        self.update_readout()
+
+    def forget(self, curve):
+        """A curve was removed: drop it from the signal map (the browser checkbox follows)."""
+        if curve.key in self.keyed:
+            self.keyed[curve.key] = [c for c in self.keyed[curve.key] if c is not curve]
+            if not self.keyed[curve.key]:
+                del self.keyed[curve.key]
+            self._sync(curve.key)
+
+    def _tree_checked(self, item, _col):
+        data = item.data(0, Qt.UserRole)
+        if data and data[0] == "signal":
+            self.set_signal_visible(tuple(data[1:]), item.checkState(0) == Qt.Checked)
+
+    def _readout_checked(self, item):
+        if item.column() != 0 or item.row() >= len(self._readout_curves):
+            return
+        self.set_curve_visible(self._readout_curves[item.row()], item.checkState() == Qt.Checked)
 
     def _apply_filter(self):
         pat = self.filter.text().strip().lower()
@@ -373,7 +461,7 @@ class Viewer(QMainWindow):
         data = item.data(0, Qt.UserRole)
         if data and data[0] == "signal":
             new = QApplication.keyboardModifiers() & Qt.ControlModifier
-            self.plot_signal(data[1], data[2], data[3], new_strip=bool(new))
+            self.set_signal_visible(tuple(data[1:]), True, new_strip=bool(new))
 
     def _tree_menu(self, pos):
         item = self.tree.itemAt(pos)
@@ -438,6 +526,7 @@ class Viewer(QMainWindow):
                 self.active.clear()
             return
         s = self.active
+        s.clear()                                      # (the browser checkboxes follow)
         self.layout_widget.removeItem(s.plot)
         self.strips.remove(s)
         for i, st in enumerate(self.strips):          # re-pack the rows
@@ -487,13 +576,22 @@ class Viewer(QMainWindow):
         return c
 
     def plot_signal(self, source_index, kind, name, new_strip=False, color=None, label=None):
+        key = (source_index, kind, name)
+        if self.keyed.get(key) and not new_strip:      # plotted already: show it again, no second copy
+            self.set_signal_visible(key, True)
+            return self.keyed[key][0]
         src = self.sources[source_index]
         w, p = src.wave(kind, name)
         unit = _unit_of(name, p.units[p.index(name)] if p.index(name) is not None else "")
         lab = label or (name if len(self.sources) == 1 else f"{name} [{src.label.split(' / ')[-1]}]")
         c = self.plot_wave(w, lab, kind, unit, new_strip, color)
+        made = [c]
         if p.complex and kind == "ac":                 # the phase in a strip below the magnitude
-            self.plot_wave(w, lab, kind, "°", new_strip=True, color=color, complex_mode="phase")
+            made.append(self.plot_wave(w, lab, kind, "°", new_strip=True, color=color, complex_mode="phase"))
+        for m in made:
+            m.key = key
+            self.keyed.setdefault(key, []).append(m)
+        self._sync(key)
         return c
 
     def plot_across(self, history, kind, name, new_strip=True):
@@ -833,9 +931,13 @@ class Viewer(QMainWindow):
     def update_readout(self):
         xa, xb = self.cursor_x["A"], self.cursor_x["B"]
         rows = [(s, c) for s in self.strips for c in s.curves if c.label]
+        self._readout_curves = [c for _, c in rows]
+        self.readout.blockSignals(True)
         self.readout.setRowCount(len(rows))
         for r, (s, c) in enumerate(rows):
-            if c.lane is not None or c.bus is not None:
+            if not c.visible:
+                vals = [c.label, "", "", "", "hidden"]
+            elif c.lane is not None or c.bus is not None:
                 vals = [c.label, c.text_at(xa), c.text_at(xb), "", ""]
             else:
                 ya, yb = c.at(xa), c.at(xb)
@@ -846,7 +948,10 @@ class Viewer(QMainWindow):
                 item = QTableWidgetItem(v)
                 if col == 0:
                     item.setForeground(c.item.opts["pen"].color())
+                    item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsUserCheckable)
+                    item.setCheckState(Qt.Checked if c.visible else Qt.Unchecked)
                 self.readout.setItem(r, col, item)
+        self.readout.blockSignals(False)
         unit = next((s.xunit for s in self.strips if s.cursors and s.xunit), "")
         parts = []
         if xa is not None:

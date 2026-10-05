@@ -39,6 +39,20 @@ From the hub:
 
 A testbench is an ordinary xschem schematic: the design, supply and input sources, loads.
 
+**New Testbench** makes one for a cell. It is in OLSim's toolbar, and the hub offers it when you
+open OLSim on a cell with pins (a circuit, not a testbench). It creates `tb_<cell>` containing:
+
+- the cell's symbol;
+- the supply, a source `VDD = {vdd}` (the cell's own `vdd` / `gnd` labels are global nets, so they
+  connect to it);
+- a label on every pin, and a load `{cload}` on every output;
+- a vector file `tb_<cell>.vec` that steps the inputs through every combination, one input changing
+  at a time. The outputs are `X` (not checked) until you write the expected 0 / 1 in their column;
+- the OLSim setup `tb_<cell>.olsim`, with `vdd = 0.7` and `cload = 1f`, every pin plotted, and for a
+  one-input, one-output cell its two propagation delays.
+
+If `tb_<cell>` already exists, OLSim on the cell opens it.
+
 - **Design variables:** write `{vdd}`, `{cload}`, … in source and component values. Variables >
   Copy from Cellview finds them.
 - **OLSim decides the rest:** the analyses, the model corner (`.lib asap7.lib <section>`) and the
@@ -60,7 +74,7 @@ copy or delete tests.
 | Vector files | digital stimulus and expected outputs (below) |
 | Simulation | model section (tt ff ss fs sf), temperature, saved signals (`all` or a list) |
 | Options | extra SPICE lines, `;` separated (`.options reltol=1e-4`) |
-| Post-layout | cells simulated with their **extracted** netlist instead of their schematic (below) |
+| Post-layout | cells simulated with their **extracted** netlist instead of their schematic; **Hierarchy…** chooses per cell (below) |
 
 - **Design variables:** a value, or a sweep.
   - `1f 2f 4f` (or `1f, 2f, 4f`) lists the values.
@@ -73,6 +87,9 @@ copy or delete tests.
   - **Add PVT Set** adds ss / 125 °C / −10 % supply, ff / −40 °C / +10 %, tt / 125 °C and
     ss / −40 °C, scaled from `vdd`.
 - **Outputs:** each has a test, a name, an expression, a spec and a Plot flag.
+  - **Select on Schematic…** opens the test's testbench in xschem. Every net, label, pin or voltage
+    source you select there is added as a plotted output (for a source, its current). Shift adds
+    to the selection; Done stops.
   - A plain signal (`v("out")`) or any waveform expression is saved as a waveform. Outputs marked
     Plot are plotted after every run, across all points.
   - An expression that gives a number goes into the results table.
@@ -90,7 +107,7 @@ name (`vdd/2`).
 | | |
 |---|---|
 | signals | `v("out")`, `i("vdd")` (the test's first analysis); `VT VS VF IT IS` for tran / dc / ac; `v("out", "dc")`; Cadence's `"/out"` works too; `op("out")` the operating point |
-| time | `value(w, x)`, `cross(w, level, n=1, edge="either"\|"rise"\|"fall")`, `delay(w1, w2, th1, th2, edge1, edge2, n1, n2)` |
+| time | `value(w, x)`, `cross(w, level, n=1, edge="either"\|"rise"\|"fall")`, `delay(w1, w2, th1, th2, edge1, edge2, n1, n2)`, `propDelay(in, out, th_in, th_out, edge="fall")` (to an output edge from the input edge that caused it, whatever the polarity) |
 | edges | `riseTime(w, lo=10, hi=90)`, `fallTime(w, hi=90, lo=10)`, `slewRate(w)`, `overshoot(w)`, `settlingTime(w, tol=2)` |
 | periodic | `frequency(w)`, `period(w)`, `dutyCycle(w)` (level: mid-range unless given) |
 | statistics | `ymax ymin xmax xmin ptp`, `average(w, x0, x1)`, `rms(w, x0, x1)`, `integ(w, x0, x1)`, `deriv(w)`, `clip(w, x0, x1)` |
@@ -175,8 +192,12 @@ gate scripts.
 
 ## Post-layout simulation
 
-**Post-layout** in a test lists cells to simulate extracted. The test then
-uses the cell's latest PEX netlist instead of its schematic subcircuit.
+**Post-layout** in a test lists cells to simulate extracted. The test then uses the cell's latest
+PEX netlist instead of its schematic subcircuit.
+
+**Hierarchy…** is the config view. It lists every cell the testbench instantiates and lets you
+choose its view: schematic, or extracted. Extracted is available once the cell has a PEX netlist;
+the dialog shows the netlist's path and date, or why there is none (run PEX on its layout).
 
 - **Where the netlist comes from:** the hub's PEX button writes `verify/<lib>/<cell>/<cell>.pex.spice`,
   and KLayout's Run PEX writes `<cell>.pex.spice` next to the layout. The newer one wins.
@@ -194,7 +215,11 @@ The **Results** dock browses OLSim histories (point → analysis → signals) an
   - The filter takes substrings or wildcards (`out*`, `i(*)`).
   - Internal BSIM-CMG device nodes (`n1#di`) are hidden unless asked for.
 - **Plotting:**
-  - Double-click a signal to plot it (Ctrl: in a new strip).
+  - Every signal has a checkbox: ticked means visible. Double-click or tick a signal to plot it; it
+    is never plotted twice. Untick it to hide it; tick it again to bring it back.
+  - The Cursors table has the same checkbox for every curve, including overlays and calculator
+    results.
+  - Ctrl + double-click plots a signal in a new strip.
   - Right-click for Plot in New Strip, Plot Across All Points (a OLSim history: every corner /
     sweep point overlaid), and Plot as Digital.
 - **Strips:** each strip is a plot; strips with the same x quantity share their x axis.

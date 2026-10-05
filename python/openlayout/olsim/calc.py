@@ -6,6 +6,7 @@ Expressions are Python syntax over waveforms and numbers, with SPICE suffixes al
     v("out")  i("vdd")             a waveform of the current analysis (also VT / VS / VF / IT ...
                                    for transient / dc / ac, and "/out" with Cadence's leading slash)
     value(w, x)  cross(w, level, n=1, edge="either")  delay(w1, w2, th1, th2, edge1, edge2, n1, n2)
+    propDelay(in, out, th_in, th_out, edge="fall")   to an output edge from the input edge that caused it
     riseTime(w, lo=10, hi=90)  fallTime(...)  slewRate(...)  frequency(w)  period(w)  dutyCycle(w)
     ymax ymin xmax xmin ptp average rms integ deriv clip(w, x0, x1)  overshoot(w)  settlingTime(w, tol=2)
     db20 db10 mag phase real imag  bandwidth(w, db=3)  ugf(w)  phaseMargin(w)  gainMargin(w)
@@ -152,6 +153,18 @@ def delay(w1, w2, th1=None, th2=None, edge1="either", edge2="either", n1=1, n2=1
     if len(after) < n2:
         raise CalcError(f"delay: {w2.name} does not cross {fmt(th2)} ({edge2}) after {fmt(t1)}s")
     return float(after[n2 - 1] - t1)
+
+
+def propDelay(w_in, w_out, th_in=None, th_out=None, edge="fall", n=1):
+    """Propagation delay to the n-th falling (or rising) edge of w_out, from the w_in crossing
+    that caused it (the last one before) - right whatever the cell's polarity."""
+    th_in = (ymax(w_in) + ymin(w_in)) / 2 if th_in is None else th_in
+    th_out = (ymax(w_out) + ymin(w_out)) / 2 if th_out is None else th_out
+    t2 = cross(w_out, th_out, n, edge)
+    before = [t for t in _crossings(w_in, th_in) if t <= t2]
+    if not before:
+        raise CalcError(f"propDelay: no input crossing before the output edge at {fmt(t2)}s")
+    return float(t2 - before[-1])
 
 
 def _levels(w, initial, final):
@@ -329,7 +342,7 @@ def gainMargin(w):
 
 
 # ---- evaluation ---------------------------------------------------------------------------------
-FUNCS = {f.__name__: f for f in (value, cross, delay, riseTime, fallTime, slewRate, ymax, ymin, xmax, xmin, ptp,
+FUNCS = {f.__name__: f for f in (value, cross, delay, propDelay, riseTime, fallTime, slewRate, ymax, ymin, xmax, xmin, ptp,
                                  integ, average, rms, deriv, clip, period, frequency, dutyCycle, overshoot,
                                  settlingTime, mag, db20, db10, real, imag, phase, bandwidth, ugf, phaseMargin,
                                  gainMargin)}

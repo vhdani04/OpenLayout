@@ -480,11 +480,30 @@ class MainWindow(QMainWindow):
             return None
         from ..workarea import OLSIM
         from .olsim_window import OLSimWindow
+        from ..olsim.testbench import is_testbench, make_testbench
         view = cell.view("olsim")
         if view is None:
             if cell.library.readonly or cell.view("schematic") is None:
                 self.ciw.warn(f"{cell.key}: OLSim needs a writable cell with a schematic (the testbench)")
                 return None
+            if not is_testbench(cell):                 # a circuit with pins: offer it a testbench
+                tb = cell.library.cell(f"tb_{cell.name}")
+                if tb is not None and tb.view("schematic"):      # its testbench exists: simulate that
+                    return self.open_olsim(tb)
+                r = QMessageBox.question(
+                    self, "OLSim", f"{cell.key} is a circuit (it has pins), not a testbench.\n\nCreate "
+                    f"{cell.library.name}/tb_{cell.name} for it - its symbol, the supply VDD = {{vdd}}, a load on "
+                    f"every output, a vector file - and simulate that?",
+                    QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+                if r == QMessageBox.Cancel:
+                    return None
+                if r == QMessageBox.Yes:
+                    tb = self._guard(lambda: make_testbench(self.workarea, cell.library, cell.name))
+                    if tb:
+                        self.ciw.ok(f"created {tb.key} (testbench of {cell.key})")
+                        self.lm.refresh()
+                        return self.open_olsim(tb)
+                    return None
             view = self._guard(lambda: self.workarea.new_view(cell.library, cell.name, OLSIM))
             if not view:
                 return None
@@ -493,7 +512,8 @@ class MainWindow(QMainWindow):
         self._olsims = getattr(self, "_olsims", {})
         w = self._olsims.get(str(view.path))
         if w is None or not w.isVisible():
-            w = OLSimWindow(view.path, self.workarea, self.workarea.run_dir(cell) / "olsim", self.viewer())
+            w = OLSimWindow(view.path, self.workarea, self.workarea.run_dir(cell) / "olsim", self.viewer(),
+                            xschem=self.xschem, open_cell=self.open_olsim)
             self._olsims[str(view.path)] = w
         w.show()
         w.raise_()
