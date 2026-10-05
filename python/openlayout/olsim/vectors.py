@@ -1,4 +1,4 @@
-"""Digital vector files (the HSPICE / Spectre .vec format): input patterns become PWL voltage
+"""Digital vector files (the common .vec format): input patterns become PWL voltage
 sources on the nodes they name, expected outputs are checked against the simulated waveforms.
 
     ; a 2-bit counter's stimulus and expected output

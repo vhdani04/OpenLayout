@@ -34,7 +34,7 @@ multiples of 270 nm - as the standard cells and the frame do.
   there (and, for net-aware rules, must *not* fire for the same shapes on one net). Clean
   references must produce no marker at all: INVx1 from the library, INVx1 rebuilt from the
   standard-cell frame + transistor PCells, every via PCell (V1-V8, centred on the routing tracks;
-  a lone via pad may be under the metal's minimum area until a wire is attached, as in Virtuoso),
+  a lone via pad may be under the metal's minimum area until a wire is attached),
   pins on metal.
 - `tests/klayout/test_drc_library.py` - every 7.5T library cell placed as in a design (between two
   INVx1, flipped copies in the rows below and above) must be clean. RVT in the doctor;

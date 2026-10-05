@@ -1,4 +1,4 @@
-"""The Generate Layout form, like Virtuoso's Generate All From Source (I/O Pins tab).
+"""The Generate Layout form (the I/O pins to create).
 
 One row per schematic pin - the ports, then the supplies the cell uses: Create (check box), name,
 direction, metal layer and the pin size (the layer's minimum width, a square). Pins the layout has

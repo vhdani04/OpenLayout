@@ -118,7 +118,7 @@ proc ol_show_keys {} {
   pack $w.t -fill both -expand 1
 }
 
-# Virtuoso-style symbol from the current schematic's pins (asks before replacing a symbol).
+# A symbol from the current schematic's pins (asks before replacing a symbol).
 proc ol_make_symbol {} {
   set sch [xschem get schname]
   set parent [xschem get topwindow]
@@ -162,7 +162,7 @@ proc ol_add_menu {} {
   $m add command -label "OLSim (hub)" -command {ol_hubcmd olsim}
   $m add command -label "Waveform Viewer (hub)" -command {ol_hubcmd waves}
   $m add separator
-  $m add command -label "Virtuoso Keys…" -command ol_show_keys
+  $m add command -label "Keyboard Shortcuts…" -command ol_show_keys
 }
 
 # xschem restores the last window size from ~/.xschem/geometry; a collapsed size (e.g. saved by a

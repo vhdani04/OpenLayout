@@ -1,5 +1,5 @@
 """Schematic-driven connectivity: the link between a layout and its schematic, and the check that
-finds open nets (with flight lines) and shorts - OpenLayout's take on Layout XL's incomplete nets.
+finds open nets (with flight lines) and shorts - the incomplete nets of schematic-driven layout.
 
 The link lives next to the layout as <cell>.ol.json (written by generate.py):
   {"schematic": "inv.sch", "ports": [...], "pins": {"A": "I", ...},

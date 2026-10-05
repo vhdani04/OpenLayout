@@ -9,7 +9,7 @@ usage: openlayout <command> [args]
 
   hub [workarea]            start the OpenLayout hub (Library Manager + CIW)
   hubcmd <cmd> <file> ...   send a command to the running hub (used by the tool menus)
-  make-symbol <sch> [--force]  generate <cell>.sym from the schematic's pins (Virtuoso style)
+  make-symbol <sch> [--force]  generate <cell>.sym from the schematic's pins
   new-workarea <dir> [lib]  create a design workarea (libs.def, xschemrc, sim/, libraries/<lib>)
   new-lib <name>            create a design library in the current workarea
   libs                      list libraries visible from the current workarea
@@ -211,8 +211,8 @@ case "$cmd" in
 '; tail -2 <<< "$out" | sed 's/^/         /'; ok=0; fi
     echo "Schematic-driven layout & editing tools:"
     kl_home="$(mktemp -d)"   # private KLayout profile: never touches the user's settings
-    out="$(cd /tmp && HOME="$kl_home" klayout -b -r "$OPENLAYOUT_HOME/tests/klayout/test_layoutxl.py" 2>&1 || true)"
-    if grep -q "^PASS layoutxl" <<< "$out"; then printf '  [ok]   generate from schematic + connectivity check
+    out="$(cd /tmp && HOME="$kl_home" klayout -b -r "$OPENLAYOUT_HOME/tests/klayout/test_sdl.py" 2>&1 || true)"
+    if grep -q "^PASS sdl" <<< "$out"; then printf '  [ok]   generate from schematic + connectivity check
 '
     else printf '  [FAIL] generate from schematic + connectivity check
 '; grep -E "^FAIL|ERROR" <<< "$out" | head -3 | sed 's/^/         /'; ok=0; fi

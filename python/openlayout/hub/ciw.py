@@ -1,4 +1,4 @@
-"""CIW: the hub's log + command line (Virtuoso's Command Interpreter Window, with Python for SKILL)."""
+"""CIW: the hub's log + command line (a command interpreter window, in Python)."""
 import code
 import contextlib
 import html

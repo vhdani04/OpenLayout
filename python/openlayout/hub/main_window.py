@@ -138,7 +138,7 @@ class MainWindow(QMainWindow):
         if self.settings.contains("geometry"):
             self.restoreGeometry(self.settings.value("geometry"))
             split.restoreState(self.settings.value("splitter"))
-        self.ciw.info(f"OpenLayout {__version__} — Virtuoso-style custom IC design on KLayout, xschem and ngspice")
+        self.ciw.info(f"OpenLayout {__version__} — open-source custom IC design on KLayout, xschem and ngspice")
         self._start_server()
         self.set_workarea(workarea)
 
@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
         self.a_sim = self._act("Simulate", lambda: self.simulate(self.lm.current_cell()), "F8",
                                S.SP_MediaPlay, "Netlist and simulate the cell in ngspice")
         self.a_gensym = self._act("Generate Symbol", lambda: self.generate_symbol(self.lm.current_cell()),
-                                  None, None, "Create the cell's symbol from its schematic pins (Virtuoso style)")
+                                  None, None, "Create the cell's symbol from its schematic pins")
         self.a_drc = self._act("DRC", lambda: self.drc(self.lm.current_cell()), None, S.SP_DialogApplyButton,
                                "Design rule check of the cell's layout (ASAP7 deck); results in KLayout")
         self.a_lvs = self._act("LVS", lambda: self.lvs(self.lm.current_cell()), None, S.SP_DialogYesButton,
@@ -196,7 +196,7 @@ class MainWindow(QMainWindow):
         self.a_show_pdk = self._act("Show PDK Libraries", self._toggle_pdk, checkable=True)
         self.a_show_pdk.setChecked(self.lm.show_pdk)
         self.a_help_cmds = self._act("CIW Commands", lambda: self._run_ciw("help(ol)"))
-        self.a_keys = self._act("Virtuoso Keys", self.show_keys, "F1")
+        self.a_keys = self._act("Keyboard Shortcuts", self.show_keys, "F1")
         self.a_about = self._act("About OpenLayout", self.about)
 
     def _build_menus(self):
@@ -639,7 +639,7 @@ class MainWindow(QMainWindow):
     # ---- design rule check -----------------------------------------------------------------------
     def drc(self, cell):
         """Batch DRC of the cell's layout (as saved); the summary goes to the CIW, the markers to
-        KLayout's marker browser (like Calibre results in RVE)."""
+        KLayout's marker browser."""
         if not cell:
             return
         try:
@@ -739,7 +739,7 @@ class MainWindow(QMainWindow):
 
     # ---- symbol from schematic ------------------------------------------------------------------
     def generate_symbol(self, cell):
-        """Virtuoso "from cellview": build <cell>.sym from the schematic's pins and open it."""
+        """Build <cell>.sym from the schematic's pins and open it."""
         if not cell or cell.library.readonly or cell.view("schematic") is None:
             return
         from ..symbolgen import make_symbol
@@ -807,12 +807,12 @@ class MainWindow(QMainWindow):
 
     def about(self):
         QMessageBox.about(self, "About OpenLayout",
-                          f"<h3>OpenLayout {__version__}</h3><p>A Virtuoso-style open-source custom IC design "
+                          f"<h3>OpenLayout {__version__}</h3><p>An open-source custom IC design "
                           "environment for the ASAP7 7nm FinFET PDK.</p><p>xschem · ngspice · KLayout</p>")
 
     def show_keys(self):
         dlg = QDialog(self)
-        dlg.setWindowTitle("Virtuoso Keys")
+        dlg.setWindowTitle("Keyboard Shortcuts")
         dlg.resize(720, 640)
         view = QTextBrowser(dlg)
         keys = Path(__file__).resolve().parents[3] / "docs" / "KEYS.md"

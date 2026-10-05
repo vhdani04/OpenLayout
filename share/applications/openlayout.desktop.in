@@ -2,7 +2,7 @@
 Type=Application
 Name=OpenLayout
 GenericName=Custom IC Design
-Comment=Virtuoso-style custom IC design: library manager, xschem, KLayout, ngspice
+Comment=Open-source custom IC design: library manager, xschem, KLayout, ngspice
 Exec=@OPENLAYOUT_HOME@/bin/openlayout hub
 Icon=openlayout
 Terminal=false

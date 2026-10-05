@@ -1,4 +1,4 @@
-# Library plumbing for xschem: reads a workarea's libs.def (cds.lib-style) and puts each
+# Library plumbing for xschem: reads a workarea's libs.def  and puts each
 # library's parent directory on XSCHEM_LIBRARY_PATH, so cells are referenced as lib/cell/cell.sym.
 
 proc ol_expand {s} {

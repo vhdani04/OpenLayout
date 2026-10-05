@@ -1,10 +1,10 @@
 """The waveform calculator: OLSim output expressions and the viewer's calculator.
 
 Expressions are Python syntax over waveforms and numbers, with SPICE suffixes allowed on numbers
-(10p, 1.5meg, 3G) and Cadence-calculator style functions:
+(10p, 1.5meg, 3G) and waveform-calculator functions:
 
     v("out")  i("vdd")             a waveform of the current analysis (also VT / VS / VF / IT ...
-                                   for transient / dc / ac, and "/out" with Cadence's leading slash)
+                                   for transient / dc / ac, and "/out" with a leading slash)
     value(w, x)  cross(w, level, n=1, edge="either")  delay(w1, w2, th1, th2, edge1, edge2, n1, n2)
     propDelay(in, out, th_in, th_out, edge="fall")   to an output edge from the input edge that caused it
     riseTime(w, lo=10, hi=90)  fallTime(...)  slewRate(...)  frequency(w)  period(w)  dutyCycle(w)

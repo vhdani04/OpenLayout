@@ -1,5 +1,5 @@
 # Parasitic extraction (openlayout pex): library cells against the library's own reference extraction
-# (Calibre xACT 3D netlists in $ASAP7_STDCELLS/CDL/xAct3D_extracted), the resistor networks, a
+# (reference extraction netlists in $ASAP7_STDCELLS/CDL/xAct3D_extracted), the resistor networks, a
 # hierarchical layout, the capacitance-only mode and a post-layout simulation. Run with the venv:
 #   PYTHONPATH=$OPENLAYOUT_HOME/python $OPENLAYOUT_ROOT/venv/bin/python tests/pex/test_pex.py
 import os
@@ -78,7 +78,7 @@ check(f"field solver: dielectric layers {c41:.3g} / {c14:.3g} F (1.04e-16 / 2.21
 
 # ---- library cells against the reference ----------------------------------------------------------
 # (the front end is calibrated on these cells and more: inputs come within a few %, single-stage
-# outputs some 5-15 % under xACT 3D - docs/PEX.md)
+# outputs some 5-15 % under the reference - docs/PEX.md)
 for cell, pins in (("INVx1", ["A", "Y"]), ("NAND2xp33", ["A", "B", "Y"])):
     name = f"{cell}_ASAP7_75t_R"
     out = TMP / f"{cell}.pex.spice"
@@ -88,7 +88,7 @@ for cell, pins in (("INVx1", ["A", "Y"]), ("NAND2xp33", ["A", "B", "Y"])):
     for p in pins:
         ours, theirs = s["total_fF"][p], ref[p] * 1e15
         lo, hi = (0.90, 1.10) if p != "Y" else (0.80, 1.10)
-        check(f"{cell} C({p}) {ours:.3f} fF vs xACT 3D {theirs:.3f} fF", lo <= ours / theirs <= hi)
+        check(f"{cell} C({p}) {ours:.3f} fF vs the reference {theirs:.3f} fF", lo <= ours / theirs <= hi)
     devs = [l for l in lines if l.startswith("N")]
     check(f"{cell}: {len(devs)} transistors, BSIM-CMG cards", len(devs) == (2 if cell == "INVx1" else 4)
           and all(re.search(r" [np]mos_rvt l=20n nfin=\d+$", l) for l in devs), devs[:1])
@@ -102,12 +102,12 @@ for cell, pins in (("INVx1", ["A", "Y"]), ("NAND2xp33", ["A", "B", "Y"])):
 lines, _ = netlist(TMP / "INVx1.pex.spice")
 gate_r = [float(l.split()[3]) for l in lines if l.startswith("R") and " A" in l]
 check("INVx1: the input network reaches both gates", len(gate_r) >= 3 and all(5 < r < 100 for r in gate_r), gate_r)
-# the output: source / drain -> V0 -> M1 to the pin, 40-50 Ohm in xACT 3D; OpenROAD's M1 is ~3x lower
+# the output: source / drain -> V0 -> M1 to the pin, 40-50 Ohm in the reference; OpenROAD's M1 is ~3x lower
 out_r = [float(l.split()[3]) for l in lines if l.startswith("R") and " Y" in l]
 pex.extract(LIB_GDS, "INVx1_ASAP7_75t_R", TMP / "INVx1_orfs.spice", rmodel="openroad")
 lines_o, _ = netlist(TMP / "INVx1_orfs.spice")
 out_o = [float(l.split()[3]) for l in lines_o if l.startswith("R") and " Y" in l]
-check("INVx1: output network like xACT 3D's; --rmodel openroad lower", out_r and all(35 < r < 90 for r in out_r)
+check("INVx1: output network like the reference's; --rmodel openroad lower", out_r and all(35 < r < 90 for r in out_r)
       and max(out_o) < min(out_r), (out_r, out_o))
 
 # ---- a hierarchical layout: a placed INVx1 under labels of its own ---------------------------------

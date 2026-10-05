@@ -1,4 +1,4 @@
-"""Parasitic extraction (PEX) of ASAP7 layouts - like Calibre xACT 3D / Quantus from Virtuoso: a
+"""Parasitic extraction (PEX) of ASAP7 layouts - like a commercial 3D extractor: a
 transistor-level SPICE netlist of the layout with the resistance of every wire and contact and the
 capacitance between all nets, for post-layout simulation (`openlayout sim`).
 
@@ -9,8 +9,8 @@ capacitance between all nets, for post-layout simulation (`openlayout sim`).
    of the cell - devices, nets and their shapes on the conductor layers.
 2. Capacitance: a 3D field solver. fieldsolver.py builds the conductors of every net as 3D bodies
    from the ASAP7 process description (pdk/asap7/klayout/pex/asap7_pex.json: heights, a denser
-   front-end dielectric under the k = 3.23 metal stack, calibrated against the library's Calibre
-   xACT 3D netlists) and FasterCap solves the capacitance matrix between all of them. Floating
+   front-end dielectric under the k = 3.23 metal stack, calibrated against the library's
+   reference extraction netlists) and FasterCap solves the capacitance matrix between all of them. Floating
    shapes (dummy gates) are grounded.
 3. Resistance: KLayout's RNetExtractor turns each signal net into a resistor network between its
    pins and the transistor terminals (by default the sheet / via resistances of the library's
@@ -21,7 +21,7 @@ capacitance between all nets, for post-layout simulation (`openlayout sim`).
    is one) - N<i> d g s b <model> l=... nfin=... for the BSIM-CMG transistors, R and C elements.
 
 docs/PEX.md has the process stack, where its numbers come from, and the comparison with the
-library's Calibre xACT 3D netlists.
+library's reference extraction netlists.
 """
 import argparse
 import json
@@ -481,7 +481,7 @@ def main(argv=None):
     ap.add_argument("--mode", choices=("rc", "c"), default="rc",
                     help="rc: resistor networks and capacitances (default); c: capacitances only")
     ap.add_argument("--rmodel", choices=("reference", "openroad"), default="reference",
-                    help="reference: the library's xACT 3D sheet / via resistances (default); "
+                    help="reference: the library's reference-extraction sheet / via resistances (default); "
                          "openroad: OpenROAD's setRC.tcl values for M1-M9 / V1-V8")
     ap.add_argument("--schematic", help="SPICE netlist of the cell, for the order of the pins")
     ap.add_argument("--keep", action="store_true", help="keep the working files (FasterCap input, LVSDB)")

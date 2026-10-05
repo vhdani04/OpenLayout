@@ -1,9 +1,9 @@
 """Layout versus schematic in KLayout: the ASAP7 deck (pdk/asap7/klayout/lvs/asap7.lvs) on the
 cell being edited against its xschem schematic, results in KLayout's netlist browser - like
-Calibre LVS from Virtuoso with the results in RVE.
+sign-off LVS from the editor, with the results in a browser.
 
 run_current(): OpenLayout > Run LVS - the current cell as edited (saved or not) against the
-schematic next to its layout (<cell>.sch, or the one the Layout XL link names); a standard cell
+schematic next to its layout (<cell>.sch, or the one the schematic link names); a standard cell
 without a schematic is checked against the library CDL. show_results(): loads a batch run's
 report (`openlayout lvs`, the hub's LVS button) into the layout's view.
 """
@@ -24,7 +24,7 @@ RESULT_RE = re.compile(r"^RESULT LVS \S+ (\w+) circuits=(\d+) bulk=(\d+) names=(
 
 
 def schematic_for(layout_file, cell):
-    """The cell's schematic: <cell>.sch next to the layout or the Layout XL link's; None if none."""
+    """The cell's schematic: <cell>.sch next to the layout or the schematic link's; None if none."""
     d = Path(layout_file).parent
     sch = d / f"{cell}.sch"
     if sch.is_file():

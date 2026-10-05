@@ -1,6 +1,6 @@
 # OpenLayout — Roadmap
 
-Goal: Virtuoso-like full-custom environment on open tools (KLayout, xschem, ngspice)
+Goal: a complete full-custom design environment on open tools (KLayout, xschem, ngspice)
 for ASAP7, then a full-custom 8-bit CPU.
 
 ## Phase 0 — Foundation  [DONE]
@@ -9,17 +9,17 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] ASAP7 PDK + 7.5T std cells; BSIM-CMG compiled; model cards converted; inverter simulates
 - [x] Make shared folder permanent
 - [x] Switch login session to "Ubuntu on Xorg" (window control for the hub; better VBox behavior)
-- [x] Calibre deck request submitted to ASU
+- [x] Sign-off deck request submitted to ASU
 
 ## Phase 1 — Unified environment ("one place")  [DONE]
 - [x] Single install root + one reproducible setup script (tools pinned to versions)
 - [x] `openlayout` env/launcher: sets PDK_ROOT, model paths; `openlayout xschem`, `openlayout klayout`, `openlayout sim` start tools pre-configured for ASAP7
 - [x] Git repo for everything we write (PDK configs, themes, scripts, hub, decks)
-- [x] Virtuoso-style project layout: workarea/ with libraries -> cells -> views
-      (schematic .sch, symbol .sym, layout .gds, netlist, extracted, sim results), defined by a libs.def (like cds.lib)
+- [x] Project layout: workarea/ with libraries -> cells -> views
+      (schematic .sch, symbol .sym, layout .gds, netlist, extracted, sim results), defined by a libs.def
 
 ## Phase 2 — PDK integration  [DONE]
-- [x] KLayout tech: ASAP7 .lyt (layer map from the DRM) + .lyp (Virtuoso-like colors/stipples)
+- [x] KLayout tech: ASAP7 .lyt (layer map from the DRM) + .lyp (the PDK's colors/stipples)
 - [x] xschem ASAP7 device symbols (nmos/pmos x rvt/lvt/slvt/sram, nfin/l params), N-prefix OSDI netlisting, model+corner include
 - [x] Std-cell import: auto-generate xschem symbols from CDL; GDS as KLayout reference library
 
@@ -32,12 +32,12 @@ for ASAP7, then a full-custom 8-bit CPU.
 
 ## Phase 4 — Look & feel (one consistent environment)  [DONE]
 - [x] Shared design language: palette, fonts, icons across hub / KLayout / xschem (share/theme/openlayout.json)
-- [x] xschem: colorscheme, fonts, Tk widget styling, Cadence-compat mode, Virtuoso bindkeys, OpenLayout menu (overlay via xschemrc + Tcl, no fork)
-- [x] KLayout: Virtuoso bindkeys, LSW dock, dark scheme, OpenLayout menu (device PCells moved to Phase 7)
+- [x] xschem: colorscheme, fonts, Tk widget styling, xschem's cadence_compat mode, Virtuoso-style key bindings, OpenLayout menu (overlay via xschemrc + Tcl, no fork)
+- [x] KLayout: Virtuoso-style key bindings, LSW dock, dark scheme, OpenLayout menu (device PCells moved to Phase 7)
 - [x] Cross-tool navigation schematic <-> layout <-> Library Manager via the hub
 - [ ] Net-level cross-probing (select a net in one tool, highlight in the other) — needs LVS, Phase 6
 
-## Phase 4b — Layout XL features (from first review)
+## Phase 4b — Schematic-driven layout features (from first review)
 - [x] Display classes: cut/marker layers dashed outlines, implants outlines, vias solid, pins = drawing color + X
 - [x] Single LSW (right) with All / Used tabs; NV keeps the current layer; dotted grid
 - [x] Path tool: width from the clicked edge, Manhattan only; rulers/move/stretch on the axes
@@ -50,7 +50,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] Regression: all std-cell GDS DRC-clean in context (848 cells; one documented library waiver)
 - [x] Results in KLayout's marker browser: OpenLayout > Run DRC, hub DRC button, `openlayout drc`
 - [x] Generators DRC-clean: frame + transistor PCells, via PCells (pads enlarged to the DRM where the LEF's are smaller)
-- [ ] Cross-check against the Calibre deck if it arrives
+- [ ] Cross-check against the ASU sign-off deck if it arrives
 
 ## Phase 6 — LVS + extraction
 - [x] FinFET device extractor (ACTIVE height -> W = 27 nm per fin), VT flavour recognition, split gates (docs/LVS.md)
@@ -58,7 +58,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] LVS from KLayout (netlist browser), the hub (LVS button) and `openlayout lvs`; net names and bulk ties checked
 - [ ] Net-level cross-probing schematic <-> layout from the LVS cross-reference
 - [x] Parasitic extraction -> post-layout ngspice simulation: FasterCap 3D capacitances, R networks (docs/PEX.md)
-- [x] PEX calibrated against the library's Calibre xACT 3D netlists (54 cells, delays within ~2 %)
+- [x] PEX calibrated against the library's reference extraction netlists (54 cells, delays within ~2 %)
 - [ ] PEX of large blocks (hierarchical: cells, then routing)
 
 ## Phase 6b — Simulation environment

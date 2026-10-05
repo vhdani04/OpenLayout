@@ -1,4 +1,4 @@
-"""Virtuoso-style path tool for KLayout (key P).
+"""Path tool for KLayout (key P).
 
 - Start on the edge of an existing shape on the current layer: the path takes that edge's length
   as its width, starts flush at the edge's midpoint and leaves it perpendicularly - so it continues
@@ -8,7 +8,7 @@
 - While drawing, the segment snaps onto the facing edge of the next shape on the same layer as soon
   as the path's end reaches it; clicking while snapped places the path flush against that edge and
   finishes it.
-- Alignment guides, as in Virtuoso: when the path's leading edge lines up with a corner or an edge
+- Alignment guides: when the path's leading edge lines up with a corner or an edge
   centre of a nearby shape on the same layer (within GUIDE_PIXELS of the cursor), the end snaps to
   it and a dashed orange line joins that point to the nearest corner of the leading edge. Lined up
   with the centre of a shape's edge, the next turn runs into that shape centred on it.

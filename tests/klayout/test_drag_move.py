@@ -1,4 +1,4 @@
-# Virtuoso-style moving (drag-move of the selection, the repeating Move command) and stretch, run in
+# Moving (drag-move of the selection, the repeating Move command) and stretch, run in
 # KLayout with a main window (headless):
 #   klayout -e -z -nc -r tests/klayout/test_drag_move.py
 # Mouse input goes through LayoutView.send_mouse_* - the same dispatch as real mouse events.

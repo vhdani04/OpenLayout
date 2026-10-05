@@ -111,7 +111,7 @@ name (`vdd/2`).
 
 | | |
 |---|---|
-| signals | `v("out")`, `i("vdd")` (the test's first analysis); `VT VS VF IT IS` for tran / dc / ac; `v("out", "dc")`; Cadence's `"/out"` works too; `op("out")` the operating point |
+| signals | `v("out")`, `i("vdd")` (the test's first analysis); `VT VS VF IT IS` for tran / dc / ac; `v("out", "dc")`; a leading slash (`"/out"`) works too; `op("out")` the operating point |
 | time | `value(w, x)`, `cross(w, level, n=1, edge="either"\|"rise"\|"fall")`, `delay(w1, w2, th1, th2, edge1, edge2, n1, n2)`, `propDelay(in, out, th_in, th_out, edge="fall")` (to an output edge from the input edge that caused it, whatever the polarity) |
 | edges | `riseTime(w, lo=10, hi=90)`, `fallTime(w, hi=90, lo=10)`, `slewRate(w)`, `overshoot(w)`, `settlingTime(w, tol=2)` |
 | periodic | `frequency(w)`, `period(w)`, `dutyCycle(w)` (level: mid-range unless given) |
@@ -130,7 +130,7 @@ bandwidth(v("out") / v("in")) ; phaseMargin(v("out"))        AC (open-loop gain 
 
 ## Vector files
 
-Vector files use the HSPICE / Spectre `.vec` format. A test can list several.
+Vector files use the common `.vec` digital vector format (the one HSPICE reads). A test can list several.
 
 - **Inputs** become PWL sources on the nodes they name.
 - **Outputs** are checked against the simulation. The count of mismatches is the **vector
@@ -198,7 +198,7 @@ gate scripts.
 ## Post-layout simulation: the config view
 
 A **config** view (`<cell>.config`, the C chip in the Library Manager) says which view each
-instance of a design is simulated with, like Virtuoso's hierarchy editor:
+instance of a design is simulated with, in a hierarchy editor:
 
 - **schematic:** the cell's schematic subcircuit. The instances inside it are bound in turn.
 - **extracted:** the cell's latest PEX netlist. It is a leaf: nothing below it is simulated.

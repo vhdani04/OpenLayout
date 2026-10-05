@@ -1,9 +1,9 @@
 # OpenLayout keys
 
-OpenLayout gives xschem and KLayout Virtuoso-style bindkeys. To keep a tool's own bindings, start
+OpenLayout gives xschem and KLayout Virtuoso-style key bindings. To keep a tool's own bindings, start
 it with `OPENLAYOUT_KEYS=xschem` or `OPENLAYOUT_KEYS=klayout` in the environment.
 
-## Schematic (xschem — like Virtuoso Schematic Editor)
+## Schematic (xschem)
 
 | Key | Action | Key | Action |
 |---|---|---|---|
@@ -22,12 +22,12 @@ it with `OPENLAYOUT_KEYS=xschem` or `OPENLAYOUT_KEYS=klayout` in the environment
 symbol pins. The symbol editor snaps to 2.5 (grid 10) so shapes can be placed precisely, while the
 pin dialog keeps pins on the 10 grid; schematics snap to 10 (grid 20).
 
-**Symbols from schematics** (Virtuoso *From Cellview*): New Cell View → symbol, the hub's *Generate
+**Symbols from schematics**: New Cell View → symbol, the hub's *Generate
 Symbol*, `openlayout make-symbol cell.sch` or xschem's *OpenLayout ▸ Generate Symbol from
 Schematic* build the symbol from the schematic's pins - inputs left, outputs right, supplies
 (VDD…/VSS…) top and bottom, other input-outputs right - with a green body, `@name` / `@symname`
-labels and a red outline selection box around the body and pins (pins on its edges). As in
-Virtuoso, the selection box only shows in the symbol editor: placed instances don't draw it, but it
+labels and a red outline selection box around the body and pins (pins on its edges). The
+selection box only shows in the symbol editor: placed instances don't draw it, but it
 sets the area where the instance is hovered and selected (`hide=instance` on the box; needs the
 OpenLayout xschem build, see `setup/patches`). A symbol without a schematic starts as an empty body
 with the selection box.
@@ -52,11 +52,11 @@ For simulation, OpenLayout's netlisting adds one 0 V source tying VSS to SPICE's
 uses are supply pins of its layout - the frame's rails - so the connectivity check also checks the
 supply connections.
 
-xschem also runs in its Cadence-compatibility mode: persistent commands (a command stays active
+xschem also runs in its `cadence_compat` mode: persistent commands (a command stays active
 until `Esc`), orthogonal wiring (wires only; lines can be drawn at any angle) and a cursor that
 snaps to pins. The mouse cursor is the normal pointer.
 
-## Layout (KLayout — like Virtuoso Layout Suite)
+## Layout (KLayout)
 
 | Key | Action | Key | Action |
 |---|---|---|---|
@@ -81,13 +81,13 @@ Segments are horizontal or
 vertical only; click to add points, double-click or `Enter` to finish, `Backspace` removes the last
 point, `Esc` cancels. Move, stretch and rulers are also restricted to the axes.
 The path is drawn along its centre line, its end flush with the cursor; a click is a corner,
-centred on the click, and the last click (double-click / `Enter`) is the end. **Alignment guides**
-(as in Virtuoso): when the path's leading edge lines up with a corner or an edge centre of a nearby
+centred on the click, and the last click (double-click / `Enter`) is the end. **Alignment guides**:
+when the path's leading edge lines up with a corner or an edge centre of a nearby
 shape on the same layer, the end snaps to it and a dashed orange line joins that point to the
 nearest corner of the leading edge - lined up with the centre of a shape's edge, the next corner
 turns the path into that shape centred on it.
 
-**Moving** works like Virtuoso. With something selected, the cursor is the four-way move arrow over
+**Moving**: with something selected, the cursor is the four-way move arrow over
 it: press and drag to move it, release to drop it (`u` undoes). A press-drag anywhere else draws a
 selection box; a click selects. **Move (`m`)**: the selection - or, with nothing selected, the object
 under the mouse - follows the mouse from where `m` was pressed (infix); a click places it. The
@@ -133,7 +133,7 @@ rails and at its edge dummy gates).
 
 **Generating from the schematic** (KLayout only: *OpenLayout ▸ Generate / Update Layout from
 Schematic*, or *Update from Schematic* in the Connectivity panel) first opens the **Generate Layout**
-form, like Virtuoso's Generate All From Source: one row per pin (the ports, then the supplies the
+form: one row per pin (the ports, then the supplies the
 cell uses) with *Create*, direction, metal layer and size; *Layer for the checked pins* + *Apply*
 sets them all at once. Pins the layout has already start unchecked, and so do VDD / VSS when the
 standard-cell frame's rails provide them. A pin is a square of its layer's minimum width (18 nm on
@@ -156,7 +156,7 @@ connect where they overlap, as in the ASAP7 cells - and the rail's V0s take it t
 The same rule means LIG must stay 14 nm clear of LISD wherever they should not connect (the
 connectivity check reports such an overlap as a short).
 
-**Chaining** (shared diffusion, like Virtuoso's abutment): drop a transistor next to another of the
+**Chaining** (shared diffusion, abutment): drop a transistor next to another of the
 same type and row - touching, or overlapping by up to a gate pitch - and it snaps into the chain:
 the dummy gates between them go and the diffusion runs through. With a schematic link it only
 chains when the touching source/drain nets match, flipping the dropped transistor if that makes
@@ -169,7 +169,7 @@ The **LSW** (right side) is the only layer panel. *All layers* / *Used layers* t
 shapes in the current cell). Click a layer to make it the current drawing layer, untick to hide it.
 **AV** shows every layer; **NV** hides every layer except the current one.
 
-**DRD spacing hints** (like Virtuoso's DRD in notify mode): in every editing tool - path, box,
+**DRD spacing hints** (design-rule-driven editing, notify only): in every editing tool - path, box,
 polygon, stretch (`s` or the Partial tool), move (drag, `m`, KLayout's Move), copy (`c`), instance
 placement and via placement (`o`) - every gap between what you are drawing or moving and a
 neighbouring shape that is closer than the ASAP7 minimum spacing is outlined in red with a

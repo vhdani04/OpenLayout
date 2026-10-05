@@ -1,4 +1,4 @@
-# Library definitions for this workarea (like Virtuoso's cds.lib).
+# Library definitions for this workarea .
 #   DEFINE  <name> <path>   path relative to this file, $VARS allowed; directory name must equal <name>
 #   INCLUDE <file>          pull in another libs.def
 # Each library holds cells; each cell is a directory: <lib>/<cell>/<cell>.{sch,sym,gds,...}

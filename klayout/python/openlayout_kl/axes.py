@@ -1,4 +1,4 @@
-"""The x and y axes through the origin in every layout view, like Virtuoso.
+"""The x and y axes through the origin in every layout view.
 
 KLayout only draws axes with its line-style grids; OpenLayout uses a dot grid, so the axes are two
 long thin markers per view (a service created with each view). show() switches them on and off in

@@ -1,6 +1,5 @@
 """Parasitic extraction from KLayout: OpenLayout > Run PEX runs `openlayout pex` (FasterCap 3D field
-solver + resistor networks, python/openlayout/pex.py) on the cell being edited - like Quantus /
-xACT from Virtuoso - and writes <cell>.pex.spice next to the layout file, for post-layout
+solver + resistor networks, python/openlayout/pex.py) on the cell being edited - and writes <cell>.pex.spice next to the layout file, for post-layout
 simulation.
 
 run(): the batch run, parsed. run_current(): the menu command - the current cell as edited (saved

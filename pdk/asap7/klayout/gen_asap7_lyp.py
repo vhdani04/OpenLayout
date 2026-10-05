@@ -1,7 +1,7 @@
-# Generate KLayout layer properties (asap7.lyp) for ASAP7 from the PDK's Virtuoso files:
+# Generate KLayout layer properties (asap7.lyp) for ASAP7 from the PDK's display files:
 #   cdslib/asap7_TechLib_10/asap7_TechLib.layermap   (layer/purpose -> GDS layer/datatype)
 #   cdslib/setup/display.drf                          (colors, stipples, line styles, packets)
-# so layers look the way they do in Virtuoso.
+# so layers look the way the PDK draws them.
 #
 # Run:  klayout -b -r gen_asap7_lyp.py -rd pdk=$ASAP7_PDK -rd out=tech/asap7/asap7.lyp
 import re
@@ -16,7 +16,7 @@ ALIASES = {"well": "NW", "fin": "FIN", "gate": "PO", "dummy": "PODMY", "active":
 PURPOSE_ABBR = {"drawing": "drg", "pin": "pin", "label": "lbl", "net": "net", "blockage": "blk"}
 # Layers with no packet in display.drf: (fill, outline, stipple, fillStyle)
 FALLBACK = {"gcut": ("red", "red", "dots", "outlineStipple")}
-# Display order, bottom of the stack first (like the Virtuoso LSW).
+# Display order, bottom of the stack first (like a layer selection window).
 STACK = ["well", "p_sub", "fin", "active", "nselect", "pselect", "slvt", "lvt", "sramvt",
          "gate", "dummy", "gcut", "sdt", "lisd", "lig", "v0", "m1", "v1", "m2", "v2", "m3", "v3",
          "m4", "v4", "m5", "v5", "m6", "v6", "m7", "v7", "m8", "v8", "m9", "v9",
@@ -26,7 +26,7 @@ GROUPS = [("drawing", None), ("pin", "Pins"), ("label", "Labels"), ("net", "Nets
 
 
 def sexpr(text):
-    """Parse SKILL-ish s-expressions into nested lists (comments start with ';')."""
+    """Parse Lisp-like s-expressions into nested lists (comments start with ';')."""
     tokens = re.findall(r"\(|\)|[^\s()]+", re.sub(r";[^\n]*", "", text))
     stack = [[]]
     for t in tokens:
@@ -92,7 +92,7 @@ def packet(layer, purpose):
     return st, "solid", fill, outline, fill_style
 
 
-# OpenLayout display classes on top of the Virtuoso packets (ASAP7 DRM layer tables):
+# OpenLayout display classes on top of the PDK's display packets (ASAP7 DRM layer tables):
 #   cut / marker layers -> dashed outline   (gate cut, dummy-gate/diffusion-break marker, boundaries)
 #   implant / VT masks  -> solid outline    (they mark regions, they are not material)
 #   well                -> keeps its sparse dot stipple (like gpdk045 NWELL)

@@ -1,6 +1,6 @@
 # OpenLayout
 
-A Virtuoso-style, open-source custom IC design environment for the ASAP7 7nm FinFET PDK:
+An open-source custom IC design environment for the ASAP7 7nm FinFET PDK:
 xschem (schematics) + ngspice (simulation, BSIM-CMG via OSDI) + KLayout (layout, DRC, LVS) +
 FasterCap (parasitic extraction).
 
@@ -24,7 +24,7 @@ Pinned versions live in `setup/versions.env`.
 
     openlayout hub            # or "OpenLayout" in the app menu
 
-The hub is OpenLayout's Virtuoso: a **Library Manager** (Library | Cell | View, with filters;
+The hub is OpenLayout's home: a **Library Manager** (Library | Cell | View, with filters;
 view chips S/Y/L and a pass/fail dot per cell) above a **CIW** (log + Python command line).
 
 - Double-click a cell or view to open it. xschem and KLayout run as one session each per
@@ -40,11 +40,11 @@ view chips S/Y/L and a pass/fail dot per cell) above a **CIW** (log + Python com
 ## Look & feel
 
 One theme (`share/theme/openlayout.json`) drives the hub, xschem and KLayout: dark UI, near-black
-canvases, shared accent colors. Both tools use **Virtuoso bindkeys** (see [docs/KEYS.md](docs/KEYS.md),
+canvases, shared accent colors. Both tools use **Virtuoso-style key bindings** (see [docs/KEYS.md](docs/KEYS.md),
 or F1 in the hub) and get an **OpenLayout** menu:
 
 - xschem: Open Layout in KLayout, Open Symbol/Schematic, Show in Library Manager, Netlist, Simulate
-- KLayout: Open Schematic/Symbol, Show in Library Manager, LSW (Virtuoso-style layer palette),
+- KLayout: Open Schematic/Symbol, Show in Library Manager, LSW (layer palette),
   Run DRC, Run LVS, Run PEX
 
 **DRC**: a KLayout deck written rule by rule from the ASAP7 DRM, run from KLayout, the hub or
@@ -63,7 +63,7 @@ Cross-tool menus call `openlayout hubcmd`, which talks to the hub over localhost
 `OPENLAYOUT_KEYS=xschem|klayout` keeps a tool's own bindings; `OPENLAYOUT_UI=0` disables the
 KLayout additions.
 
-## Schematic-driven layout (Layout XL style)
+## Schematic-driven layout
 
 **Generate Layout** (hub F9, xschem or KLayout *OpenLayout* menu) netlists a cell's schematic and
 creates or updates `<cell>.gds`:
@@ -93,7 +93,7 @@ re-checks as you edit.
     openlayout sim tb.sp                        # ngspice batch run
     openlayout test                             # Python unit tests
 
-Workareas mirror Virtuoso: `libs.def` (like `cds.lib`) defines libraries; a library holds
+Workareas: `libs.def` defines libraries; a library holds
 cells; a cell is a directory `<lib>/<cell>/` holding its views (`<cell>.sch`, `<cell>.sym`,
 `<cell>.gds`, ...). xschem references cells as `<lib>/<cell>/<cell>.sym`.
 
@@ -121,8 +121,18 @@ In xschem, a schematic transistor named `M1` netlists as `NM1`. Place one `asap7
 per testbench to load models.
 
 KLayout (`openlayout klayout`) opens in editor mode with the `asap7` technology: layer colors
-and stipples converted from the PDK's Virtuoso `display.drf`, net-tracer connectivity
+and stipples converted from the PDK's display resource file (`display.drf`), net-tracer connectivity
 (gate/SD -> LIG/LISD -> V0 -> M1 ... M9), and the four std-cell GDS libraries available for
 placement. Regenerate with `pdk/asap7/klayout/gen_asap7_{lyp,lyt}.py`.
 
 See [ROADMAP.md](ROADMAP.md) for the plan.
+
+## License
+
+OpenLayout is free software, released under the GNU General Public License v3.0 or later - see
+[LICENSE](LICENSE). The tools and PDK it installs keep their own licenses; [NOTICE.md](NOTICE.md)
+lists them, with the ASAP7 attribution.
+
+Virtuoso is a trademark of Cadence Design Systems, Inc., and HSPICE of Synopsys, Inc. They are
+named only to describe key-binding and file-format compatibility. OpenLayout is an independent
+project, not affiliated with or endorsed by either company.

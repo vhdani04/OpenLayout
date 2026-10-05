@@ -1,4 +1,4 @@
-"""Design-rule-driven editing, like Virtuoso's DRD in notify mode: while a shape is being drawn or
+"""Design-rule-driven editing (notify only): while a shape is being drawn or
 moved - path, box, polygon, stretch, move, copy, instance and via placement - every gap between it
 and a neighbouring shape that is closer than the ASAP7 minimum spacing is outlined, with a
 dimension line labelled with the minimum ("18 nm min", or "14 nm min to LISD" between layers).

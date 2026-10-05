@@ -1,6 +1,6 @@
-"""Virtuoso-style moving and stretching in KLayout.
+"""Moving and stretching in KLayout, Virtuoso-style keys.
 
-Like Virtuoso's defaults:
+The behaviour:
 - Drag-move: with something selected, the cursor is the four-way move arrow over it; a press-drag
   there moves the selection and the release drops it. A press-drag anywhere else draws a selection
   box; a click selects.
@@ -81,7 +81,7 @@ def _status(text):
 
 
 def move_under_mouse():
-    """The `m` key: Virtuoso's Move command (infix, repeating until Esc)."""
+    """The `m` key: the Move command (infix, repeating until Esc)."""
     if _under_mouse is None:
         return
     plugin, p = _under_mouse
@@ -281,7 +281,7 @@ class DragMove(pya.Plugin):
                 return False
             if self.moving:          # a move / stretch was just placed: back to Select mode
                 self._back_to_select()
-        # four-way arrow over a selection, like Virtuoso; back to the arrow once the mouse leaves it
+        # four-way arrow over a selection; back to the arrow once the mouse leaves it
         if prio and not (buttons & pya.ButtonState.LeftButton):
             over = self.over_selection(p)
             if over:

@@ -1,4 +1,4 @@
-"""Connectivity panel (right dock): schematic nets vs. layout, Layout XL style.
+"""Connectivity panel (right dock): schematic nets vs. layout.
 
 Lists every net of the linked schematic with its state - complete, open (with the unconnected
 terminals and why) or shorted (with what of the other net touches it) - plus schematic pins without

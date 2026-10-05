@@ -50,7 +50,7 @@ class OpenLayoutBridge:
             return self.open(req["file"], req.get("cell"), bool(req.get("readonly")))
         if cmd == "status":
             return {"ok": True, "views": self.status()}
-        if cmd == "generate":  # {"schematic": path} - Layout XL style generate/update from source
+        if cmd == "generate":  # {"schematic": path} - generate / update the layout from its schematic
             from openlayout_kl import gui
             report = gui.instance.generate_for(req["schematic"])
             return {"ok": True, "report": report, "message": gui.OpenLayoutUI.describe(report)}

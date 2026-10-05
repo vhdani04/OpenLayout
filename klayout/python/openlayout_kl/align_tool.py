@@ -1,4 +1,4 @@
-"""Virtuoso-style align (key A).
+"""Align (key A).
 
 Select what should move (or point at it), press A, click an edge of the selection (the reference),
 then click a parallel edge of anything else (the target): the selection moves so the two edges line

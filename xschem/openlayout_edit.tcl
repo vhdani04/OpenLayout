@@ -1,5 +1,5 @@
 # OpenLayout editing for xschem (sourced via tcl_files once the main window exists):
-#   - Cadence-style property form for instances (q / double-click)
+#   - property form for instances (q / double-click)
 #   - pin dialog on P: names + direction, then the pins follow the mouse
 #   - context keys: L / R draw line / rectangle in symbols, net label / rotate in schematics
 #   - lines can be drawn at any angle (wires stay orthogonal)
@@ -334,7 +334,7 @@ if {!([info exists env(OPENLAYOUT_KEYS)] && $env(OPENLAYOUT_KEYS) eq "xschem")} 
 }
 ol_wrap_tool_commands
 
-# ---- grab a rectangle edge and slide it (Virtuoso stretch) -----------------------------------
+# ---- grab a rectangle edge and slide it (stretch) -----------------------------------
 # Hovering over an edge of a rectangle highlights just that edge (a corner: both of its edges). Press
 # and drag it: a dashed outline shows the resized rectangle, with the grabbed edge highlighted, and
 # the edge snaps to the grid. On release the rectangle takes the outline's size (one undo step).

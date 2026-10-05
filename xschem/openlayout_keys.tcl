@@ -1,10 +1,10 @@
-# Virtuoso Schematic Editor (Composer) style editing for xschem.
+# Virtuoso-style key bindings for xschem.
 # Set OPENLAYOUT_KEYS=xschem in the environment to keep xschem's own bindings.
 
 if {[info exists env(OPENLAYOUT_KEYS)] && $env(OPENLAYOUT_KEYS) eq "xschem"} { return }
 
-# xschem's Cadence compatibility mode: persistent commands, orthogonal wiring, snap cursor,
-# Cadence selection behavior. Normal mouse cursor (no full-screen crosshair).
+# xschem's cadence_compat mode: persistent commands, orthogonal wiring, snap cursor,
+# its selection behavior. Normal mouse cursor (no full-screen crosshair).
 set cadence_compat 1
 set persistent_command 1
 set orthogonal_wiring 1

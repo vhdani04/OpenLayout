@@ -1,5 +1,5 @@
 # Schematic-driven layout + connectivity check, run in KLayout batch mode:
-#   klayout -b -r tests/klayout/test_layoutxl.py
+#   klayout -b -r tests/klayout/test_sdl.py
 # Prints one PASS/FAIL line per check and a final PASS/FAIL summary.
 import os
 import shutil
@@ -122,4 +122,4 @@ check("n1 open between NAND2 and INV", res3["nets"]["n1"]["pieces"] == 2)
 check("no false shorts through std cells", not any(v["shorts"] for v in res3["nets"].values()),
       {n: v["shorts"] for n, v in res3["nets"].items() if v["shorts"]})
 
-print("PASS layoutxl" if not failures else f"FAIL layoutxl: {', '.join(failures)}")
+print("PASS sdl" if not failures else f"FAIL sdl: {', '.join(failures)}")

@@ -115,7 +115,7 @@ sd = active - gate
 vt_any = lvt + slvt + sramvt
 flavours = { "rvt" => nil, "lvt" => lvt, "slvt" => slvt, "sram" => sramvt }
 gcon = gate_nc & lig              # where LIG contacts a gate (the gate contact, for extraction)
-sdx = sd - gate.sized(0.0005)        # source / drain node for extraction, 0.5 nm off the gate (as Calibre xACT 3D)
+sdx = sd - gate.sized(0.0005)        # source / drain node for extraction, 0.5 nm off the gate (as the library's reference extraction)
 
 # names of the conducting layers in the LVS database: parasitic extraction (pex.py) finds them by these
 name(sd, "sd")
@@ -188,12 +188,12 @@ end
   tolerance("#{t}_#{vt}", "W", :absolute => 0.0005)
   tolerance("#{t}_#{vt}", "L", :absolute => 0.0005)
   # a wide series stack drawn as parallel stacks whose inner nodes are not joined (as the library
-  # does for x4, x6 ... strengths) is the same circuit: "split gates" (Calibre's REDUCE SPLIT GATES)
+  # does for x4, x6 ... strengths) is the same circuit: "split gates" (merged, as sign-off LVS does)
   split_gates("#{t}_#{vt}")
 end
 netlist.make_top_level_pins
 # -rd pex=1 (parasitic extraction, `openlayout pex` on a flattened copy): the extracted netlist only -
-# floating shapes kept (dummy gates: the extraction grounds them, as Calibre does), every finger its
+# floating shapes kept (dummy gates: the extraction grounds them, as sign-off extractors do), every finger its
 # own device, no comparison
 unless $pex
   netlist.purge
@@ -202,7 +202,7 @@ end
 schematic.purge
 schematic.combine_devices
 same_circuits(source.cell_name, top_name) if top_ref
-# Placed library standard cells are compared as black boxes (pins only, like Calibre's LVS BOX for a
+# Placed library standard cells are compared as black boxes (pins only, the usual black box for a
 # verified library) - unless -rd stdcells=check compares their transistors too. (Nine library cells
 # order series transistors differently from their CDL, which a strict topological compare reports.)
 unless $stdcells == "check" || source.cell_name =~ /_ASAP7_75t_/i

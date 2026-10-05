@@ -1,4 +1,4 @@
-"""LSW: Virtuoso-style layer selection window - the only layer panel in OpenLayout's KLayout.
+"""LSW: the layer selection window - the only layer panel in OpenLayout's KLayout.
 
 Two tabs: All layers / Used layers (layers with shapes in the current cell). Click a layer to make
 it the current drawing layer, tick/untick to show/hide it. AV shows all layers, NV hides all
@@ -223,7 +223,7 @@ class LSW:
         self.refresh()
 
     def none_visible(self):
-        """Hide everything except the current layer (Virtuoso NV keeps the entry layer)."""
+        """Hide everything except the current layer (NV keeps the entry layer)."""
         if self.view() is None:
             return
         cur = self.current_key()

@@ -1,14 +1,14 @@
-"""PEX benchmark against the library's Calibre xACT 3D netlists ($ASAP7_STDCELLS/CDL/xAct3D_extracted).
+"""PEX benchmark against the library's reference extraction netlists ($ASAP7_STDCELLS/CDL/xAct3D_extracted).
 
-  bench.py caps  [cells...]     total capacitance per pin, ours vs xACT 3D, and the PEX time
-  bench.py delay [cells...]     FO2 delays of a set of arcs: schematic / xACT 3D / ours (ngspice)
+  bench.py caps  [cells...]     total capacitance per pin, ours vs the reference, and the PEX time
+  bench.py delay [cells...]     FO2 delays of a set of arcs: schematic / reference / ours (ngspice)
   bench.py all   [cells...]     both (default cells: CELLS, BENCH_SUBSET=1 for a short list)
 
   PYTHONPATH=$OPENLAYOUT_HOME/python $OPENLAYOUT_ROOT/venv/bin/python tests/pex/bench/bench.py all
 
 Env: BENCH_OUT (results, default a temporary directory), BENCH_TAG (results file names),
 BENCH_TECH (another asap7_pex.json). About 6 s per cell; the full list takes some 6 minutes.
-xACT 3D extracts nothing on unlabelled internal nets (noxref_*), so arcs through a stack node
+The reference extracts nothing on unlabelled internal nets (noxref_*), so arcs through a stack node
 (AOI21 A1->Y, OAI21 B->Y, XOR2 B->Y) come out slower with OpenLayout's extraction.
 """
 import json
@@ -127,7 +127,7 @@ def xact_spice(cell, new):
             if k == "m":
                 params = {p.split("=")[0].lower(): p.split("=")[1] for p in t[6:] if "=" in p}
                 out.append(f"N{t[0]} {' '.join(t[1:5])} {t[5]} l={params['l']} nfin={params['nfin']}")
-            elif k == "r":                  # ngspice + OSDI fail on the 1e-5 Ohm shorts xACT writes
+            elif k == "r":                  # ngspice + OSDI fail on the 1e-5 Ohm shorts the reference writes
                 out.append(f"{t[0]} {t[1]} {t[2]} {max(val(t[3]), 1e-3):g}")
             elif k == "c":
                 out.append(" ".join(t[:4]))
@@ -166,7 +166,7 @@ def caps(cells):
 
 
 def report_caps(rows, t_all, kind_of):
-    print(f"\n{'cell':14s} {'pin':5s} {'ours':>8s} {'xACT':>8s} {'err':>7s}")
+    print(f"\n{'cell':14s} {'pin':5s} {'ours':>8s} {'ref':>8s} {'err':>7s}")
     errs = defaultdict(list)
     for c, pin, v, r, _ in rows:
         e = v / r - 1
@@ -234,7 +234,7 @@ def delay(cells):
 
 
 def report_delay(res):
-    print(f"\n{'cell':12s} {'arc':6s} {'sch':>12s} {'xACT':>12s} {'ours':>12s} {'err vs xACT':>13s} {'parasitic captured':>19s}")
+    print(f"\n{'cell':12s} {'arc':6s} {'sch':>12s} {'ref':>12s} {'ours':>12s} {'err vs ref':>13s} {'parasitic captured':>19s}")
     es, caps_ = [], []
     for r in res:
         line = f"{r['cell']:12s} {r['arc']:6s}"
@@ -252,7 +252,7 @@ def report_delay(res):
     es = [e for e in es if e == e]
     caps_ = [p for p in caps_ if p == p]
     if es:
-        print(f"delay error vs xACT: mean {sum(es) / len(es) * 100:+.1f}%  rms "
+        print(f"delay error vs reference: mean {sum(es) / len(es) * 100:+.1f}%  rms "
               f"{math.sqrt(sum(e * e for e in es) / len(es)) * 100:.1f}%; parasitic delay captured: "
               f"mean {sum(caps_) / len(caps_) * 100:.0f}%")
 

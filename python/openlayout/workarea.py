@@ -1,6 +1,6 @@
 """Workarea model: libraries, cells and views.
 
-This mirrors Virtuoso's design hierarchy. A workarea's `libs.def` (like cds.lib) defines
+The usual custom-design hierarchy. A workarea's `libs.def` defines
 libraries; a library is a directory of cells; a cell is a directory `<lib>/<cell>/` whose views
 are files named after the cell (`<cell>.sch`, `<cell>.sym`, `<cell>.gds`, ...).
 
@@ -259,7 +259,7 @@ class Workarea:
         if vt is SCHEMATIC:
             path.write_text(XSCHEM_HEADER + "K {}\nV {}\nS {}\nE {}\n")
         elif vt is SYMBOL:
-            # Like Virtuoso's "from cellview": with a schematic, build the symbol from its pins;
+            # From the cellview: with a schematic, build the symbol from its pins;
             # otherwise start from an empty body with the red selection box (outline only).
             from .symbolgen import BLANK, schematic_pins, symbol_text
             sch = cell.view("schematic")

@@ -1,5 +1,5 @@
 """Calibrate the front end of the PEX process description (pdk/asap7/klayout/pex/gen_pex_tech.py,
-CALIBRATED) against the library's Calibre xACT 3D netlists: the total capacitance of every pin and
+CALIBRATED) against the library's reference extraction netlists: the total capacitance of every pin and
 the couplings between pins of a set of cells, scored as the RMS of the log errors (couplings at
 half weight). Runs the real pipeline (pex.capacitance on gen_pex_tech.build(params)).
 

@@ -1,4 +1,4 @@
-"""The config view's editor - Virtuoso's hierarchy editor. The design's instance tree, with the
+"""The config view's editor - a hierarchy editor. The design's instance tree, with the
 view each instance is simulated with: its schematic, or its extracted (PEX) netlist. Set it per cell
 (every instance) or per instance. An OLSim test whose design is this config simulates exactly what
 Show Netlist shows.

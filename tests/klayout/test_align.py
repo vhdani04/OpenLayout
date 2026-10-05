@@ -1,4 +1,4 @@
-# Virtuoso-style align (key A), run in KLayout with a main window (headless):
+# Align (key A), run in KLayout with a main window (headless):
 #   klayout -e -z -nc -r tests/klayout/test_align.py
 # Mouse input goes through LayoutView.send_mouse_* - the same dispatch as real mouse events.
 import os

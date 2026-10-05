@@ -1,4 +1,4 @@
-"""Generate an xschem symbol from a schematic's pins, like Virtuoso's "Create Cellview From Cellview".
+"""Generate an xschem symbol from a schematic's pins, like creating a cellview from a cellview.
 
 Inputs go on the left, outputs on the right, supply pins (VDD/VSS/...) on top/bottom and other
 input-outputs on the right below the outputs, each on a stub with its name inside the body. The
@@ -95,7 +95,7 @@ def symbol_text(pins: list) -> str:
     texts.append(f"T {{@name}} {x1} {name_y} 0 0 {LABEL} {LABEL} {{}}")
     texts.append(f"T {{@symname}} {x1} {cell_y} 0 0 {LABEL} {LABEL} {{}}")
 
-    # red selection box (outline only) like Virtuoso's: the body plus the pin stubs, with the pins on
+    # red selection box (outline only): the body plus the pin stubs, with the pins on
     # its edges; labels stay outside. Not drawn in instances (hide=instance, OpenLayout xschem patch). On the 10 grid, so its edges can be dragged on the grid.
     bx1 = x1 - (STUB if left else 0)
     bx2 = x2 + (STUB if right else 0)

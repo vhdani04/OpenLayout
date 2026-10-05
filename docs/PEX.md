@@ -1,7 +1,7 @@
 # Parasitic extraction (PEX)
 
-`openlayout pex` turns a layout into a transistor-level SPICE netlist with its parasitics, like
-Quantus or Calibre xACT 3D run from Virtuoso. The netlist includes the resistance of every wire,
+`openlayout pex` turns a layout into a transistor-level SPICE netlist with its parasitics, like a
+commercial 3D extractor. The netlist includes the resistance of every wire,
 contact and via on the signal nets and the capacitance between all nets, for post-layout
 simulation in ngspice.
 
@@ -57,7 +57,7 @@ future work.
    - The dielectric is in layers. FastCap-style interface panels sit at each change of dielectric
      constant, holed where conductors pass through.
    - FasterCap solves the full capacitance matrix with a boundary-element method.
-   - Floating conductors (the dummy gates at the cell edges) are grounded, as Calibre does.
+   - Floating conductors (the dummy gates at the cell edges) are grounded, as sign-off extractors do.
 3. **Resistance.**
    - KLayout's `RNetExtractor` turns each signal net into a resistor network between its pin and
      the transistor terminals (gate channels and source / drain regions).
@@ -80,21 +80,21 @@ fins stand 32 nm above the trench oxide.
 | conductor | z (nm) | from |
 |---|---|---|
 | substrate (plate) | -47 | calibrated: 15 nm under the trench oxide |
-| GATE | -32 … 24 | 56 nm thick (xACT 3D) |
-| source / drain node (plate) | 0, 1 nm off every gate | calibrated (xACT 3D: a 1 nm sliver) |
+| GATE | -32 … 24 | 56 nm thick (reference) |
+| source / drain node (plate) | 0, 1 nm off every gate | calibrated (reference: a 1 nm sliver) |
 | trench contact (SDT) | 0 … 37 | |
 | LIG | 24 … 64 | on the gate; top calibrated |
-| LISD | 37 … 64 | 27 nm thick (xACT 3D) |
-| V0 | 64 … 84 | 20 nm (QRC) |
-| M1 / V1 / M2 / V2 / M3 / V3 | 84 … 300, 36 nm each | xACT 3D thickness; via heights from QRC |
-| M4 / V4 / M5 / V5 | 48 nm each | QRC via heights; metal 2 × width |
-| M6 / V6 / M7 / V7 / M8 / V8 / M9 | 64 / 64 / 64 / 64 / 80 / 64 / 80 | QRC via heights; metal 2 × width |
+| LISD | 37 … 64 | 27 nm thick (reference) |
+| V0 | 64 … 84 | 20 nm (PDK extraction tech file) |
+| M1 / V1 / M2 / V2 / M3 / V3 | 84 … 300, 36 nm each | reference thickness; via heights from the PDK extraction tech file |
+| M4 / V4 / M5 / V5 | 48 nm each | tech-file via heights; metal 2 × width |
+| M6 / V6 / M7 / V7 / M8 / V8 / M9 | 64 / 64 / 64 / 64 / 80 / 64 / 80 | tech-file via heights; metal 2 × width |
 
 **Dielectric.** There are two dielectrics:
 
 | region | k | basis |
 |---|---|---|
-| metal stack, above the middle of V0 | 3.23 | fits every plate capacitance between neighbouring layers in the library's QRC technology file (`qrcTechFile_typ03_unscaledV02`; its plate coefficients are readable) |
+| metal stack, above the middle of V0 | 3.23 | fits every plate capacitance between neighbouring layers in the PDK's extraction technology file (`qrcTechFile_typ03_unscaledV02`; its plate coefficients are readable) |
 | front end, below the middle of V0 | 4.6 | calibrated |
 
 The front end is denser in a real process: nitride spacers, etch-stop liners and the gate stack
@@ -103,8 +103,8 @@ sit between the gate and the source / drain.
 ### Calibration
 
 The front-end numbers (gate height, substrate depth, source / drain gap, MOL height, front-end
-k) are fitted to the library's own reference extraction. Those are the Calibre xACT 3D netlists
-in `$ASAP7_STDCELLS/CDL/xAct3D_extracted`.
+k) are fitted to the library's own reference extraction. Those are the 3D-extracted netlists
+that ship with the library, in `$ASAP7_STDCELLS/CDL/xAct3D_extracted` ("the reference" below).
 
 - **Fit set:** the total capacitance of every pin and the couplings between pins of eight cells:
   INVx1, INVx4, BUFx2, NAND2xp33, NOR2xp33, AOI21xp33, XOR2xp5, AND2x2.
@@ -121,22 +121,22 @@ in `$ASAP7_STDCELLS/CDL/xAct3D_extracted`.
 | | sheet at drawn width (Ω/sq) | | via (Ω, nominal cut) |
 |---|---|---|---|
 | GATE | 6.80 | GCON (LIG on gate) | 10.4 (20 × 18 nm) |
-| LIG | 8.33 | SDT (trench contact) | none (xACT 3D has none) |
+| LIG | 8.33 | SDT (trench contact) | none (the reference has none) |
 | LISD | 10.0 | V0 | 19.4 (18 × 18 nm) |
 | M1-M3 | 4.20 | V1-V3 | 19.5 (18 × 18 nm) |
 | M4 / M5 | 2.87 | V4 / V5 | 11.0 (24 × 24 nm) |
 | M6 / M7 | 2.02 | V6 / V7 | 6.2 (32 × 32 nm) |
 | M8 / M9 | 1.56 | V8 | 4.0 (40 × 40 nm) |
 
-**Default, `reference`:** this is what the xACT 3D netlists use.
+**Default, `reference`:** this is what the reference netlists use.
 
 - **M1 / M2:** 3.03 Ω/sq on a width 5 nm under drawn, i.e. about 230 Ω/µm for a minimum wire.
   Folded into the drawn width at the minimum width, that is 4.20 Ω/sq. It is exact for minimum
   wires and a little high for wide ones; vias keep their full landing.
 - **M3-M9:** the same resistivity, scaled by thickness and width.
 - **Gate, LISD, LIG:** the reference values, folded the same way (the gate is drawn 1 nm
-  narrower than xACT models it, LISD 3.8 nm wider).
-- **Vias:** a single specific resistance from xACT's V1, 6.3e-3 Ω·µm² (19.5 Ω per 18 × 18 nm),
+  narrower than the reference models it, LISD 3.8 nm wider).
+- **Vias:** a single specific resistance from the reference's V1, 6.3e-3 Ω·µm² (19.5 Ω per 18 × 18 nm),
   for V1-V8. OpenROAD's V4-V8 values are within 25 % of it.
 
 **`--rmodel openroad`:** OpenROAD-flow-scripts `platforms/asap7/setRC.tcl` for M1-M9 and V1-V8.
@@ -149,7 +149,7 @@ matters for long routes.
 ## Against the library's reference extraction
 
 The benchmark (`tests/pex/bench/bench.py`) runs 54 library cells (176 pins) and 21 delay arcs. It
-compares against the xACT 3D netlists (ground caps of their `PM_<cell>%<net>` subcircuits plus
+compares against the reference netlists (ground caps of their `PM_<cell>%<net>` subcircuits plus
 their `cc_` couplings).
 
 | | kpex, one dielectric (before) | this model |
@@ -161,7 +161,7 @@ their `cc_` couplings).
 
 Examples (total capacitance per pin, fF):
 
-| cell | pin | before | now | xACT 3D |
+| cell | pin | before | now | reference |
 |---|---|---|---|---|
 | INVx1 | A / Y | 0.199 / 0.140 | 0.217 / 0.167 | 0.210 / 0.192 |
 | INVx4 | A / Y | 0.675 / 0.338 | 0.726 / 0.393 | 0.707 / 0.388 |
@@ -177,7 +177,7 @@ Examples (total capacitance per pin, fF):
 - **Single-stage outputs** come out 5-13 % low (outputs behind a buffer stage match). That is
   the source / drain node's coupling to the gates beside it.
 - **Delay:**
-  - Most arcs come within 0.5-3 % of xACT 3D, slightly under.
+  - Most arcs come within 0.5-3 % of the reference, slightly under.
   - Three arcs come out 7-10 % slower: AOI21 A1→Y, OAI21 B→Y and XOR2 B→Y. Each goes through an
     internal node of a transistor stack. The reference **extracts nothing** on unlabelled internal
     nets (`noxref_*`): not one capacitor in its netlists touches one. So there the difference is
@@ -210,10 +210,10 @@ This is the capacitance solve alone (FasterCap on 4 cores). The whole `openlayou
 
 - `tests/pex/test_pex.py` (in `openlayout doctor`):
   - the field solver against parallel plates (one and two dielectrics);
-  - INVx1 and NAND2xp33 against xACT 3D (inputs ±10 %, outputs -20 / +10 %);
+  - INVx1 and NAND2xp33 against the reference (inputs ±10 %, outputs -20 / +10 %);
   - transistor cards and pin order;
   - resistor networks on the signal nets, with the supplies ideal;
-  - the output network against xACT 3D's, and `--rmodel openroad` below it;
+  - the output network against the reference's, and `--rmodel openroad` below it;
   - a hierarchical layout (placed cell, its own labels), giving the same capacitances as the cell;
   - `--mode c`;
   - a post-layout ngspice simulation in which the parasitics slow the inverter down.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert ASAP7 HSPICE BSIM-CMG (level 72) model cards to ngspice OSDI form.
+"""Convert ASAP7 BSIM-CMG (level 72) model cards (the PDK's models/hspice) to ngspice OSDI form.
 
   .model nmos_rvt nmos level = 72   ->   .model nmos_rvt bsimcmg_va type=1
   .model pmos_rvt pmos level = 72   ->   .model pmos_rvt bsimcmg_va type=-1

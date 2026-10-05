@@ -1,5 +1,5 @@
 """The config view (<cell>.config): which view each cell and each instance of a design is
-simulated with - Virtuoso's hierarchy editor. An OLSim test whose design is a config simulates
+simulated with - a hierarchy editor. An OLSim test whose design is a config simulates
 the netlist it describes.
 
     {"top": {"lib": "demo", "cell": "tb_inv"},           # the design: this cell's schematic

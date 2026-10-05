@@ -1,4 +1,4 @@
-"""Create Via (key O), like Virtuoso: pick a via from a menu, then place it with the mouse.
+"""Create Via (key O): pick a via from a menu, then place it with the mouse.
 
 The dialog lists the ASAP7 vias (V0 from LISD or LIG up to M1, V1 ... V8) and the via stacks (e.g.
 LIG -> M2 = V0 + V1), with rows and columns for via arrays. After *Place* the via follows the

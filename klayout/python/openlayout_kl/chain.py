@@ -1,4 +1,4 @@
-"""Chaining (abutment) of OpenLayout FinFET PCells, like Virtuoso Layout XL.
+"""Chaining (abutment) of OpenLayout FinFET PCells.
 
 Two transistors chain when they share a source/drain column: the outer column of one lies on the
 outer column of the other (the devices overlap by two gate pitches). Chained sides drop their dummy

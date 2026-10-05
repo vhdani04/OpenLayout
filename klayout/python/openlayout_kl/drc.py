@@ -1,6 +1,6 @@
 """Design rule check in KLayout: the ASAP7 deck (pdk/asap7/klayout/drc/asap7.drc) on the cell
-being edited, results in KLayout's marker browser - like running Calibre from Virtuoso and
-looking at the results in RVE.
+being edited, results in KLayout's marker browser - like running sign-off DRC from the editor and
+looking at the results in a browser.
 
 run_current(): OpenLayout > Run DRC - checks the current cell of the current view (the layout as
 edited, saved or not). show_results(): loads a report written by a batch run (`openlayout drc`,

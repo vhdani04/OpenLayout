@@ -42,7 +42,7 @@ schematic - a library standard cell - is compared with its CDL. The hub keeps re
 ### Placed standard cells
 
 Library cells placed in a design are compared as **black boxes**: their pins, by name, against the
-CDL's pin list - like Calibre's `LVS BOX` for a verified library. Wire the rails up: label VDD /
+CDL's pin list - the usual black-box treatment of a verified library. Wire the rails up: label VDD /
 VSS at the top level (on the cells' rails) so the cells' supply pins connect. `--stdcells check`
 compares their transistors too.
 
@@ -57,8 +57,8 @@ compares their transistors too.
   transistor (RVT in the doctor; `-rd libs=R,L,SL,SRAM` runs all four libraries: 208 cells each).
   199 match exactly. In nine cells (A2O1A1O1Ixp25, AOI211xp5, NAND3x2, NOR3x2, OAI21x1,
   OAI221xp5, SDFLx1/x2/x3) the layout stacks series transistors in a different order than the
-  CDL, which a strict topological comparison reports (Calibre accepts it through logic-gate
-  recognition). For these, the test checks that layout and CDL have the same transistors: per type
+  CDL, which a strict topological comparison reports (commercial LVS tools accept it through
+  logic-gate recognition). For these, the test checks that layout and CDL have the same transistors: per type
   and gate pin, the same total width. They are fine as black boxes in designs.
 - `tests/klayout/test_lvs_gui.py` - Run LVS in KLayout on a workarea cell with an xschem schematic,
   an edit that breaks it, the batch run and its results in the netlist browser, a library cell

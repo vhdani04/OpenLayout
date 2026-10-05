@@ -8,7 +8,7 @@
 - The frame covers the whole cell, so picking prefers anything else: a click, drag, m or a on a spot
   where a transistor (or another shape) lies takes that, and only empty spots give a frame shape
   (pick()).
-- chain_selected(): Virtuoso-style chaining of the selected transistors.
+- chain_selected(): chaining of the selected transistors.
 - after_move(): called when a move / align is done - snaps moved transistors into chains.
 """
 import math

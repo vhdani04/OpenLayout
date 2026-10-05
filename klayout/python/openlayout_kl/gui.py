@@ -1,4 +1,4 @@
-"""OpenLayout inside KLayout: theme and preferences, Virtuoso keys, drag-and-drop and align, the path tool,
+"""OpenLayout inside KLayout: theme and preferences, Virtuoso-style keys, drag-and-drop and align, the path tool,
 the ASAP7 PCell library, the LSW and Connectivity panels, and the OpenLayout menu (incl.
 schematic-driven layout)."""
 import json
@@ -25,7 +25,7 @@ UI, CANVAS = THEME["ui"], THEME["canvas"]
 # Virtuoso's c; m / s are OpenLayout's move / stretch of what is under the mouse (see drag_move),
 # a is align (align_tool), o is Create Via (vias). P is bound to OpenLayout's path tool once it is
 # registered (see bind_path_tool).
-VIRTUOSO_KEYS = {
+LAYOUT_KEYS = {
     "edit_menu.mode_menu.box": "R",
     "edit_menu.mode_menu.polygon": "Shift+P",
     "edit_menu.mode_menu.instance": "I",
@@ -59,7 +59,7 @@ PREFS = {
     # Manhattan editing: path/polygon segments and move/stretch only along the axes.
     "edit-connect-angle-mode": "ortho",
     "edit-move-angle-mode": "ortho",
-    # Like Virtuoso: clicking on a transistor/instance selects the instance, not a shape inside it.
+    # Clicking on a transistor/instance selects the instance, not a shape inside it.
     "edit-top-level-selection": "true",
     # The LSW replaces KLayout's layer panel and layer toolbox (one layer panel only).
     "show-layer-panel": "false",
@@ -145,10 +145,10 @@ def apply_prefs(mw):
 def apply_keys(mw):
     if os.environ.get("OPENLAYOUT_KEYS") == "klayout":
         return
-    taken = {v for v in VIRTUOSO_KEYS.values() if v}
+    taken = {v for v in LAYOUT_KEYS.values() if v}
     current = mw.get_key_bindings()
-    clear = {path: "" for path, key in current.items() if key in taken and path not in VIRTUOSO_KEYS}
-    mw.set_key_bindings({**clear, **VIRTUOSO_KEYS})
+    clear = {path: "" for path, key in current.items() if key in taken and path not in LAYOUT_KEYS}
+    mw.set_key_bindings({**clear, **LAYOUT_KEYS})
 
 
 def bind_path_tool(mw):
@@ -193,7 +193,7 @@ class OpenLayoutUI:
                 print(f"OpenLayout: {step.__name__} failed: {e}")
         self.path_factory = PathToolFactory()
         if os.environ.get("OPENLAYOUT_KEYS") != "klayout":
-            self.drag_factory = DragMoveFactory()   # Virtuoso drag and drop in Select mode
+            self.drag_factory = DragMoveFactory()   # drag and drop in Select mode
         self.align_factory = align_tool.AlignToolFactory()
         self.via_factory = vias.ViaPlacerFactory()
         self.axes_factory = axes.AxesFactory(int(CANVAS["axis"].lstrip("#"), 16))
@@ -328,7 +328,7 @@ class OpenLayoutUI:
             (None, None),
             ("lsw", self.action("Show LSW", lambda: (self.lsw.dock.show(), self.lsw.dock.raise_()))),
             ("connectivity", self.action("Show Connectivity", lambda: (self.nets.dock.show(), self.nets.dock.raise_()))),
-            ("keys", self.action("Virtuoso Keys…", self.show_keys)),
+            ("keys", self.action("Keyboard Shortcuts…", self.show_keys)),
             ("axes", self.axes_action()),
             ("drd", self.drd_action()),
             (None, None),

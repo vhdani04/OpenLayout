@@ -1,4 +1,4 @@
-"""Schematic-driven layout (Layout XL style "Generate All From Source" / "Update Components and Nets").
+"""Schematic-driven layout: generate a layout from its schematic, and update it when the schematic changes.
 
 generate(schematic) netlists the xschem schematic, then creates or updates <cell>.gds:
   - FinFETs become OpenLayout_ASAP7 nmos/pmos PCells (vt, nfin, nf from the schematic; m copies),

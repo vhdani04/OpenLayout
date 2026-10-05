@@ -93,7 +93,7 @@ check("toolbar circle after a line does not keep drawing lines", lines_after == 
       f"lines {lines_before} -> {lines_after}")
 
 
-# Grab an edge of the selection box and drag it (Virtuoso stretch). Hovering highlights just that
+# Grab an edge of the selection box and drag it (stretch). Hovering highlights just that
 # edge; while dragging a dashed outline shows the new box; on release only the grabbed edge (or the
 # two edges of a corner) moved, on the grid, as one undo step. Pins are not dragged along.
 def mapped():

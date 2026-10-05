@@ -2,7 +2,7 @@
 # $autorun
 # $show-in-menu: false
 #
-# Loads OpenLayout into KLayout (see klayout/python/openlayout_kl/gui.py): dark theme, Virtuoso keys,
+# Loads OpenLayout into KLayout (see klayout/python/openlayout_kl/gui.py): dark theme, Virtuoso-style keys,
 # path tool, ASAP7 PCells, LSW and Connectivity panels, OpenLayout menu.
 # OPENLAYOUT_UI=0 disables it; OPENLAYOUT_KEYS=klayout keeps KLayout's key bindings.
 import os
