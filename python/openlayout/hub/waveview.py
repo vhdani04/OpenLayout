@@ -126,6 +126,12 @@ class Strip:
         plot.getAxis("left").setWidth(64)
         self.cursors = {}
         self.hcursor = None
+        self.fresh = True                 # made by New Strip, nothing plotted on it yet
+
+    @property
+    def shown(self):
+        """On screen: has a visible curve (or is a new, empty strip)."""
+        return not self.curves or any(c.visible for c in self.curves)
 
     def add(self, x, y, label, unit, xunit, xkind, color=None, style=Qt.SolidLine, symbol=None, legend=True):
         color = color or COLORS[self.viewer.next_color() % len(COLORS)]
@@ -143,6 +149,7 @@ class Strip:
         c = Curve(item, np.asarray(x, float), np.asarray(y, float), label, unit, xunit)
         c.strip, c.in_legend = self, legend
         self.curves.append(c)
+        self.fresh = False
         if self.xunit is None:
             self.xunit, self.xkind = xunit, xkind
             self.plot.setLabel("bottom", units=xunit)
@@ -235,6 +242,7 @@ class Viewer(QMainWindow):
         self.resize(1300, 820)
         self.sources: list[Source] = []
         self.strips: list[Strip] = []
+        self._packed: list[Strip] = []   # the strips on screen, top to bottom
         self.active = None
         self.selected = None             # (strip, curve)
         self._color = 0
@@ -465,11 +473,13 @@ class Viewer(QMainWindow):
         for c in curves:
             c.strip.set_visible(c, on)
         self._sync(key)
+        self._tidy()
         self.update_readout()
 
     def set_curve_visible(self, curve, on):
         curve.strip.set_visible(curve, on)
         self._sync(curve.key)
+        self._tidy()
         self.update_readout()
 
     def forget(self, curve):
@@ -541,9 +551,10 @@ class Viewer(QMainWindow):
         return self._color - 1
 
     def new_strip(self):
-        plot = self.layout_widget.addPlot(row=len(self.strips), col=0)
+        plot = self.layout_widget.addPlot(row=len(self._packed), col=0)
         strip = Strip(self, plot)
         self.strips.append(strip)
+        self._packed.append(strip)
         for name, x in self.cursor_x.items():
             if x is not None:
                 self._cursor_line(strip, name, x)
@@ -555,6 +566,7 @@ class Viewer(QMainWindow):
         first = {}
         for s in self.strips:
             s.plot.setXLink(None)
+        for s in self._packed:
             if s.xkind in first:
                 s.plot.setXLink(first[s.xkind].plot)
             elif s.xkind:
@@ -567,26 +579,53 @@ class Viewer(QMainWindow):
                                                   width=1.5 if s is strip else 0.5))
 
     def _scene_clicked(self, ev):
-        for s in self.strips:
+        for s in self._packed:
             if s.plot.sceneBoundingRect().contains(ev.scenePos()):
                 self.set_active(s)
                 return
 
     def delete_strip(self):
-        if not self.active or len(self.strips) == 1:
-            if self.active:
-                self.active.clear()
-            return
         s = self.active
+        if s is None:
+            return
         s.clear()                                      # (the browser checkboxes follow)
-        self.layout_widget.removeItem(s.plot)
-        self.strips.remove(s)
-        for i, st in enumerate(self.strips):          # re-pack the rows
-            self.layout_widget.removeItem(st.plot)
-        for i, st in enumerate(self.strips):
-            self.layout_widget.addItem(st.plot, row=i, col=0)
-        self.set_active(self.strips[-1])
+        if len(self.strips) > 1:
+            self._drop(s)
+        self._repack()
+        self.update_readout()
+
+    def _drop(self, s):
+        if s.plot in self.layout_widget.ci.items:
+            self.layout_widget.removeItem(s.plot)
+        self.strips.remove(s)                          # (still in _packed: _repack re-lays the rows)
+        if self.selected and self.selected[0] is s:
+            self.selected = None
+        if self.active is s:
+            self.active = None
+
+    def _repack(self):
+        """Lay out the shown strips, top to bottom (only when that changed)."""
+        shown = [s for s in self.strips if s.shown]
+        if shown != self._packed:
+            for s in self._packed:
+                if s.plot in self.layout_widget.ci.items:
+                    self.layout_widget.removeItem(s.plot)
+            for i, s in enumerate(shown):
+                self.layout_widget.addItem(s.plot, row=i, col=0)
+            self._packed = shown
+        if self.active not in shown:
+            self.active = shown[-1] if shown else None
+        self.set_active(self.active)
         self._relink()
+
+    def _tidy(self):
+        """No empty plots: a strip left without curves goes away (unless it is the only one, or a
+        new strip waiting for the next signal); one whose curves are all hidden folds away until
+        one of them is shown again."""
+        for s in list(self.strips):
+            if not s.curves and len(self.strips) > 1 and not (s.fresh and s is self.active):
+                self._drop(s)
+        self._repack()
 
     def clear_all(self):
         while len(self.strips) > 1:
@@ -624,6 +663,7 @@ class Viewer(QMainWindow):
         self._relink()
         if len(s.curves) == 1:
             s.plot.enableAutoRange()          # follows new curves until the user zooms or pans
+        self._tidy()
         self.update_readout()
         return c
 
@@ -686,7 +726,7 @@ class Viewer(QMainWindow):
         c = s.add(np.asarray(x, float)[order], np.asarray(y, float)[order], label, unit, xunit, kind, symbol="o")
         s.plot.setLabel("bottom", xname, units=xunit)
         s.plot.enableAutoRange()
-        self._relink()
+        self._tidy()
         self.update_readout()
         return c
 
@@ -738,7 +778,7 @@ class Viewer(QMainWindow):
                                               brush=None))
         s.plot.setYRange(-0.4, n * 1.6, padding=0)
         s.plot.enableAutoRange(axis="x")
-        self._relink()
+        self._tidy()
         self.update_readout()
         return s
 
@@ -845,7 +885,7 @@ class Viewer(QMainWindow):
         return self.plot_digital(lanes)
 
     def fit(self):
-        for s in self.strips:
+        for s in self._packed:
             s.plot.enableAutoRange()
 
     def _toggle_zoom_box(self, on):
@@ -858,7 +898,7 @@ class Viewer(QMainWindow):
 
     # ---- moving curves between strips -----------------------------------------------------------
     def strip_at(self, scene_pos):
-        return next((s for s in self.strips if s.plot.sceneBoundingRect().contains(scene_pos)), None)
+        return next((s for s in self._packed if s.plot.sceneBoundingRect().contains(scene_pos)), None)
 
     def curve_at(self, scene_pos, tolerance=7.0):
         """(strip, curve) of the visible curve within `tolerance` pixels of a scene point, or of the
@@ -920,12 +960,9 @@ class Viewer(QMainWindow):
         self._sync(key)
         if self.selected and self.selected[1] is curve:
             self.selected = None
-        if not src.curves and len(self.strips) > 1:
-            self.set_active(src)
-            self.delete_strip()
         self.set_active(target)
         target.plot.enableAutoRange()
-        self._relink()
+        self._tidy()                                       # (the emptied strip goes)
         self.update_readout()
         self.statusBar().showMessage(f"{curve.label} moved", 4000)
         return new
@@ -944,12 +981,13 @@ class Viewer(QMainWindow):
             strip, c = self.selected
             strip.remove(c)
             self.selected = None
+            self._tidy()                                   # its strip goes if that was the last curve
             self.update_readout()
 
     # ---- cursors and markers --------------------------------------------------------------------
     def _mouse_moved(self, pos):
         self._mouse = pos
-        for s in self.strips:
+        for s in self._packed:
             if s.plot.sceneBoundingRect().contains(pos):
                 p = s.plot.getViewBox().mapSceneToView(pos)
                 x = 10 ** p.x() if s.plot.getViewBox().state["logMode"][0] else p.x()
@@ -959,7 +997,7 @@ class Viewer(QMainWindow):
     def _mouse_x(self):
         if self._mouse is None:
             return None, None
-        for s in self.strips:
+        for s in self._packed:
             if s.plot.sceneBoundingRect().contains(self._mouse):
                 vb = s.plot.getViewBox()
                 p = vb.mapSceneToView(self._mouse)

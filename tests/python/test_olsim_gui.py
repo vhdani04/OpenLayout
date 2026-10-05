@@ -288,6 +288,40 @@ def test_viewer_visibility_checkboxes(hub, app, tmp_path):
     v.select_curve(v.strips[0], curves[0].item)
     v.delete_selected()
     assert out_item.checkState(0) == Qt.Unchecked and (src, "tran", "v(out)") not in v.keyed
+    assert len(v.strips) == 1 and v.active is v.strips[0]        # the only strip stays, empty
+
+
+def test_viewer_no_empty_strips(app):
+    import numpy as np
+    from openlayout.hub.waveview import Viewer
+    from openlayout.olsim.calc import Waveform
+    v = Viewer()
+    t = np.linspace(0, 1e-9, 101)
+    a = v.plot_wave(Waveform(t, t, "a", "time"), "a", "tran", "V")
+    b = v.plot_wave(Waveform(t, -t, "b", "time"), "b", "tran", "V", new_strip=True)
+    c = v.plot_wave(Waveform(t, 2 * t, "c", "time"), "c", "tran", "V", new_strip=True)
+    assert len(v._packed) == 3
+    v.set_curve_visible(b, False)                     # all hidden: the strip folds away ...
+    assert v._packed == [a.strip, c.strip] and len(v.strips) == 3
+    assert v.strip_at(b.strip.plot.sceneBoundingRect().center()) is not b.strip
+    v.set_curve_visible(b, True)                      # ... and comes back in its place
+    assert v._packed == [a.strip, b.strip, c.strip]
+    v.select_curve(b.strip, b.item)
+    v.delete_selected()                               # its last curve deleted: the strip goes
+    assert v.strips == [a.strip, c.strip] == v._packed
+    s = v.new_strip()                                 # a new strip waits for the next signal ...
+    assert len(v.strips) == 3 and v.active is s
+    v.set_active(a.strip)
+    v.plot_wave(Waveform(t, t * t, "d", "time"), "d", "tran", "V")
+    assert s not in v.strips and len(v.strips) == 2   # ... and goes once it is passed over
+    v.set_curve_visible(a, False)
+    v.set_curve_visible(c, False)
+    v.strips[0].curves[-1].strip.set_visible(v.strips[0].curves[-1], False)
+    v._tidy()
+    assert v._packed == [] and v.active is None       # nothing shown: no plots at all
+    e = v.plot_wave(Waveform(t, t, "e", "time"), "e", "tran", "V", new_strip=True)
+    assert v._packed == [e.strip]
+    v.close()
 
 
 def test_outputs_delete_key_and_xschem_fallback(hub, app):

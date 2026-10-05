@@ -226,6 +226,9 @@ The **Results** dock browses OLSim histories (point → analysis → signals) an
   - Right-click for Plot in New Strip, Plot Across All Points (a OLSim history: every corner /
     sweep point overlaid), and Plot as Digital.
 - **Strips:** each strip is a plot; strips with the same x quantity share their x axis.
+  - There are no empty plots. A strip whose last curve is deleted or dragged away is removed. A
+    strip whose curves are all unticked folds away and comes back in its place when one is ticked
+    again. A strip made with New Strip waits empty for the next signal.
   - AC signals plot as dB magnitude on a log axis, with the phase in a strip below.
   - Units are automatic (ps, mV, GHz, …).
 - **Mouse:** the wheel zooms; left drag pans, or draws a box in **Zoom Box** mode; right drag zooms
