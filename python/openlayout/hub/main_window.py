@@ -318,7 +318,10 @@ class MainWindow(QMainWindow):
         if self.workarea and self.server.isListening():
             f = self.workarea.session_file
             f.parent.mkdir(parents=True, exist_ok=True)
-            f.write_text(json.dumps({"hub_port": self.server.serverPort(), "pid": os.getpid()}))
+            session = {"hub_port": self.server.serverPort(), "pid": os.getpid()}
+            if getattr(self, "xschem", None) is not None:
+                session["xschem_port"] = self.xschem.port     # OLSim picks signals in the hub's xschem
+            f.write_text(json.dumps(session))
 
     def _clear_session(self):
         if self.workarea and self.workarea.session().get("pid") == os.getpid():

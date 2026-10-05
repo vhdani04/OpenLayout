@@ -48,8 +48,8 @@ open OLSim on a cell with pins (a circuit, not a testbench). It creates `tb_<cel
 - a label on every pin, and a load `{cload}` on every output;
 - a vector file `tb_<cell>.vec` that steps the inputs through every combination, one input changing
   at a time. The outputs are `X` (not checked) until you write the expected 0 / 1 in their column;
-- the OLSim setup `tb_<cell>.olsim`, with `vdd = 0.7` and `cload = 1f`, every pin plotted, and for a
-  one-input, one-output cell its two propagation delays.
+- the OLSim setup `tb_<cell>.olsim`, with `vdd = 0.7` and `cload = 1f` and no outputs: pick them
+  with Select on Schematic.
 
 If `tb_<cell>` already exists, OLSim on the cell opens it.
 
@@ -86,10 +86,13 @@ copy or delete tests.
   - **Nominal** runs the test's own section and temperature.
   - **Add PVT Set** adds ss / 125 °C / −10 % supply, ff / −40 °C / +10 %, tt / 125 °C and
     ss / −40 °C, scaled from `vdd`.
-- **Outputs:** each has a test, a name, an expression, a spec and a Plot flag.
-  - **Select on Schematic…** opens the test's testbench in xschem. Every net, label, pin or voltage
-    source you select there is added as a plotted output (for a source, its current). Shift adds
-    to the selection; Done stops.
+- **Outputs:** what each run saves. Each has a test, a name, an expression, a spec and a Plot flag.
+  - **Select on Schematic…** opens the test's testbench in xschem: the hub's xschem when a hub runs
+    for the workarea, else one of its own. Every net, label, pin or voltage source you select
+    there is added as a plotted output (for a source, its current). The dialog lists each pick,
+    "added" or "(already an output)". Shift adds to the selection; Done stops.
+  - **Delete** (or Backspace, or right-click → Remove) removes the selected rows; the same works in
+    the analyses, variables and corners tables.
   - A plain signal (`v("out")`) or any waveform expression is saved as a waveform. Outputs marked
     Plot are plotted after every run, across all points.
   - An expression that gives a number goes into the results table.
@@ -227,6 +230,10 @@ The **Results** dock browses OLSim histories (point → analysis → signals) an
   - Units are automatic (ps, mV, GHz, …).
 - **Mouse:** the wheel zooms; left drag pans, or draws a box in **Zoom Box** mode; right drag zooms
   one axis.
+  - **Merging strips:** drag a curve (press on the trace, or on its legend entry) onto another
+    strip to move it there. A strip left empty is removed, so dragging one of two single-signal
+    plots onto the other gives one plot with both. Curves only move between strips with the same x
+    quantity (not time onto frequency), and not onto digital lanes.
 - **Keys:**
   - **F** fits; **A** / **B** put a cursor at the mouse; **H** adds a horizontal cursor.
   - **M** puts a marker on the nearest curve point.
@@ -251,6 +258,6 @@ The **Results** dock browses OLSim histories (point → analysis → signals) an
   - OLSim in the hub on an xschem testbench: olsim view created, variables copied, PVT corners,
     run, results table, auto-plot, setup saved;
   - the viewer: overlays, cursors and the readout, the calculator, PNG / CSV export, curve and
-    strip editing;
+    strip editing, merging strips by drag and drop;
   - vector-check and parametric plots, and an AC raw file as dB and phase.
 - Both run in `openlayout test` and `openlayout doctor`.

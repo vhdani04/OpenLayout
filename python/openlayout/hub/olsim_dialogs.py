@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QHeaderView
 
 from ..olsim.engine import OLSimError, Run
 from ..olsim.setup import Test
+from ..tools import XschemBridge
+from ..workarea import WorkareaError
 
 TCL_LIST_RE = re.compile(r"\{([^{}]*)\}|(\S+)")
 
@@ -27,6 +29,25 @@ def testbench_cells(run: Run, test: Test) -> list[str]:
     plain = Test(**{**test.__dict__, "extracted": []})
     body, _, _ = run._netlist(plain)
     return list(dict.fromkeys(re.findall(r"(?im)^\s*\.subckt\s+(\S+)", body)))
+
+
+class AttachedXschem(XschemBridge):
+    """The hub's xschem (its port from the workarea session): used, never started a second time."""
+
+    def __init__(self, workarea, port):
+        super().__init__(workarea)
+        self.port = int(port)
+
+    @property
+    def running(self):
+        try:
+            self.ping(1.0)
+            return True
+        except OSError:
+            return False
+
+    def start(self):
+        raise WorkareaError("the hub's xschem is not running")
 
 
 class HierarchyDialog(QDialog):
@@ -94,6 +115,7 @@ class SchematicPicker(QDialog):
         self.bridge = bridge
         self.add_output = add_output
         self.added = set(have)
+        self.seen = set()
         lay = QVBoxLayout(self)
         lay.addWidget(QLabel("Click nets, labels, pins or voltage sources in xschem (Shift adds to the\n"
                              "selection). Each one is added to the outputs and plotted after the run."))
@@ -136,11 +158,15 @@ class SchematicPicker(QDialog):
         except OSError:
             return                                   # xschem busy or closing: next time
         for name, expr in picked:
-            if expr in self.added:
+            if expr in self.seen:
+                continue
+            self.seen.add(expr)
+            if expr in self.added:                   # say so - a click should never seem to do nothing
+                self.list.addItem(f"{name}    {expr}    (already an output)")
                 continue
             self.added.add(expr)
             self.add_output(expr, name)
-            self.list.addItem(f"{name}    {expr}")
+            self.list.addItem(f"{name}    {expr}    added")
 
     def closeEvent(self, e):
         self.timer.stop()

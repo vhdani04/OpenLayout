@@ -199,7 +199,7 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     assert r"{name=VDD value=\{vdd\}}" in sch and "{cpu8/inv2/inv2.sym}" in sch and "capa.sym" in sch
     s = w.setup
     assert s.variables == {"vdd": "0.7", "cload": "1f"} and s.tests[0].vectors == ["tb_inv2.vec"]
-    assert {o.name for o in s.outputs} >= {"A", "Z", "t_out_fall", "t_out_rise"}
+    assert s.outputs == [] and w.outputs.rowCount() == 0          # blank: the user picks the outputs
     # the expected output filled in (Z = not A), then a run: the vectors pass, the delays come out
     vec = tb.path / "tb_inv2.vec"
     vec.write_text("\n".join(l[:-1] + ("1" if l.split()[0] == "0" else "0") if l.startswith("  ") else l
@@ -207,7 +207,7 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     w.start_run()
     wait_run(app, w)
     r = w.history.result(0)
-    assert r["vector errors"]["value"] == 0 and 2e-12 < r["t_out_fall"]["value"] < 3e-11, r
+    assert r["vector errors"]["value"] == 0, r
     # the hierarchy: inv2 simulates its schematic until it has a PEX netlist
     t = w.setup.test("tran")
     dlg = HierarchyDialog(w, w._netlist_run(), t, wa)
@@ -247,6 +247,8 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     picker.poll()
     added = [w.outputs.item(r, 2).text() for r in range(before, w.outputs.rowCount())]
     assert added == ['v("net3")', 'v("A")', 'i("VDD")'] and "open tb_inv2.sch" in fake.sent
+    shown = [picker.list.item(i).text() for i in range(picker.list.count())]
+    assert any("Z" in x and "already an output" in x for x in shown)       # a click never does nothing
     picker.close()
 
 
@@ -286,6 +288,75 @@ def test_viewer_visibility_checkboxes(hub, app, tmp_path):
     v.select_curve(v.strips[0], curves[0].item)
     v.delete_selected()
     assert out_item.checkState(0) == Qt.Unchecked and (src, "tran", "v(out)") not in v.keyed
+
+
+def test_outputs_delete_key_and_xschem_fallback(hub, app):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+    from openlayout.hub.olsim_window import OLSimWindow
+    from openlayout.hub.olsim_dialogs import AttachedXschem
+    from openlayout.tools import XschemBridge
+    cell = hub.workarea.library("cpu8").cell("tb_inv")
+    w = OLSimWindow(cell.path / "x.olsim", hub.workarea)
+    w._add_output('v("a")', "a")
+    w._add_output('v("b")', "b")
+    w.outputs.selectRow(0)
+    w.outputs.setFocus()
+    for a in w.outputs.actions():                      # the Delete shortcut
+        if a.shortcut().toString() in ("Del", "Delete"):
+            a.trigger()
+    assert w.outputs.rowCount() == 1 and w.outputs.item(0, 1).text() == "b"
+    w.outputs.setCurrentCell(0, 1)
+    w.outputs.clearSelection()
+    w._remove_rows(w.outputs)                         # nothing selected: the current row
+    assert w.outputs.rowCount() == 0
+    # Select on Schematic uses the hub's xschem when the session names one that answers
+    assert isinstance(AttachedXschem(hub.workarea, 1), XschemBridge) and not AttachedXschem(hub.workarea, 1).running
+    import json
+    s = hub.workarea.session()
+    hub.workarea.session_file.write_text(json.dumps({**s, "xschem_port": 1}))   # nothing listens there
+    assert type(w.xschem()) is XschemBridge           # falls back to its own xschem
+    assert "xschem_port" in s                         # the hub writes its port
+    w._dirty = False
+    w.close()
+
+
+def test_viewer_drag_merges_strips(app):
+    import numpy as np
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+    from openlayout.hub.waveview import Viewer
+    from openlayout.olsim.calc import Waveform
+    v = Viewer()
+    v.resize(1200, 800)
+    v.show()
+    t = np.linspace(0, 1e-9, 1001)
+    v.plot_wave(Waveform(t, np.sin(t * 2e10) * 0.35 + 0.35, "a", "time"), "a", "tran", "V")
+    v.new_strip()
+    v.plot_wave(Waveform(t, np.cos(t * 2e10) * 0.35 + 0.35, "b", "time"), "b", "tran", "V")
+    for _ in range(20):
+        app.processEvents()
+    area, vb = v.layout_widget, v.strips[1].plot.getViewBox()
+    x = 0.4e-9
+    start = area.mapFromScene(vb.mapViewToScene(QPointF(x, float(np.cos(x * 2e10) * 0.35 + 0.35))))
+    end = area.mapFromScene(v.strips[0].plot.sceneBoundingRect().center())
+    assert v.curve_at(vb.mapViewToScene(QPointF(x, float(np.cos(x * 2e10) * 0.35 + 0.35)))) is not None
+
+    def send(kind, pos, buttons):
+        QApplication.sendEvent(area.viewport(), QMouseEvent(kind, QPointF(pos), QPointF(area.viewport().mapToGlobal(pos)),
+                                                            Qt.LeftButton, buttons, Qt.NoModifier))
+        app.processEvents()
+
+    send(QEvent.MouseButtonPress, start, Qt.LeftButton)
+    send(QEvent.MouseMove, (start + end) / 2, Qt.LeftButton)
+    send(QEvent.MouseMove, end, Qt.LeftButton)
+    send(QEvent.MouseButtonRelease, end, Qt.NoButton)
+    assert len(v.strips) == 1 and [c.label for c in v.strips[0].curves] == ["a", "b"]
+    # an AC curve cannot go onto a time axis
+    f = np.logspace(6, 9, 50)
+    c = v.plot_wave(Waveform(f, 1 / (1 + 1j * f / 1e8), "h", "frequency"), "h", "ac", new_strip=True)
+    assert v.move_curve(c, v.strips[0]) is None and len(v.strips) == 2
+    v.close()
 
 
 def test_raw_file_in_viewer(app, tmp_path):

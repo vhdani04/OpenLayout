@@ -174,6 +174,57 @@ class Strip:
         self.xunit = self.xkind = None
 
 
+class StripArea(pg.GraphicsLayoutWidget):
+    """The stack of strips. A curve (or its legend entry) dragged onto another strip moves there -
+    two plots become one; a press anywhere else pans and zooms as usual."""
+
+    def __init__(self, viewer):
+        super().__init__()
+        self.viewer = viewer
+        self._drag = None                 # (strip, curve, start position, dragging)
+
+    def _scene(self, ev):
+        return self.mapToScene(ev.position().toPoint())
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.LeftButton:
+            hit = self.viewer.curve_at(self._scene(ev))
+            if hit is not None:
+                self._drag = [hit[0], hit[1], ev.position(), False]
+                ev.accept()
+                return
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        if self._drag is not None:
+            strip, curve, start, dragging = self._drag
+            if not dragging and (ev.position() - start).manhattanLength() > 6:
+                self._drag[3] = True
+                self.viewport().setCursor(Qt.ClosedHandCursor)
+                self.viewer.statusBar().showMessage(f"drop {curve.label} on another plot to put it there")
+            if self._drag[3]:
+                target = self.viewer.strip_at(self._scene(ev))
+                if target is not None:
+                    self.viewer.set_active(target)
+            ev.accept()
+            return
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev):
+        if self._drag is not None and ev.button() == Qt.LeftButton:
+            strip, curve, _, dragging = self._drag
+            self._drag = None
+            self.viewport().unsetCursor()
+            target = self.viewer.strip_at(self._scene(ev))
+            if dragging and target is not None and target is not strip:
+                self.viewer.move_curve(curve, target)
+            else:
+                self.viewer.select_curve(strip, curve.item)
+            ev.accept()
+            return
+        super().mouseReleaseEvent(ev)
+
+
 # ---- the viewer ---------------------------------------------------------------------------------
 class Viewer(QMainWindow):
     cursorsMoved = Signal()
@@ -191,7 +242,7 @@ class Viewer(QMainWindow):
         self.markers = []
         self.keyed = {}                  # (source index, analysis, signal) -> [Curve] plotted from it
         self._readout_curves = []
-        self.layout_widget = pg.GraphicsLayoutWidget()
+        self.layout_widget = StripArea(self)
         self.layout_widget.ci.setSpacing(4)
         self.setCentralWidget(self.layout_widget)
         self._build_browser()
@@ -233,7 +284,8 @@ class Viewer(QMainWindow):
 
     def _build_readout(self):
         self.readout = QTableWidget(0, 5)
-        self.readout.setHorizontalHeaderLabels(["curve (visible)", "A", "B", "B - A", ""])
+        self.readout.setHorizontalHeaderLabels(["curve", "A", "B", "B - A", ""])
+        self.readout.horizontalHeaderItem(0).setToolTip("Untick a curve to hide it")
         self.readout.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.readout.verticalHeader().setVisible(False)
         self.readout.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -803,6 +855,80 @@ class Viewer(QMainWindow):
     def _log(self, axis, on):
         if self.active:
             self.active.plot.setLogMode(**{axis: on})
+
+    # ---- moving curves between strips -----------------------------------------------------------
+    def strip_at(self, scene_pos):
+        return next((s for s in self.strips if s.plot.sceneBoundingRect().contains(scene_pos)), None)
+
+    def curve_at(self, scene_pos, tolerance=7.0):
+        """(strip, curve) of the visible curve within `tolerance` pixels of a scene point, or of the
+        legend entry there; None."""
+        strip = self.strip_at(scene_pos)
+        if strip is None:
+            return None
+        for sample, label in strip.legend.items:      # the legend: sample line or its text
+            if sample.sceneBoundingRect().contains(scene_pos) or label.sceneBoundingRect().contains(scene_pos):
+                c = next((c for c in strip.curves if c.item is sample.item), None)
+                if c is not None:
+                    return strip, c
+        vb = strip.plot.getViewBox()
+        logx, logy = vb.state["logMode"]
+        best, best_d = None, tolerance
+        px = vb.viewPixelSize()[0]                        # view units per pixel (x)
+        v = vb.mapSceneToView(scene_pos)
+        for c in strip.curves:
+            if not c.visible or len(c.x) < 2:
+                continue
+            xs = np.log10(np.maximum(c.x, 1e-300)) if logx else c.x
+            ys = np.log10(np.maximum(np.abs(c.y), 1e-300)) if logy else c.y
+            lo, hi = np.searchsorted(xs, [v.x() - tolerance * px, v.x() + tolerance * px])
+            lo, hi = max(lo - 1, 0), min(hi + 1, len(xs))
+            if hi - lo < 2:
+                continue
+            idx = np.linspace(lo, hi - 1, min(hi - lo, 400)).astype(int)
+            pts = [vb.mapViewToScene(pg.QtCore.QPointF(float(xs[i]), float(ys[i]))) for i in idx if ys[i] == ys[i]]
+            for a, b in zip(pts, pts[1:]):                # distance to each segment, in pixels
+                ax, ay, bx, by = a.x(), a.y(), b.x(), b.y()
+                dx, dy = bx - ax, by - ay
+                t = 0.0 if dx == dy == 0 else max(0.0, min(1.0, ((scene_pos.x() - ax) * dx + (scene_pos.y() - ay) * dy)
+                                                           / (dx * dx + dy * dy)))
+                d = math.hypot(scene_pos.x() - (ax + t * dx), scene_pos.y() - (ay + t * dy))
+                if d < best_d:
+                    best, best_d = c, d
+        return (strip, best) if best is not None else None
+
+    def move_curve(self, curve, target):
+        """Put a curve on another strip (dragged there); a strip left empty goes away."""
+        src = curve.strip
+        if curve.lane is not None or curve.bus is not None:
+            self.statusBar().showMessage("digital lanes stay in their strip", 5000)
+            return None
+        if target.xkind and src.xkind and target.xkind != src.xkind:
+            self.statusBar().showMessage(f"cannot put {curve.label} there: the x axes differ "
+                                         f"({src.xkind} / {target.xkind})", 6000)
+            return None
+        pen = curve.item.opts["pen"]
+        key, visible = curve.key, curve.visible
+        src.remove(curve)                                  # (drops it from the signal map)
+        new = target.add(curve.x, curve.y, curve.label, curve.unit, curve.xunit, src.xkind,
+                         pen.color().name(), pen.style(), legend=curve.in_legend)
+        if key is not None:
+            new.key = key
+            self.keyed.setdefault(key, []).append(new)
+        if not visible:
+            target.set_visible(new, False)
+        self._sync(key)
+        if self.selected and self.selected[1] is curve:
+            self.selected = None
+        if not src.curves and len(self.strips) > 1:
+            self.set_active(src)
+            self.delete_strip()
+        self.set_active(target)
+        target.plot.enableAutoRange()
+        self._relink()
+        self.update_readout()
+        self.statusBar().showMessage(f"{curve.label} moved", 4000)
+        return new
 
     def select_curve(self, strip, item):
         if self.selected:

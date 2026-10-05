@@ -247,6 +247,12 @@ class OLSimWindow(QMainWindow):
         # outputs
         out_box = QGroupBox("Outputs")
         ol = QVBoxLayout(out_box)
+        hint = QLabel("What each run saves for you: a signal to plot, like v(\"out\"), or a measurement - an "
+                      "expression such as delay(...) - with an optional spec. Add them with Select on Schematic "
+                      "(click nets in xschem) or Add Expression; Delete removes the selected rows.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color: {C['dim']}")
+        ol.addWidget(hint)
         self.outputs = _table(["test", "name", "expression", "spec", "plot"], stretch=2)
         self.outputs.itemChanged.connect(self._mark)
         ob = QHBoxLayout()
@@ -297,6 +303,8 @@ class OLSimWindow(QMainWindow):
         bottom.addWidget(cor_box)
         split.addWidget(bottom)
         split.setSizes([300, 220, 220])
+        for t in (self.analyses, self.outputs, self.variables, self.corners):
+            self._removable(t)
         return split
 
     def _build_results_tab(self):
@@ -540,9 +548,28 @@ class OLSimWindow(QMainWindow):
         self._mark()
 
     def _remove_rows(self, table):
-        for r in sorted({i.row() for i in table.selectedIndexes()}, reverse=True):
+        """The selected rows (or the current one) of a table."""
+        rows = {i.row() for i in table.selectedIndexes()} or ({table.currentRow()} - {-1})
+        for r in sorted(rows, reverse=True):
             table.removeRow(r)
-        self._mark()
+        if rows:
+            self._mark()
+
+    def _removable(self, table):
+        """Delete / Backspace and a context menu remove a table's selected rows."""
+        for key in (QKeySequence.Delete, QKeySequence(Qt.Key_Backspace)):
+            a = QAction(table)
+            a.setShortcut(key)
+            a.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+            a.triggered.connect(lambda _=False, t=table: t.state() != t.State.EditingState and self._remove_rows(t))
+            table.addAction(a)
+        table.setContextMenuPolicy(Qt.CustomContextMenu)
+
+        def menu(pos, t=table):
+            m = QMenu(self)
+            m.addAction("Remove", lambda: self._remove_rows(t))
+            m.exec(t.viewport().mapToGlobal(pos))
+        table.customContextMenuRequested.connect(menu)
 
     def _browse_design(self):
         f, _ = QFileDialog.getOpenFileName(self, "Testbench", str(self.setup_path.parent),
@@ -993,9 +1020,14 @@ class OLSimWindow(QMainWindow):
         return dlg
 
     def xschem(self):
+        """The xschem to pick signals in: the hub's (given, or found through the workarea session),
+        else one of our own."""
         if self._xschem is None and self.workarea is not None:
+            from .olsim_dialogs import AttachedXschem
             from ..tools import XschemBridge
-            self._xschem = XschemBridge(self.workarea)
+            port = self.workarea.session().get("xschem_port")
+            attached = AttachedXschem(self.workarea, port) if port else None
+            self._xschem = attached if attached is not None and attached.running else XschemBridge(self.workarea)
         return self._xschem
 
     def select_on_schematic(self):

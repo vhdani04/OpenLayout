@@ -1,6 +1,7 @@
 """A testbench for a cell, ready for OLSim: tb_<cell> with the cell's symbol, the supply source
 (VDD = {vdd}), a label on every pin for the vector file to drive or check, a load on every output
-({cload}), its OLSim setup (tb_<cell>.olsim) and a starting vector file (tb_<cell>.vec).
+({cload}), its OLSim setup (tb_<cell>.olsim, no outputs yet) and a starting vector file
+(tb_<cell>.vec).
 
     make_testbench(workarea, library, cell) -> tb Cell
 """
@@ -10,7 +11,7 @@ import re
 from pathlib import Path
 
 from ..workarea import Cell, Library, Workarea, WorkareaError, check_name
-from .setup import Analysis, Output, Setup, Test
+from .setup import Analysis, Setup, Test
 
 HEADER = "v {xschem version=3.4.8RC file_version=1.3}\nG {}\nK {}\nV {}\nS {}\nE {}\n"
 PIN_RE = re.compile(r"^B 5 (\S+) (\S+) (\S+) (\S+) \{([^}]*)\}", re.M)
@@ -115,15 +116,10 @@ def make_testbench(wa: Workarea, lib: Library, cell_name: str, tb_name: str | No
 
     vec, n_vectors = vector_file(inputs, outputs)
     (tb_dir / f"{tb_name}.vec").write_text(vec)
-    outs = [Output("tran", p, f'v("{p}")', "", True) for p in inputs + outputs]
-    if len(inputs) == 1 and len(outputs) == 1:      # an inverting / buffering stage: its delays
-        a, z = inputs[0], outputs[0]
-        outs += [Output("tran", "t_out_fall", f'propDelay(v("{a}"), v("{z}"), vdd/2, vdd/2, "fall")'),
-                 Output("tran", "t_out_rise", f'propDelay(v("{a}"), v("{z}"), vdd/2, vdd/2, "rise")')]
     stop = f"{n_vectors * PERIOD_PS}p"
     s = Setup(tests=[Test("tran", {"lib": lib.name, "cell": tb_name},
                           [Analysis("tran", True, {"step": "1p", "stop": stop, "start": "0"})], [f"{tb_name}.vec"])],
-              variables={"vdd": "0.7", "cload": "1f"}, outputs=outs)
+              variables={"vdd": "0.7", "cload": "1f"})            # outputs: picked by the user
     s.save(tb_dir / f"{tb_name}.olsim")
     wa.reload()
     return lib.cell(tb_name)
