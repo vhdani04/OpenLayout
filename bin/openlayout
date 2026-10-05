@@ -22,6 +22,10 @@ usage: openlayout <command> [args]
   lvs <layout.gds> [--cell NAME] [--schematic cell.sch|cell.spice] [--report FILE] [--stdcells check]
                             layout versus schematic (default schematic: <cell>.sch next to the layout;
                             none: the standard-cell CDL); results in <layout>.lvsdb (netlist browser)
+  pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--schematic cell.sch|cell.spice] [--keep]
+                            parasitic extraction: FasterCap 3D field solver capacitances + wire / via
+                            resistor networks; a SPICE subcircuit, default <cell>.pex.spice next to
+                            the layout (--mode c: capacitances only)
   doctor                    check tools, PDK, models and run the smoke tests
   test                      run the Python unit tests
   env                       print the flow environment
@@ -33,6 +37,15 @@ find_workarea() {
   local d="$PWD"
   while [ "$d" != / ]; do [ -f "$d/libs.def" ] && { echo "$d"; return 0; }; d="$(dirname "$d")"; done
   return 1
+}
+
+# Netlist an xschem schematic as a subcircuit (in its workarea); prints the SPICE file.
+netlist_sch() {
+  local sch="$1" tmp wa
+  tmp="$(mktemp -d)"; wa="$(cd "$(dirname "$sch")" && find_workarea || dirname "$sch")"
+  (cd "$wa" && xschem -x -q -r -n -s --tcl "set top_is_subckt 1" -o "$tmp" "$sch" > /dev/null 2>&1) || true
+  [ -f "$tmp/$(basename "${sch%.sch}").spice" ] || return 1
+  echo "$tmp/$(basename "${sch%.sch}").spice"
 }
 
 require_workarea() {
@@ -119,10 +132,7 @@ case "$cmd" in
     if [ -n "$sch" ]; then
       net="$sch"
       if [[ "$sch" == *.sch ]]; then          # netlist the schematic as a subcircuit (xschem, its workarea)
-        tmp="$(mktemp -d)"; wa="$(cd "$(dirname "$sch")" && find_workarea || dirname "$sch")"
-        (cd "$wa" && xschem -x -q -r -n -s --tcl "set top_is_subckt 1" -o "$tmp" "$sch" > /dev/null 2>&1) || true
-        net="$tmp/$(basename "${sch%.sch}").spice"
-        [ -f "$net" ] || { echo "openlayout lvs: xschem could not netlist $sch" >&2; exit 2; }
+        net="$(netlist_sch "$sch")" || { echo "openlayout lvs: xschem could not netlist $sch" >&2; exit 2; }
       fi
       args+=(-rd "schematic=$net")
       echo "LVS $name: layout $gds, schematic $sch"
@@ -132,6 +142,26 @@ case "$cmd" in
     fi
     klayout -b -r "$OPENLAYOUT_HOME/pdk/asap7/klayout/lvs/asap7.lvs" "${args[@]}" || { echo "openlayout lvs: the LVS run failed" >&2; exit 2; }
     echo "  results: $report" ;;
+  pex)
+    [ $# -ge 1 ] || { usage; exit 1; }
+    gds="$(readlink -f "$1")"; shift; cell=""; sch=""; args=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --cell) cell="$2"; args+=(--cell "$2"); shift 2 ;;
+        --schematic) sch="$(readlink -f "$2")"; shift 2 ;;
+        --out|--mode) args+=("$1" "$2"); shift 2 ;;
+        --keep) args+=(--keep); shift ;;
+        *) echo "openlayout pex: unknown option '$1'" >&2; exit 1 ;;
+      esac
+    done
+    [ -f "$gds" ] || { echo "openlayout pex: no layout file $gds" >&2; exit 1; }
+    name="${cell:-$(basename "${gds%.*}")}"
+    [ -n "$sch" ] || { [ -f "$(dirname "$gds")/$name.sch" ] && sch="$(dirname "$gds")/$name.sch"; }
+    if [[ "$sch" == *.sch ]]; then            # the schematic gives the order of the pins
+      sch="$(netlist_sch "$sch")" || { echo "openlayout pex: xschem could not netlist the schematic" >&2; exit 2; }
+    fi
+    [ -n "$sch" ] && args+=(--schematic "$sch")
+    PYTHONPATH="$OPENLAYOUT_HOME/python" exec "$OPENLAYOUT_ROOT/venv/bin/python" -m openlayout.pex "$gds" "${args[@]}" ;;
   drc)
     [ $# -ge 1 ] || { usage; exit 1; }
     gds="$(readlink -f "$1")"; shift; cell=""; report=""
@@ -157,6 +187,7 @@ case "$cmd" in
     echo "  ngspice  $(ngspice -v 2>/dev/null | grep -o 'ngspice-[0-9]*' | head -1)"
     echo "  xschem   $(git -C "$OPENLAYOUT_ROOT/src/xschem" rev-parse --short HEAD 2>/dev/null)"
     echo "  openvaf  $(cat /usr/local/share/openvaf-r.build 2>/dev/null)"
+    echo "  FasterCap $(FasterCap -b -h 2>/dev/null | grep -o 'version [0-9.]*' | head -1)"
     echo "PDK & models:"
     chk "ASAP7 PDK"              "[ -d '$ASAP7_PDK/models' ]"
     chk "ASAP7 7.5T std cells"   "[ -n \"\$(ls -A '$ASAP7_STDCELLS')\" ]"
@@ -221,6 +252,12 @@ case "$cmd" in
     else printf '  [FAIL] Run LVS in KLayout
 '; grep -E "^FAIL|ERROR" <<< "$out" | head -3 | sed 's/^/         /'; ok=0; fi
     rm -rf "$kl_home"
+    echo "Parasitic extraction:"
+    out="$(cd /tmp && PYTHONPATH="$OPENLAYOUT_HOME/python" timeout 900 "$OPENLAYOUT_ROOT/venv/bin/python" "$OPENLAYOUT_HOME/tests/pex/test_pex.py" 2>&1 || true)"
+    if grep -q "^PASS pex" <<< "$out"; then printf '  [ok]   FasterCap capacitances vs the library reference, R networks, hierarchy, post-layout sim
+'
+    else printf '  [FAIL] parasitic extraction
+'; grep -E "^FAIL|rror" <<< "$out" | head -4 | sed 's/^/         /'; ok=0; fi
     echo "xschem netlist + simulate:"
     tmp="$(mktemp -d)"
     mkdir -p "$tmp/home"   # xschem writes ~/.xschem: keep the user's untouched

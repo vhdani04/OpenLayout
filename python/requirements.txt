@@ -1,2 +1,6 @@
 PySide6>=6.6
 pytest>=8
+# parasitic extraction (python/openlayout/pex.py): KLayout's Python module (the same release as the
+# app) and KLayout-PEX (GPL-3.0-or-later), whose internals pex.py relies on - pinned
+klayout==0.30.12
+klayout-pex==0.6.1

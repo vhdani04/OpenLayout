@@ -1,0 +1,1096 @@
+{
+ "name": "asap7",
+ "layers": [
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "gate",
+   "description": "ASAP7 GATE",
+   "drw_gds_pair": {
+    "layer": 7,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "sdx",
+   "description": "ASAP7 SDX",
+   "drw_gds_pair": {
+    "layer": 11,
+    "datatype": 100
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "sdt",
+   "description": "ASAP7 SDT",
+   "drw_gds_pair": {
+    "layer": 88,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "lig",
+   "description": "ASAP7 LIG",
+   "drw_gds_pair": {
+    "layer": 16,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "lisd",
+   "description": "ASAP7 LISD",
+   "drw_gds_pair": {
+    "layer": 17,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "v0",
+   "description": "ASAP7 V0",
+   "drw_gds_pair": {
+    "layer": 18,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "m1",
+   "description": "ASAP7 M1",
+   "drw_gds_pair": {
+    "layer": 19,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "v1",
+   "description": "ASAP7 V1",
+   "drw_gds_pair": {
+    "layer": 21,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "m2",
+   "description": "ASAP7 M2",
+   "drw_gds_pair": {
+    "layer": 20,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "v2",
+   "description": "ASAP7 V2",
+   "drw_gds_pair": {
+    "layer": 25,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "m3",
+   "description": "ASAP7 M3",
+   "drw_gds_pair": {
+    "layer": 30,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "v3",
+   "description": "ASAP7 V3",
+   "drw_gds_pair": {
+    "layer": 35,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "m4",
+   "description": "ASAP7 M4",
+   "drw_gds_pair": {
+    "layer": 40,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "v4",
+   "description": "ASAP7 V4",
+   "drw_gds_pair": {
+    "layer": 45,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "m5",
+   "description": "ASAP7 M5",
+   "drw_gds_pair": {
+    "layer": 50,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "v5",
+   "description": "ASAP7 V5",
+   "drw_gds_pair": {
+    "layer": 55,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "m6",
+   "description": "ASAP7 M6",
+   "drw_gds_pair": {
+    "layer": 60,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "v6",
+   "description": "ASAP7 V6",
+   "drw_gds_pair": {
+    "layer": 65,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "m7",
+   "description": "ASAP7 M7",
+   "drw_gds_pair": {
+    "layer": 70,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "v7",
+   "description": "ASAP7 V7",
+   "drw_gds_pair": {
+    "layer": 75,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "m8",
+   "description": "ASAP7 M8",
+   "drw_gds_pair": {
+    "layer": 80,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_VIA",
+   "name": "v8",
+   "description": "ASAP7 V8",
+   "drw_gds_pair": {
+    "layer": 85,
+    "datatype": 0
+   }
+  },
+  {
+   "purpose": "PURPOSE_METAL",
+   "name": "m9",
+   "description": "ASAP7 M9",
+   "drw_gds_pair": {
+    "layer": 90,
+    "datatype": 0
+   }
+  }
+ ],
+ "lvs_computed_layers": [
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "gate",
+    "description": "gate",
+    "drw_gds_pair": {
+     "layer": 7,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "gate"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "sdx",
+    "description": "sdx",
+    "drw_gds_pair": {
+     "layer": 11,
+     "datatype": 100
+    }
+   },
+   "original_layer_name": "sdx"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "sdt",
+    "description": "sdt",
+    "drw_gds_pair": {
+     "layer": 88,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "sdt"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "lig",
+    "description": "lig",
+    "drw_gds_pair": {
+     "layer": 16,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "lig"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "lisd",
+    "description": "lisd",
+    "drw_gds_pair": {
+     "layer": 17,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "lisd"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "v0",
+    "description": "v0",
+    "drw_gds_pair": {
+     "layer": 18,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "v0"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "m1",
+    "description": "m1",
+    "drw_gds_pair": {
+     "layer": 19,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "m1"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "v1",
+    "description": "v1",
+    "drw_gds_pair": {
+     "layer": 21,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "v1"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "m2",
+    "description": "m2",
+    "drw_gds_pair": {
+     "layer": 20,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "m2"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "v2",
+    "description": "v2",
+    "drw_gds_pair": {
+     "layer": 25,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "v2"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "m3",
+    "description": "m3",
+    "drw_gds_pair": {
+     "layer": 30,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "m3"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "v3",
+    "description": "v3",
+    "drw_gds_pair": {
+     "layer": 35,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "v3"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "m4",
+    "description": "m4",
+    "drw_gds_pair": {
+     "layer": 40,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "m4"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "v4",
+    "description": "v4",
+    "drw_gds_pair": {
+     "layer": 45,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "v4"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "m5",
+    "description": "m5",
+    "drw_gds_pair": {
+     "layer": 50,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "m5"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "v5",
+    "description": "v5",
+    "drw_gds_pair": {
+     "layer": 55,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "v5"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "m6",
+    "description": "m6",
+    "drw_gds_pair": {
+     "layer": 60,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "m6"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "v6",
+    "description": "v6",
+    "drw_gds_pair": {
+     "layer": 65,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "v6"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "m7",
+    "description": "m7",
+    "drw_gds_pair": {
+     "layer": 70,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "m7"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "v7",
+    "description": "v7",
+    "drw_gds_pair": {
+     "layer": 75,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "v7"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "m8",
+    "description": "m8",
+    "drw_gds_pair": {
+     "layer": 80,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "m8"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_VIA",
+    "name": "v8",
+    "description": "v8",
+    "drw_gds_pair": {
+     "layer": 85,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "v8"
+  },
+  {
+   "kind": "KIND_REGULAR",
+   "layer_info": {
+    "purpose": "PURPOSE_METAL",
+    "name": "m9",
+    "description": "m9",
+    "drw_gds_pair": {
+     "layer": 90,
+     "datatype": 0
+    }
+   },
+   "original_layer_name": "m9"
+  }
+ ],
+ "process_stack": {
+  "layers": [
+   {
+    "name": "subs",
+    "layer_type": "LAYER_TYPE_SUBSTRATE",
+    "substrate_layer": {
+     "height": 0.0,
+     "thickness": 0.1,
+     "reference": "sti"
+    }
+   },
+   {
+    "name": "sti",
+    "layer_type": "LAYER_TYPE_FIELD_OXIDE",
+    "field_oxide_layer": {
+     "dielectric_k": 3.9
+    }
+   },
+   {
+    "name": "gate",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.0,
+     "thickness": 0.056
+    }
+   },
+   {
+    "name": "ild_gate",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "gate"
+    }
+   },
+   {
+    "name": "sdx",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.032,
+     "thickness": 0.001,
+     "contact_above": {
+      "name": "sdt",
+      "layer_below": "sdx",
+      "metal_above": "lisd",
+      "thickness": 0.044,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_sdx",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "sdx"
+    }
+   },
+   {
+    "name": "lig",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.056,
+     "thickness": 0.048
+    }
+   },
+   {
+    "name": "ild_lig",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "lig"
+    }
+   },
+   {
+    "name": "lisd",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.077,
+     "thickness": 0.027,
+     "contact_above": {
+      "name": "v0",
+      "layer_below": "lisd",
+      "metal_above": "m1",
+      "thickness": 0.02,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_lisd",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "lisd"
+    }
+   },
+   {
+    "name": "m1",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.124,
+     "thickness": 0.036,
+     "contact_above": {
+      "name": "v1",
+      "layer_below": "m1",
+      "metal_above": "m2",
+      "thickness": 0.036,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_m1",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "m1"
+    }
+   },
+   {
+    "name": "m2",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.196,
+     "thickness": 0.036,
+     "contact_above": {
+      "name": "v2",
+      "layer_below": "m2",
+      "metal_above": "m3",
+      "thickness": 0.036,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_m2",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "m2"
+    }
+   },
+   {
+    "name": "m3",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.268,
+     "thickness": 0.036,
+     "contact_above": {
+      "name": "v3",
+      "layer_below": "m3",
+      "metal_above": "m4",
+      "thickness": 0.036,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_m3",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "m3"
+    }
+   },
+   {
+    "name": "m4",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.34,
+     "thickness": 0.048,
+     "contact_above": {
+      "name": "v4",
+      "layer_below": "m4",
+      "metal_above": "m5",
+      "thickness": 0.048,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_m4",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "m4"
+    }
+   },
+   {
+    "name": "m5",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.436,
+     "thickness": 0.048,
+     "contact_above": {
+      "name": "v5",
+      "layer_below": "m5",
+      "metal_above": "m6",
+      "thickness": 0.048,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_m5",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "m5"
+    }
+   },
+   {
+    "name": "m6",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.532,
+     "thickness": 0.064,
+     "contact_above": {
+      "name": "v6",
+      "layer_below": "m6",
+      "metal_above": "m7",
+      "thickness": 0.064,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_m6",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "m6"
+    }
+   },
+   {
+    "name": "m7",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.66,
+     "thickness": 0.064,
+     "contact_above": {
+      "name": "v7",
+      "layer_below": "m7",
+      "metal_above": "m8",
+      "thickness": 0.064,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_m7",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "m7"
+    }
+   },
+   {
+    "name": "m8",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.788,
+     "thickness": 0.08,
+     "contact_above": {
+      "name": "v8",
+      "layer_below": "m8",
+      "metal_above": "m9",
+      "thickness": 0.064,
+      "width": 0.018,
+      "spacing": 0.018
+     }
+    }
+   },
+   {
+    "name": "ild_m8",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "m8"
+    }
+   },
+   {
+    "name": "m9",
+    "layer_type": "LAYER_TYPE_METAL",
+    "metal_layer": {
+     "z": 0.932,
+     "thickness": 0.08
+    }
+   },
+   {
+    "name": "ild_m9",
+    "layer_type": "LAYER_TYPE_SIMPLE_DIELECTRIC",
+    "simple_dielectric_layer": {
+     "dielectric_k": 3.23,
+     "reference": "m9"
+    }
+   }
+  ]
+ },
+ "process_parasitics": {
+  "side_halo": 0.2,
+  "resistance": {
+   "layers": [
+    {
+     "layer_name": "gate",
+     "resistance": 7143
+    },
+    {
+     "layer_name": "sdx",
+     "resistance": 1000
+    },
+    {
+     "layer_name": "lig",
+     "resistance": 8334
+    },
+    {
+     "layer_name": "lisd",
+     "resistance": 11243
+    },
+    {
+     "layer_name": "m1",
+     "resistance": 1267.5
+    },
+    {
+     "layer_name": "m2",
+     "resistance": 534.8
+    },
+    {
+     "layer_name": "m3",
+     "resistance": 563.2
+    },
+    {
+     "layer_name": "m4",
+     "resistance": 432.9
+    },
+    {
+     "layer_name": "m5",
+     "resistance": 455.8
+    },
+    {
+     "layer_name": "m6",
+     "resistance": 380.1
+    },
+    {
+     "layer_name": "m7",
+     "resistance": 400.3
+    },
+    {
+     "layer_name": "m8",
+     "resistance": 337.9
+    },
+    {
+     "layer_name": "m9",
+     "resistance": 355.8
+    }
+   ],
+   "vias": [
+    {
+     "via_name": "gcon",
+     "resistance": 10427
+    },
+    {
+     "via_name": "sdt",
+     "resistance": 10381
+    },
+    {
+     "via_name": "v0",
+     "resistance": 19380
+    },
+    {
+     "via_name": "v1",
+     "resistance": 17200
+    },
+    {
+     "via_name": "v2",
+     "resistance": 17200
+    },
+    {
+     "via_name": "v3",
+     "resistance": 17200
+    },
+    {
+     "via_name": "v4",
+     "resistance": 11800
+    },
+    {
+     "via_name": "v5",
+     "resistance": 11800
+    },
+    {
+     "via_name": "v6",
+     "resistance": 8200
+    },
+    {
+     "via_name": "v7",
+     "resistance": 8200
+    },
+    {
+     "via_name": "v8",
+     "resistance": 6300
+    }
+   ],
+   "contacts": []
+  },
+  "capacitance": {
+   "substrates": [],
+   "overlaps": [],
+   "sidewalls": [],
+   "sideoverlaps": []
+  }
+ },
+ "device_models": {
+  "device_model_mappings": [
+   {
+    "lvs_device_class_name": "nmos_rvt",
+    "spice_prefix": "N",
+    "terminal_names": [
+     "D",
+     "G",
+     "S"
+    ],
+    "parameters": [
+     {
+      "name": "l",
+      "lvs_parameter_name": "L"
+     },
+     {
+      "name": "w",
+      "lvs_parameter_name": "W"
+     }
+    ]
+   },
+   {
+    "lvs_device_class_name": "nmos_lvt",
+    "spice_prefix": "N",
+    "terminal_names": [
+     "D",
+     "G",
+     "S"
+    ],
+    "parameters": [
+     {
+      "name": "l",
+      "lvs_parameter_name": "L"
+     },
+     {
+      "name": "w",
+      "lvs_parameter_name": "W"
+     }
+    ]
+   },
+   {
+    "lvs_device_class_name": "nmos_slvt",
+    "spice_prefix": "N",
+    "terminal_names": [
+     "D",
+     "G",
+     "S"
+    ],
+    "parameters": [
+     {
+      "name": "l",
+      "lvs_parameter_name": "L"
+     },
+     {
+      "name": "w",
+      "lvs_parameter_name": "W"
+     }
+    ]
+   },
+   {
+    "lvs_device_class_name": "nmos_sram",
+    "spice_prefix": "N",
+    "terminal_names": [
+     "D",
+     "G",
+     "S"
+    ],
+    "parameters": [
+     {
+      "name": "l",
+      "lvs_parameter_name": "L"
+     },
+     {
+      "name": "w",
+      "lvs_parameter_name": "W"
+     }
+    ]
+   },
+   {
+    "lvs_device_class_name": "pmos_rvt",
+    "spice_prefix": "N",
+    "terminal_names": [
+     "D",
+     "G",
+     "S"
+    ],
+    "parameters": [
+     {
+      "name": "l",
+      "lvs_parameter_name": "L"
+     },
+     {
+      "name": "w",
+      "lvs_parameter_name": "W"
+     }
+    ]
+   },
+   {
+    "lvs_device_class_name": "pmos_lvt",
+    "spice_prefix": "N",
+    "terminal_names": [
+     "D",
+     "G",
+     "S"
+    ],
+    "parameters": [
+     {
+      "name": "l",
+      "lvs_parameter_name": "L"
+     },
+     {
+      "name": "w",
+      "lvs_parameter_name": "W"
+     }
+    ]
+   },
+   {
+    "lvs_device_class_name": "pmos_slvt",
+    "spice_prefix": "N",
+    "terminal_names": [
+     "D",
+     "G",
+     "S"
+    ],
+    "parameters": [
+     {
+      "name": "l",
+      "lvs_parameter_name": "L"
+     },
+     {
+      "name": "w",
+      "lvs_parameter_name": "W"
+     }
+    ]
+   },
+   {
+    "lvs_device_class_name": "pmos_sram",
+    "spice_prefix": "N",
+    "terminal_names": [
+     "D",
+     "G",
+     "S"
+    ],
+    "parameters": [
+     {
+      "name": "l",
+      "lvs_parameter_name": "L"
+     },
+     {
+      "name": "w",
+      "lvs_parameter_name": "W"
+     }
+    ]
+   }
+  ]
+ },
+ "substrate": {
+  "net_names": [
+   "VSS"
+  ],
+  "lvs_layer_names": [],
+  "well_lvs_layer_names": []
+ }
+}

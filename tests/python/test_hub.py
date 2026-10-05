@@ -121,6 +121,18 @@ def test_lvs_records_state(win, app):
     assert "layout matches the schematic" in win.ciw.log.toPlainText()
 
 
+def test_pex_records_state(win, app):
+    nand = win.workarea.library("asap7sc7p5t_28_R").cell("NAND2xp33_ASAP7_75t_R")
+    win.lm.select("asap7sc7p5t_28_R", "NAND2xp33_ASAP7_75t_R")
+    assert win.a_pex.isEnabled()
+    win.pex(nand)
+    state = wait_state(win, app, nand, "pex")
+    assert state and state["ok"] and state["detail"].startswith("4 transistors")
+    out = win.workarea.verify_dir(nand) / "NAND2xp33_ASAP7_75t_R.pex.spice"
+    assert out.is_file() and ".subckt NAND2xp33_ASAP7_75t_R A B VDD VSS Y" in out.read_text()
+    assert "total capacitance" in win.ciw.log.toPlainText()
+
+
 def test_command_server(win, app):
     """What the xschem/KLayout OpenLayout menus do: openlayout hubcmd -> hub over localhost."""
     import threading

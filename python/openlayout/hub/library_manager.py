@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QLabel, QLineEdit, QListWidget, QListWidgetItem, 
 from ..workarea import Cell, Library, View, Workarea
 from .theme import C, cell_icon, library_icon, view_icon
 
-STEPS = ["netlist", "sim", "drc", "lvs"]
+STEPS = ["netlist", "sim", "drc", "lvs", "pex"]
 
 
 class Column(QWidget):

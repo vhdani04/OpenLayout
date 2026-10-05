@@ -12,7 +12,8 @@ from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QInputDialog, 
                                QMessageBox, QSplitter, QStyle, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import __version__
-from ..tools import KLayoutBridge, XschemBridge, drc_command, lvs_command, netlist_command, simulate_command
+from ..tools import (KLayoutBridge, XschemBridge, drc_command, lvs_command, netlist_command, pex_command,
+                     simulate_command)
 from ..workarea import Cell, View, Workarea, WorkareaError, view_type
 from . import theme
 from .ciw import CIW
@@ -23,6 +24,7 @@ SIM_FAIL_RE = re.compile(r"^(Error\b|.*\bFAIL\b)", re.M)
 SIM_RESULT_RE = re.compile(r"^(PASS|FAIL)\b.*$", re.M)
 DRC_RESULT_RE = re.compile(r"^RESULT DRC \S+ violations=(\d+) rules=(\d+)", re.M)
 LVS_RESULT_RE = re.compile(r"^RESULT LVS \S+ (\w+) circuits=(\d+) bulk=(\d+) names=(\d+)", re.M)
+PEX_RESULT_RE = re.compile(r"^RESULT PEX \S+ devices=(\d+) resistors=(\d+) capacitors=(\d+)(.*)$", re.M)
 
 
 class HubAPI:
@@ -39,6 +41,7 @@ class HubAPI:
     ol.sim(lib, cell)                 netlist + ngspice batch run in sim/<lib>/<cell>/
     ol.drc(lib, cell)                 design rule check of the layout (results in verify/<lib>/<cell>/)
     ol.lvs(lib, cell)                 layout versus schematic (results in verify/<lib>/<cell>/)
+    ol.pex(lib, cell)                 parasitic extraction: verify/<lib>/<cell>/<cell>.pex.spice
     ol.xschem(tcl)                    send a Tcl command to the running xschem
     ol.klayout(cmd, **args)           send a request to the running KLayout bridge
     ol.wa                             the Workarea object (full Python API)
@@ -84,6 +87,7 @@ class HubAPI:
     def sim(self, lib, cell): self._win.simulate(self._cell(lib, cell))
     def drc(self, lib, cell): self._win.drc(self._cell(lib, cell))
     def lvs(self, lib, cell): self._win.lvs(self._cell(lib, cell))
+    def pex(self, lib, cell): self._win.pex(self._cell(lib, cell))
     def xschem(self, tcl): return self._win.xschem.send(tcl)
     def klayout(self, cmd, **args): return self._win.klayout.request({"cmd": cmd, **args})
 
@@ -175,7 +179,9 @@ class MainWindow(QMainWindow):
         self.a_lvs = self._act("LVS", lambda: self.lvs(self.lm.current_cell()), None, S.SP_DialogYesButton,
                                "Layout versus schematic (ASAP7 deck; the schematic, or the library CDL); "
                                "results in KLayout")
-        self.a_pex = self._act("PEX", None, None, None, "Parasitic extraction — coming in Phase 6", enabled=False)
+        self.a_pex = self._act("PEX", lambda: self.pex(self.lm.current_cell()), None, S.SP_FileDialogDetailedView,
+                               "Parasitic extraction of the cell's layout (FasterCap 3D field solver + "
+                               "resistor networks): a post-layout SPICE netlist")
         self.a_start_xs = self._act("Start xschem", lambda: self._start_tool("xschem"))
         self.a_start_kl = self._act("Start KLayout", lambda: self._start_tool("klayout"))
         self.a_show_pdk = self._act("Show PDK Libraries", self._toggle_pdk, checkable=True)
@@ -205,7 +211,7 @@ class MainWindow(QMainWindow):
         tb.setMovable(False)
         tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         for a in [self.a_new_view, self.a_open, None, self.a_netlist, self.a_sim, None, self.a_drc, self.a_lvs,
-                  None, self.a_refresh]:
+                  self.a_pex, None, self.a_refresh]:
             tb.addSeparator() if a is None else tb.addAction(a)
 
     def _build_statusbar(self):
@@ -591,6 +597,34 @@ class MainWindow(QMainWindow):
 
         self._run(argv, cwd, f"LVS {cell.key}", done)
 
+    # ---- parasitic extraction --------------------------------------------------------------------
+    def pex(self, cell):
+        """Batch PEX of the cell's saved layout; the netlist goes to verify/<lib>/<cell>/, the
+        summary (capacitance per pin) to the CIW."""
+        if not cell:
+            return
+        try:
+            argv, cwd, out, _ = pex_command(self.workarea, cell)
+        except WorkareaError as e:
+            self.ciw.error(str(e))
+            return
+
+        def done(code, text):
+            m = PEX_RESULT_RE.search(text)
+            if code != 0 or not m:
+                self.workarea.set_state(cell, "pex", False, f"run failed (exit {code})")
+                self.ciw.error(f"PEX {cell.key}: the run failed")
+            else:
+                devices, rs, cs = (int(m.group(i)) for i in (1, 2, 3))
+                detail = f"{devices} transistors, {rs} R, {cs} C"
+                self.workarea.set_state(cell, "pex", True, detail)
+                self.ciw.ok(f"PEX {cell.key}: {detail} — {out}")
+                if m.group(4).strip():
+                    self.ciw.info(f"  total capacitance: {m.group(4).strip()}")
+            self.lm.refresh()
+
+        self._run(argv, cwd, f"PEX {cell.key}", done)
+
     # ---- symbol from schematic ------------------------------------------------------------------
     def generate_symbol(self, cell):
         """Virtuoso "from cellview": build <cell>.sym from the schematic's pins and open it."""
@@ -629,6 +663,7 @@ class MainWindow(QMainWindow):
         self.a_gensym.setEnabled(has_sch and writable_cell)
         self.a_drc.setEnabled(bool(cell and cell.view("layout")) and idle and self.klayout is not None)
         self.a_lvs.setEnabled(bool(cell and cell.view("layout")) and idle and self.klayout is not None)
+        self.a_pex.setEnabled(bool(cell and cell.view("layout")) and idle)
         self.a_start_xs.setEnabled(has_wa)
         self.a_start_kl.setEnabled(has_wa)
 
@@ -641,7 +676,7 @@ class MainWindow(QMainWindow):
             m.addSeparator()
             m.addActions([self.a_copy, self.a_rename, self.a_delete])
             m.addSeparator()
-            m.addActions([self.a_netlist, self.a_sim, self.a_gensym, self.a_drc, self.a_lvs])
+            m.addActions([self.a_netlist, self.a_sim, self.a_gensym, self.a_drc, self.a_lvs, self.a_pex])
         elif kind == "view" and self.lm.current_view():
             m.addActions([self.a_open, self.a_delete])
         if not m.isEmpty():

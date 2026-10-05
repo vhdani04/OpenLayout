@@ -1,7 +1,8 @@
 # OpenLayout
 
 A Virtuoso-style, open-source custom IC design environment for the ASAP7 7nm FinFET PDK:
-xschem (schematics) + ngspice (simulation, BSIM-CMG via OSDI) + KLayout (layout, DRC, LVS).
+xschem (schematics) + ngspice (simulation, BSIM-CMG via OSDI) + KLayout (layout, DRC, LVS) +
+FasterCap (parasitic extraction).
 
 ## Install (Ubuntu 24.04)
 
@@ -44,12 +45,14 @@ or F1 in the hub) and get an **OpenLayout** menu:
 
 - xschem: Open Layout in KLayout, Open Symbol/Schematic, Show in Library Manager, Netlist, Simulate
 - KLayout: Open Schematic/Symbol, Show in Library Manager, LSW (Virtuoso-style layer palette),
-  Run DRC, Run LVS
+  Run DRC, Run LVS, Run PEX
 
 **DRC**: a KLayout deck written rule by rule from the ASAP7 DRM, run from KLayout, the hub or
 `openlayout drc` - see [docs/DRC.md](docs/DRC.md).
 **LVS**: FinFET extraction (fins, VT flavours) against the xschem schematic and the standard-cell
 CDL, run from KLayout, the hub or `openlayout lvs` - see [docs/LVS.md](docs/LVS.md).
+**PEX**: capacitances from the FasterCap 3D field solver, resistor networks for wires and vias, a
+post-layout SPICE netlist; from KLayout, the hub or `openlayout pex` - see [docs/PEX.md](docs/PEX.md).
 
 Cross-tool menus call `openlayout hubcmd`, which talks to the hub over localhost
 (`<workarea>/.openlayout/session.json` holds its port); the hub starts the other tool if needed.

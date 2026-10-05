@@ -14,7 +14,7 @@ sys.path[:0] = [str(HOME / "klayout" / "python"), str(HOME / "python")]
 import pya  # noqa: E402
 
 from openlayout.workarea import Workarea  # noqa: E402
-from openlayout_kl import gui, lvs  # noqa: E402
+from openlayout_kl import gui, lvs, pex  # noqa: E402
 
 STD = Path(os.environ.get("ASAP7_STDCELLS", HOME.parent / "pdk/asap7/asap7sc7p5t_28"))
 failures = []
@@ -79,5 +79,14 @@ out = subprocess.run(["openlayout", "lvs", str(lib_gds), "--cell", "NAND2xp33_AS
                       "--report", str(Path(tempfile.mkdtemp()) / "n.lvsdb")], capture_output=True, text=True)
 check("a library cell without a schematic is checked against the CDL", "RESULT LVS NAND2xp33_ASAP7_75t_R match"
       in out.stdout and "standard-cell CDL" in out.stdout, (out.stdout + out.stderr)[-300:])
+
+# OpenLayout > Run PEX on the same cell (as edited): <cell>.pex.spice next to the layout
+check("Run PEX is in the OpenLayout menu", mw.menu().is_valid("openlayout_menu.run_pex"))
+mw.select_view(0)
+res = pex.run_current(mw)
+net = cell_dir / "inv.pex.spice"
+check("Run PEX: a post-layout netlist next to the layout, capacitance per pin",
+      res is not None and res["devices"] == 2 and net.is_file() and res["total_fF"].get("A", 0) > 0.1
+      and ".subckt inv " in net.read_text(), res)
 
 print("PASS lvs_gui" if not failures else f"FAIL lvs_gui: {', '.join(failures)}")

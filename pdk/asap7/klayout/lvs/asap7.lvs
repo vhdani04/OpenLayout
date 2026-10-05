@@ -1,7 +1,7 @@
 # ASAP7 layout versus schematic for KLayout (OpenLayout).
 #
 # Batch:  klayout -b -r asap7.lvs -rd input=cell.gds -rd topcell=NAME -rd schematic=cell.spice
-#         [-rd report=out.lvsdb] [-rd cdl=a.cdl,b.cdl] [-rd stdcells=check]
+#         [-rd report=out.lvsdb] [-rd cdl=a.cdl,b.cdl] [-rd stdcells=check] [-rd pex=1]
 # In the GUI (OpenLayout > Run LVS) $schematic is set by the caller; the results open in the
 # netlist browser.
 #
@@ -114,6 +114,20 @@ channel = gate_nc & active
 sd = active - gate
 vt_any = lvt + slvt + sramvt
 flavours = { "rvt" => nil, "lvt" => lvt, "slvt" => slvt, "sram" => sramvt }
+gcon = gate_nc & lig              # where LIG contacts a gate (the gate contact, for extraction)
+sdx = sd - gate.sized(0.0005)        # source / drain node for extraction, 0.5 nm off the gate (as Calibre xACT 3D)
+
+# names of the conducting layers in the LVS database: parasitic extraction (pex.py) finds them by these
+name(sd, "sd")
+name(sdt, "sdt")
+name(sdx, "sdx")
+name(gate_nc, "gate")
+name(gcon, "gcon")
+name(lig, "lig")
+name(lisd, "lisd")
+name(v0, "v0")
+metals.each_with_index { |m, i| name(m, "m#{i + 1}") }
+vias.each_with_index { |v, i| name(v, "v#{i + 1}") }
 
 # ---- devices -----------------------------------------------------------------------------------
 { "nmos" => nsel, "pmos" => psel }.each do |type, implant|
@@ -126,8 +140,12 @@ end
 
 # ---- connectivity ------------------------------------------------------------------------------
 connect(sd, sdt)
+connect(sd, sdx)
+connect(sdx, sdt)
 connect(sdt, lisd)
 connect(gate_nc, lig)
+connect(gate_nc, gcon)
+connect(gcon, lig)
 connect(lig, lisd)
 connect(lig, v0)
 connect(lisd, v0)
@@ -174,8 +192,13 @@ end
   split_gates("#{t}_#{vt}")
 end
 netlist.make_top_level_pins
-netlist.purge
-netlist.combine_devices
+# -rd pex=1 (parasitic extraction, `openlayout pex` on a flattened copy): the extracted netlist only -
+# floating shapes kept (dummy gates: the extraction grounds them, as Calibre does), every finger its
+# own device, no comparison
+unless $pex
+  netlist.purge
+  netlist.combine_devices
+end
 schematic.purge
 schematic.combine_devices
 same_circuits(source.cell_name, top_name) if top_ref
@@ -186,6 +209,11 @@ unless $stdcells == "check" || source.cell_name =~ /_ASAP7_75t_/i
   blank_circuit("*_ASAP7_75t_*")       # layout names
   blank_circuit("*_ASAP7_75T_*")       # SPICE names are upper case
 end
+if $pex
+  compare                     # not reported: it writes the report, with the schematic pin order
+  top = netlist.circuit_by_name(source.cell_name)
+  puts "RESULT PEX-LVS #{source.cell_name} devices=#{top ? top.each_device.count : 0} nets=#{top ? top.each_net.count : 0}"
+else
 align
 ok = compare
 
@@ -232,4 +260,5 @@ xref.each_circuit_pair do |p|
   end
 end
 puts "RESULT LVS #{source.cell_name} #{ok && bulk.empty? && names == 0 ? 'match' : 'mismatch'} circuits=#{bad} bulk=#{bulk.size} names=#{names}"
+end
 File.delete(ref_file) rescue nil

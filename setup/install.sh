@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reproducible install of the OpenLayout.
-#   setup/install.sh [all|deps|tools|pdk|models|views|python|desktop|shell]   (default: all; every step is idempotent)
+#   setup/install.sh [all|deps|tools|fastercap|pdk|models|views|python|desktop|shell]   (default: all; every step is idempotent)
 set -euo pipefail
 FLOW="$(cd "$(dirname "$0")/.." && pwd)"
 source "$FLOW/setup/versions.env"
@@ -20,7 +20,10 @@ do_deps() {
     cmake ninja-build python3 python3-pip python3-venv python3-dev \
     libx11-dev libxrender-dev libxpm-dev libxcb1-dev libx11-xcb-dev libcairo2-dev libjpeg-dev \
     tcl-dev tk-dev tcl8.6-dev tk8.6-dev tcllib libxaw7-dev libreadline-dev libfftw3-dev \
-    libgomp1 libncurses-dev xterm gedit xvfb fakeroot     qtbase5-dev qttools5-dev libqt5svg5-dev libqt5xmlpatterns5-dev qtmultimedia5-dev libqt5opengl5-dev     ruby-dev libgit2-dev zlib1g-dev libcurl4-openssl-dev libexpat1-dev \
+    libgomp1 libncurses-dev xterm gedit xvfb fakeroot \
+    qtbase5-dev qttools5-dev libqt5svg5-dev libqt5xmlpatterns5-dev qtmultimedia5-dev libqt5opengl5-dev \
+    ruby-dev libgit2-dev zlib1g-dev libcurl4-openssl-dev libexpat1-dev \
+    libwxgtk3.2-dev \
     libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 > /dev/null
 }
 
@@ -88,6 +91,27 @@ do_tools() {
   fi
 }
 
+do_fastercap() {
+  cd "$SRC"
+  step "FasterCap @ ${FASTERCAP_REF:0:8} (3D field solver for parasitic extraction)"
+  stamp=/usr/local/share/openlayout-fastercap.ref
+  if command -v FasterCap > /dev/null && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$FASTERCAP_REF" ]; then
+    echo "already installed"
+  else
+    for r in "FasterCap iic-jku $FASTERCAP_REF" "LinAlgebra ediloren $LINALGEBRA_REF" "Geometry iic-jku $GEOMETRY_REF"; do
+      set -- $r
+      [ -d "$1" ] || git clone -q "https://github.com/$2/$1.git"
+      git -C "$1" fetch -q && git -C "$1" checkout -q -f "$3"
+    done
+    sed -i 's/--version=3\.0/--version=3.2/' FasterCap/CMakeLists.txt     # Ubuntu 24.04 has wxWidgets 3.2
+    rm -rf FasterCap-build && mkdir FasterCap-build
+    (cd FasterCap-build && cmake -DCMAKE_BUILD_TYPE=Release ../FasterCap > cmake.log 2>&1 \
+      && make -j"$JOBS" > make.log 2>&1)
+    sudo install -m 755 FasterCap-build/FasterCap /usr/local/bin/FasterCap
+    echo "$FASTERCAP_REF" | sudo tee "$stamp" > /dev/null
+  fi
+}
+
 do_pdk() {
   step "ASAP7 PDK + 7.5T standard cells"
   cd "$PDK_ROOT"
@@ -128,7 +152,7 @@ do_views() {
 }
 
 do_python() {
-  step "Python environment (hub)"
+  step "Python environment (hub, parasitic extraction)"
   [ -x "$OPENLAYOUT_ROOT/venv/bin/python" ] || python3 -m venv "$OPENLAYOUT_ROOT/venv"
   "$OPENLAYOUT_ROOT/venv/bin/pip" install -q --upgrade pip
   "$OPENLAYOUT_ROOT/venv/bin/pip" install -q -r "$FLOW/python/requirements.txt"
@@ -162,15 +186,16 @@ EOS
 }
 
 case "${1:-all}" in
-  all)    do_deps; do_tools; do_pdk; do_models; do_views; do_python; do_desktop; do_shell ;;
+  all)    do_deps; do_tools; do_fastercap; do_pdk; do_models; do_views; do_python; do_desktop; do_shell ;;
   deps)   do_deps ;;
   tools)  do_tools ;;
+  fastercap) do_fastercap ;;
   pdk)    do_pdk ;;
   models) do_models ;;
   views)  do_views ;;
   python) do_python ;;
   desktop) do_desktop ;;
   shell)  do_shell ;;
-  *) echo "usage: $0 [all|deps|tools|pdk|models|views|python|desktop|shell]"; exit 1 ;;
+  *) echo "usage: $0 [all|deps|tools|fastercap|pdk|models|views|python|desktop|shell]"; exit 1 ;;
 esac
 step "done"

@@ -27,7 +27,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] Library/Cell/View browser; double-click opens view in right tool
 - [x] New library/cell/view, copy/rename/delete (keeps sch/sym/layout in sync)
 - [x] Console/log pane (CIW with Python `ol` API); Netlist + Simulate; per-cell status badges
-- [x] DRC button (Phase 5), LVS button (Phase 6); PEX is a placeholder
+- [x] DRC button (Phase 5), LVS and PEX buttons (Phase 6)
 - [x] App-menu entry; tools run as single sessions driven over localhost
 
 ## Phase 4 — Look & feel (one consistent environment)  [DONE]
@@ -52,12 +52,13 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] Generators DRC-clean: frame + transistor PCells, via PCells (pads enlarged to the DRM where the LEF's are smaller)
 - [ ] Cross-check against the Calibre deck if it arrives
 
-## Phase 6 — LVS + extraction   <- NEXT: PEX
+## Phase 6 — LVS + extraction
 - [x] FinFET device extractor (ACTIVE height -> W = 27 nm per fin), VT flavour recognition, split gates (docs/LVS.md)
 - [x] Regression: every std cell against its CDL (199 / 208 exact; 9 with reordered series stacks checked device by device)
 - [x] LVS from KLayout (netlist browser), the hub (LVS button) and `openlayout lvs`; net names and bulk ties checked
 - [ ] Net-level cross-probing schematic <-> layout from the LVS cross-reference
-- [ ] Parasitic extraction -> post-layout ngspice simulation
+- [x] Parasitic extraction -> post-layout ngspice simulation: FasterCap 3D capacitances, R networks (docs/PEX.md)
+- [ ] PEX of large blocks (hierarchical: cells, then routing), FEOL dielectric model closer to xACT 3D
 
 ## Phase 7 — Custom cell library
 - [x] Device PCells (nfin, fingers, contacts) — done in Phase 4b; DRC-verify in Phase 5

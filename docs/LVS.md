@@ -68,4 +68,4 @@ compares their transistors too.
 
 - Series-transistor order within a stack is compared strictly (see above).
 - Bulk / well connectivity (no taps in the cells - see *Bulk*).
-- Parasitics: extraction for post-layout simulation is the next step (Phase 6, PEX).
+- Parasitics: see [PEX.md](PEX.md) (`-rd pex=1` is the deck's extraction mode for it).

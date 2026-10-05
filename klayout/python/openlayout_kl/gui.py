@@ -10,7 +10,7 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from . import align_tool, axes, drc, drd, generate_form, lvs, stdcell, vias
+from . import align_tool, axes, drc, drd, generate_form, lvs, pex, stdcell, vias
 from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
@@ -320,6 +320,7 @@ class OpenLayoutUI:
             ("check_connectivity", self.action("Check Connectivity", lambda: self.nets.run_check(force=True))),
             ("run_drc", self.action("Run DRC", lambda: drc.run_current(self.mw))),
             ("run_lvs", self.action("Run LVS", lambda: lvs.run_current(self.mw))),
+            ("run_pex", self.action("Run PEX (parasitic extraction)", lambda: pex.run_current(self.mw))),
             (None, None),
             ("open_schematic", self.action("Open Schematic", lambda: hubcmd(self.mw, "open", "schematic"))),
             ("open_symbol", self.action("Open Symbol", lambda: hubcmd(self.mw, "open", "symbol"))),
