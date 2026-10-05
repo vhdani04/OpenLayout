@@ -87,7 +87,10 @@ under *Interpretations*.
   M1 minimum area). Likewise the M4 pad over V3 is 44 nm long (M4.W.5) and the V8 pads enclose the
   cut by 20 nm (V8.M8.EN.1 / V8.M9.EN.2) - the LEF's are smaller.
 - **Exact-width vias** (V0.M1.AUX.3, V*.AUX.2): both via edges across the metal coincide with the
-  metal's edges. V7 has no such rule (M8 has no routing direction and is wider than V7).
+  metal's edges. The via sits in a straight wire exactly as wide as it, its two sides flush with the
+  wire's two edges. A via 1 nm off its pad, in a wider blob, or at a corner or T of the wire fails;
+  make the junction next to the via, like the library cells' short stubs (NAND2xp33: each V0 at the
+  end of an 18 nm M1 stub, the stubs joined by a trunk beside it). V7 has no such rule (M8 has no routing direction and is wider than V7).
 - **Enclosures given as "=="** (V0.LISD.EN.2-3) are checked as minimums.
 - **Grids**: FIN.S.1 - fin centrelines at 13.5 nm + k x 27 nm; GATE.S.1 - gate centrelines at
   27 nm + k x 54 nm; M4-M7.AUX.1-2 - edges on the w grid and minimum-width wires on the tracks at

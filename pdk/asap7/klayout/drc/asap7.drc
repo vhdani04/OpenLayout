@@ -323,7 +323,7 @@ v0_lig.edges.enclosing(lig.edges.inside_part(v0_lig), 1.nm, projection)
 (v0_lig & lig).with_area(nil, 0.000288).output("V0.LIG.A.1", "Minimum area of overlap between V0 (on LIG, not inside LISD) and LIG >= 288 nm2")
 (v0.not_interacting(m1) | v0.not_interacting(lisd | lig)).output("V0.AUX.1", "V0 must always interact with M1 and LISD or LIG")
 v0_lig.edges.inside(lig).output("V0.LIG.AUX.2", "V0 crossing LIG: an edge along LIG may not lie inside, or touch, LIG")
-v0.not_interacting(exact_width(v0, m1)).output("V0.M1.AUX.3", "V0 must be exactly as wide as M1 (across the M1 direction)")
+v0.not_interacting(exact_width(v0, m1)).output("V0.M1.AUX.3", "V0 must be exactly as wide as M1 (across the M1 direction): put it in a straight M1 wire with both its sides flush with the wire's edges - not offset, not at a corner or T")
 
 # ---- 3.12 M1-M3 ----------------------------------------------------------------------------------
 [["M1", m1], ["M2", m2], ["M3", m3]].each do |nm, l|
@@ -350,7 +350,7 @@ end
   v.inside(top).not_interacting(end_caps(v, top, et[0].nm, et[1].nm))
     .output("#{nm}.#{tn}.EN.2", "Minimum enclosure of #{nm} by #{tn} on two opposite sides >= #{et[0]} & #{et[1]} nm")
   (v.not_inside(bot) | v.not_inside(top)).output("#{nm}.AUX.1", "#{nm} must be inside #{bn} and #{tn}")
-  v.not_interacting(exact_width(v, top)).output("#{nm}.#{tn}.AUX.2", "#{nm} must be exactly as wide as #{tn} (across the #{tn} direction)")
+  v.not_interacting(exact_width(v, top)).output("#{nm}.#{tn}.AUX.2", "#{nm} must be exactly as wide as #{tn} (across the #{tn} direction): put it in a straight #{tn} wire with both its sides flush with the wire's edges - not offset, not at a corner or T")
 end
 
 # ---- 3.14 / 3.16 M4-M7 (SADP, on routing tracks) -------------------------------------------------
@@ -409,7 +409,7 @@ track_metal("M7", m7, 32, 640, 32, false)
   v.inside(top).not_interacting(end_caps(v, top, 11.nm, 11.nm)).output("#{nm}.#{tn}.EN.2", "Minimum enclosure of #{nm} by #{tn} on two opposite sides >= 11 nm")
   (v.not_inside(bot) | v.not_inside(top)).output("#{nm}.AUX.1", "#{nm} must be inside #{bn} and #{tn}")
   if nm != "V7"   # M8 has no routing direction and is wider than V7
-    v.not_interacting(exact_width(v, top)).output("#{nm}.#{tn}.AUX.2", "#{nm} must be exactly as wide as #{tn} (across the #{tn} direction)")
+    v.not_interacting(exact_width(v, top)).output("#{nm}.#{tn}.AUX.2", "#{nm} must be exactly as wide as #{tn} (across the #{tn} direction): put it in a straight #{tn} wire with both its sides flush with the wire's edges - not offset, not at a corner or T")
   end
 end
 
