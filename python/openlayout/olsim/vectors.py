@@ -8,7 +8,7 @@ sources on the nodes they name, expected outputs are checked against the simulat
     tunit  ps             ; fs ps ns us ms (default ns)
     period 100            ; one vector per period (otherwise the first column of a data line is its time)
     trise 10 ; tfall 10   ; transition times (also: slope)
-    vih vdd ; vil 0       ; input levels - a number or a design variable
+    vih vdd ; vil 0       ; input levels - a number, a design variable or an expression (0.9*vdd)
     voh 0.5 ; vol 0.2     ; output thresholds (default 80 % / 20 % of vih)
     idelay 0 ; odelay 90  ; input delay, output check time after each vector (default: just before the next)
     0 1 0
@@ -26,7 +26,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .calc import Waveform, si
+from .calc import CalcError, Context, Waveform, evaluate, si
 
 TUNITS = {"fs": 1e-15, "ps": 1e-12, "ns": 1e-9, "us": 1e-6, "ms": 1e-3, "s": 1.0}
 SETTINGS = ("vih", "vil", "voh", "vol", "trise", "tfall", "slope", "idelay", "odelay", "tdelay")
@@ -70,7 +70,15 @@ class VectorFile:
         try:
             return si(raw)
         except ValueError:
-            raise VectorError(f"{self.path}: {key} {raw!r} is neither a number nor a design variable") from None
+            pass
+        try:                                         # an expression of design variables: 0.8*vdd
+            v = evaluate(raw, Context([], variables))
+        except CalcError as e:
+            raise VectorError(f"{self.path}: {key} {raw!r} is not a number, a design variable or an "
+                              f"expression of them ({e})") from None
+        if not isinstance(v, (int, float)):
+            raise VectorError(f"{self.path}: {key} {raw!r} is not a number")
+        return float(v)
 
     def levels(self, bit, variables):
         vih = self.setting(bit, "vih", variables, si(variables.get("vdd", 0.7)))
@@ -187,7 +195,9 @@ def parse(path) -> VectorFile:
     settings, masked = {}, []
     data = []
     for lineno, raw in enumerate(text.splitlines(), 1):
-        line = re.split(r"[;*]", raw, 1)[0].strip() if not raw.lstrip().startswith(("*", ";")) else ""
+        # comments: a line starting with * or ;, and anything after a ; (a * inside a line is
+        # multiplication: voh 0.8*vdd)
+        line = raw.split(";", 1)[0].strip() if not raw.lstrip().startswith(("*", ";")) else ""
         if not line:
             continue
         t = line.split()

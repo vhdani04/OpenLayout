@@ -136,6 +136,18 @@ def test_vector_parse_and_sources(tmp_path):
         vectors.parse(bad)
 
 
+def test_vector_level_expressions(tmp_path):
+    """Levels may be expressions of design variables; a * inside a line is not a comment."""
+    f = tmp_path / "e.vec"
+    f.write_text("radix 1 1\nio i o\nvname a z\nperiod 100\nvih vdd\nvoh 0.8*vdd   ; 80 %\nvol vdd/5\n* a comment\n0 1\n")
+    v = vectors.parse(f)
+    assert v.levels(v.outputs()[0], {"vdd": "0.7"}) == pytest.approx((0.7, 0.0, 0.56, 0.14))
+    f.write_text("radix 1\nio o\nvname z\nperiod 100\nvoh 0.8*nope\n1\n")
+    v = vectors.parse(f)
+    with pytest.raises(vectors.VectorError, match="voh"):
+        v.levels(v.outputs()[0], {"vdd": "0.7"})
+
+
 def test_vector_check():
     vf = vectors.VectorFile("x", [vectors.Bit("out", "o", 0, values=["1", "0", "1"])], [0, 1e-10, 2e-10],
                             1e-10, {})
