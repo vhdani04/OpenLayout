@@ -47,13 +47,20 @@ rules = {rdb.category_by_id(i.category_id()).name() for i in rdb.each_item()} if
 check("Run DRC checks the current cell and its results are in the view's marker browser",
       rdb is not None and view.num_rdbs() >= 1 and {"M1.S.1", "M1.W.1"} <= rules, sorted(rules))
 
-# fix the layout in the editor (unsaved): the next run sees the edited layout
+# edit the layout (unsaved) and run again - twice, with violations left the first time (the deck is
+# re-run in the same KLayout: its Ruby must not stack up on itself, "stack level too deep")
 cv = view.active_cellview()
-cv.layout().cell("BAD").shapes(cv.layout().layer(LAYERS["m1"], 0)).clear()
-cv.layout().cell("BAD").shapes(cv.layout().layer(LAYERS["m1"], 0)).insert(pya.DBox(0, 0, 0.018, 0.2))
+shapes = cv.layout().cell("BAD").shapes(cv.layout().layer(LAYERS["m1"], 0))
+shapes.clear()
+shapes.insert(pya.DBox(0, 0, 0.018, 0.2))
+shapes.insert(pya.DBox(0.5, 0, 0.516, 0.2))                 # the narrow wire stays
 rdb = drc.run_current(mw)
-check("a run after editing checks the edited layout (clean now)", rdb is not None and rdb.num_items() == 0,
-      rdb.num_items() if rdb else None)
+rules = {rdb.category_by_id(i.category_id()).name() for i in rdb.each_item()} if rdb else set()
+check("a second run after editing sees the edited layout (one violation left)", rules == {"M1.W.1"}, sorted(rules))
+shapes.clear()
+shapes.insert(pya.DBox(0, 0, 0.018, 0.2))
+rdb = drc.run_current(mw)
+check("a third run: clean", rdb is not None and rdb.num_items() == 0, rdb.num_items() if rdb else None)
 
 # a batch run (as the hub's DRC button does), shown on the open layout
 report = tmp / "bad.drc.lyrdb"

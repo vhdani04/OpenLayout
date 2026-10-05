@@ -21,15 +21,17 @@ threads(($threads || 4).to_i)
 verbose(false)
 
 # Only rules with violations go into the report: the marker browser then lists just the problems
-# (not every rule of the deck with a count of 0).
-class DRC::DRCLayer
-  alias_method :ol_output, :output
+# (not every rule of the deck with a count of 0). Prepended once: OpenLayout > Run DRC runs this deck
+# again and again in the same KLayout, and patching output on every run made it call itself
+# ("stack level too deep").
+module OLOnlyViolations
   def output(*args)
-    ol_output(*args) unless is_empty?
+    super unless is_empty?
   end
 end
+DRC::DRCLayer.prepend(OLOnlyViolations) unless DRC::DRCLayer.ancestors.include?(OLOnlyViolations)
 
-DBU = 0.00025                               # um per database unit (4 per nm)
+DBU = 0.00025 unless defined?(DBU)          # um per database unit (4 per nm)
 def n(v) (v * 4).round end                  # nm -> dbu (integer)
 def eps() DBU end                           # one dbu, in um
 
