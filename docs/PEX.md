@@ -11,7 +11,8 @@ openlayout pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--rmodel r
 ```
 
 - **From KLayout**: OpenLayout > Run PEX extracts the cell as edited, saved or not. It writes
-  `<cell>.pex.spice` next to the layout file and shows the total capacitance per pin.
+  `<cell>.pex.spice` next to the layout file and shows the total capacitance per pin. The result
+  also goes to the cell's Checks list in the hub.
 - **From the hub**: the PEX button (Tools > PEX, or `ol.pex(lib, cell)` in the CIW) writes
   `verify/<lib>/<cell>/<cell>.pex.spice`. The summary goes to the CIW and the cell's Checks list.
 - **From the shell**: the default output is `<cell>.pex.spice` next to the layout.

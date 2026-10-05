@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pya
 
+from . import checks
+
 FLOW = Path(os.environ.get("OPENLAYOUT_HOME", Path.home() / "openlayout/flow"))
 DECK = FLOW / "pdk/asap7/klayout/drc/asap7.drc"
 
@@ -32,7 +34,9 @@ def run_current(mw=None):
         return None
     rdb = view.rdb(view.num_rdbs() - 1)
     n = rdb.num_items()
+    rules = len({item.category_id() for item in rdb.each_item()})
     mw.message(f"DRC {cv.cell_name}: " + (f"{n} violation(s)" if n else "clean"), 15000)
+    checks.record(cv, "drc", n == 0, f"{n} violation(s) of {rules} rule(s)" if n else "clean")
     return rdb
 
 

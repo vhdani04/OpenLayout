@@ -109,6 +109,20 @@ def test_drc_records_state(win, app):
     assert "M1.W.1" in win.ciw.log.toPlainText()
 
 
+def test_checks_from_klayout(win):
+    """OpenLayout > Run DRC / LVS / PEX in KLayout report to the hub (openlayout hubcmd checked)."""
+    cell = win.workarea.library("cpu8").cell("tb_inv")
+    req = {"cmd": "checked", "path": str(cell.path / "tb_inv.gds"), "cell": "tb_inv", "step": "drc", "ok": False,
+           "detail": "2 violation(s) of 1 rule(s)"}
+    assert win.handle_request(req)["ok"]
+    state = win.workarea.cell_state(cell)["drc"]
+    assert state["ok"] is False and state["detail"] == "2 violation(s) of 1 rule(s)"
+    assert "DRC cpu8/tb_inv (in KLayout): 2 violation(s)" in win.ciw.log.toPlainText()
+    assert win.handle_request({**req, "step": "lvs", "ok": True, "detail": "match"})["ok"]
+    assert win.workarea.cell_state(cell)["lvs"]["ok"] is True
+    assert not win.handle_request({**req, "step": "sim"})["ok"]
+
+
 def test_lvs_records_state(win, app):
     # a library cell without a schematic: checked against the CDL
     nand = win.workarea.library("asap7sc7p5t_28_R").cell("NAND2xp33_ASAP7_75t_R")
@@ -157,6 +171,16 @@ def test_command_server(win, app):
     reply = call({"cmd": "open", "path": sch, "view": "layout"})
     assert not reply["ok"] and "no layout view" in reply["error"]
     assert not call({"cmd": "select", "path": "/tmp/not/in/workarea.sch"})["ok"]
+    # what KLayout's Run LVS does after a run: `openlayout hubcmd checked ...`
+    rc = []
+    t = threading.Thread(target=lambda: rc.append(cli.main(["checked", sch, "--cell", "tb_inv", "--step", "lvs",
+                                                            "--ok", "--detail", "match"])), daemon=True)
+    t.start()
+    end = time.time() + 10
+    while t.is_alive() and time.time() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    assert rc == [0] and win.workarea.cell_state(win.lm.current_cell())["lvs"]["detail"] == "match"
 
 
 def test_session_cleared_on_close(win):

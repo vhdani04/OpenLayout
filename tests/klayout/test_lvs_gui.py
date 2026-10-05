@@ -14,7 +14,7 @@ sys.path[:0] = [str(HOME / "klayout" / "python"), str(HOME / "python")]
 import pya  # noqa: E402
 
 from openlayout.workarea import Workarea  # noqa: E402
-from openlayout_kl import gui, lvs, pex  # noqa: E402
+from openlayout_kl import drc, gui, lvs, pex  # noqa: E402
 
 STD = Path(os.environ.get("ASAP7_STDCELLS", HOME.parent / "pdk/asap7/asap7sc7p5t_28"))
 failures = []
@@ -56,12 +56,28 @@ check("Run LVS: the layout matches its xschem schematic; results in the netlist 
 cv = view.active_cellview()
 v0 = cv.layout().layer(18, 0)
 top = cv.layout().cell("inv")
+removed = []
 for s in list(top.shapes(v0).each()):
     if s.dbbox().center() == pya.DPoint(0.108, 0.036):
+        removed.append(s.dbbox())
         top.shapes(v0).erase(s)
 res = lvs.run_current(mw)
 check("after an edit that opens the output, Run LVS reports the mismatch", res is not None and not res["match"]
       and res["circuits"] >= 1, res)
+inv_cell = wa.library("cpu8").cell("inv")
+state = wa.cell_state(inv_cell).get("lvs", {})
+check("Run LVS records its result for the hub's Checks list (no hub running: in the workarea state)",
+      state.get("ok") is False and "circuit" in state.get("detail", ""), state)
+# put the contact back: a third run in the same KLayout matches again (LVS runs as its own process)
+for b in removed:
+    top.shapes(v0).insert(b)
+res = lvs.run_current(mw)
+check("a third Run LVS after restoring the contact matches again", res is not None and res["match"], res)
+check("... and the Checks list says so", wa.cell_state(inv_cell)["lvs"] == {**wa.cell_state(inv_cell)["lvs"],
+                                                                         "ok": True, "detail": "match"})
+drc.run_current(mw)
+state = wa.cell_state(inv_cell).get("drc", {})
+check("Run DRC records its result too", "ok" in state and state.get("detail"), state)
 
 # batch (the hub's LVS button): `openlayout lvs` finds inv.sch next to the layout
 report = Path(tempfile.mkdtemp()) / "inv.lvsdb"
@@ -88,5 +104,7 @@ net = cell_dir / "inv.pex.spice"
 check("Run PEX: a post-layout netlist next to the layout, capacitance per pin",
       res is not None and res["devices"] == 2 and net.is_file() and res["total_fF"].get("A", 0) > 0.1
       and ".subckt inv " in net.read_text(), res)
+state = wa.cell_state(inv_cell).get("pex", {})
+check("Run PEX records its result too", state.get("ok") is True and "2 transistors" in state.get("detail", ""), state)
 
 print("PASS lvs_gui" if not failures else f"FAIL lvs_gui: {', '.join(failures)}")

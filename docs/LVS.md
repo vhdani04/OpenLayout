@@ -9,7 +9,7 @@ standard-cell CDL for placed library cells).
 
 | Where | How | Results |
 |---|---|---|
-| KLayout | **OpenLayout > Run LVS** | the cell being edited (saved or not) against `<cell>.sch` next to its layout; the cross-reference in the netlist browser |
+| KLayout | **OpenLayout > Run LVS** | the cell being edited (saved or not) against `<cell>.sch` next to its layout; the cross-reference in the netlist browser; the result also goes to the cell's LVS badge in the hub |
 | Hub | select a cell, **Tools > LVS** (or the cell's context menu) | summary in the CIW, the cell's LVS badge; on a mismatch KLayout opens the layout with the netlist browser |
 | Shell | `openlayout lvs cell.gds [--cell NAME] [--schematic cell.sch\|cell.spice] [--stdcells check]` | summary (mismatching circuits, nets, devices); `cell.lvsdb` |
 | CIW | `ol.lvs("lib", "cell")` | as the hub button |

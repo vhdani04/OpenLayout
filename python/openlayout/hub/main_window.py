@@ -284,6 +284,15 @@ class MainWindow(QMainWindow):
             self.ciw.info(f"open {cell.key} {view.name} (requested by a tool)")
             self.open_target(view)
             return {"ok": True, "message": f"opening {cell.key} {view.name}"}
+        if cmd == "checked":
+            step = req.get("step")
+            if step not in ("drc", "lvs", "pex"):
+                return {"ok": False, "error": f"unknown check {step!r}"}
+            ok, detail = bool(req.get("ok")), req.get("detail") or ""
+            self.workarea.set_state(cell, step, ok, detail)
+            (self.ciw.ok if ok else self.ciw.warn)(f"{step.upper()} {cell.key} (in KLayout): {detail}")
+            self.lm.refresh()
+            return {"ok": True, "message": f"recorded {step} of {cell.key}"}
         if cmd == "olsim":
             self.open_olsim(cell)
             return {"ok": True, "message": f"OLSim {cell.key}"}

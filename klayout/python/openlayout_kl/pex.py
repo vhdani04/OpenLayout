@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pya
 
+from . import checks
 from .lvs import schematic_for
 
 _box = None            # the (non-modal) summary of the last run
@@ -52,6 +53,8 @@ def run_current(mw=None):
     summary, _ = run(gds, cell, out, sch)
     caps = "\n".join(f"    {net:10s} {c:.4f} fF" for net, c in summary["total_fF"].items())
     mw.message(f"PEX {cell}: {summary['out']}", 20000)
+    checks.record(cv, "pex", True, f"{summary['devices']} transistors, {summary['resistors']} R, "
+                                   f"{summary['capacitors']} C")
     global _box
     _box = pya.QMessageBox(pya.QMessageBox.Information, "OpenLayout PEX",
                            f"{cell}: {summary['devices']} transistors, {summary['resistors']} resistors, "

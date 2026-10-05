@@ -10,7 +10,7 @@ the manual directly.
 
 | Where | How | Results |
 |---|---|---|
-| KLayout | **OpenLayout > Run DRC** | the cell being edited (saved or not), markers in the marker browser |
+| KLayout | **OpenLayout > Run DRC** | the cell being edited (saved or not), markers in the marker browser; the result also goes to the cell's DRC badge in the hub |
 | Hub | select a cell, **Tools > DRC** (or the cell's context menu) | summary in the CIW, the cell's DRC badge; with violations KLayout opens the layout with the markers |
 | Shell | `openlayout drc cell.gds [--cell NAME] [--report FILE]` | summary per rule; `cell.drc.lyrdb` (File > Open in KLayout's marker browser) |
 | CIW | `ol.drc("lib", "cell")` | as the hub button |

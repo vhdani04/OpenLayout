@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pya
 
+from . import checks
+
 FLOW = Path(os.environ.get("OPENLAYOUT_HOME", Path.home() / "openlayout/flow"))
 DECK = FLOW / "pdk/asap7/klayout/lvs/asap7.lvs"
 RESULT_RE = re.compile(r"^RESULT LVS \S+ (\w+) circuits=(\d+) bulk=(\d+) names=(\d+)", re.M)
@@ -77,6 +79,7 @@ def run_current(mw=None):
     result, out = run(gds, cell, sch, report)
     show(view, cv.index(), report)
     mw.message(f"LVS {cell}: " + describe(result), 20000)
+    checks.record(cv, "lvs", result["match"], "match" if result["match"] else describe(result).split(" - ", 1)[-1])
     return result
 
 

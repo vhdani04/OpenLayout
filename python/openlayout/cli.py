@@ -6,6 +6,8 @@
   openlayout hubcmd simulate <file>                        netlist + simulate the cell
   openlayout hubcmd olsim    <file>                        the cell's OLSim (simulation setup)
   openlayout hubcmd waves    <file>                        the waveform viewer
+  openlayout hubcmd checked  <file> --step drc|lvs|pex [--ok] [--detail TEXT] [--cell NAME]
+                                                           record a check run in KLayout (the Checks list)
   openlayout hubcmd ping     [<file>]
 """
 import argparse
@@ -39,16 +41,21 @@ def hub_port(path: str | None) -> int | None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="openlayout hubcmd", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["open", "select", "netlist", "simulate", "olsim", "waves", "ping"])
+    ap.add_argument("cmd", choices=["open", "select", "netlist", "simulate", "olsim", "waves", "checked", "ping"])
     ap.add_argument("path", nargs="?")
     ap.add_argument("view", nargs="?")
     ap.add_argument("--cell")
+    ap.add_argument("--step", choices=["drc", "lvs", "pex"])
+    ap.add_argument("--ok", action="store_true")
+    ap.add_argument("--detail", default="")
     a = ap.parse_args(argv)
     port = hub_port(a.path)
     if not port:
         print("The OpenLayout hub is not running for this workarea. Start it with `openlayout hub`.")
         return 1
     req = {"cmd": a.cmd, "path": os.path.abspath(a.path) if a.path else None, "view": a.view, "cell": a.cell}
+    if a.cmd == "checked":
+        req.update(step=a.step, ok=a.ok, detail=a.detail)
     try:
         reply = send(port, req)
     except OSError:
