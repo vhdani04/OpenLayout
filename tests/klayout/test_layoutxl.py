@@ -80,6 +80,19 @@ top.shapes(m1).insert(pya.DBox(pin.x - 0.01, min(pin.y, yp.y), pin.x + 0.01, max
 res = connectivity.check(ly, top, conn)
 check("short detected", "Y" in res["nets"]["A"]["shorts"] and "A" in res["nets"]["Y"]["shorts"],
       res["nets"]["A"]["shorts"])
+check("a short is reported once, with its shapes", [s["nets"] for s in res["shorts"]] == [["A", "Y"]]
+      and len(res["shorts"][0]["shapes"]) > 0 and connectivity.summary(res)["shorts"] == 1,
+      [s["nets"] for s in res["shorts"]])
+check("a short says what touches", res["nets"]["A"]["touching"].get("Y") == ["pin Y"], res["nets"]["A"]["touching"])
+
+# 5b. a pin label moved off its metal, and a pin label removed
+texts = {s.text_string: s for dt in (251, 2) for s in top.shapes(ly.layer(19, dt)).each(pya.Shapes.STexts)}
+texts["Y"].text = texts["Y"].text.moved(pya.Vector(0, 2000))          # 0.5 um up: off the metal
+texts["A"].delete()
+res = connectivity.check(ly, top, conn)
+check("a label off its metal is explained", any("label is not on m1" in u for u in res["nets"]["Y"]["unconnected"]),
+      res["nets"]["Y"]["unconnected"])
+check("a pin without a label is reported", res["unlabeled"] == ["A"], res["unlabeled"])
 
 # 6. update from source: change M1 to nf=3 and add a device
 text = sch.read_text().replace("name=M1 l=20n nfin=3 nf=2", "name=M1 l=20n nfin=3 nf=3")

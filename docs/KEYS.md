@@ -192,9 +192,21 @@ cells of the layout and standard cells (not PCells, whose parameters KLayout's i
 to itself). Nothing is constrained - the hints go when the edit ends or on Esc. Switch them off
 with *OpenLayout > DRD Spacing Hints*.
 
-The **Connectivity** panel (right side) compares the layout with its schematic: open nets (with
-flight lines in the layout), shorts, and parts missing from / extra to the schematic. Click a net
-to highlight its flight lines, double-click to zoom to it.
+The **Connectivity** panel (right side) compares the layout with its schematic. It lists every
+net as one of:
+
+- **complete:** every terminal of the net is connected.
+- **open:** the net is in several pieces. Its flight lines join the pieces: thin, solid, and one
+  vibrant colour per net (the net's name in the list has the same colour). Under the net, each
+  unconnected terminal is listed with the reason when it touches nothing, e.g. `pin B (its label is
+  not on m1 metal)`: a pin is where its text label is, so the label must sit on the pin's metal.
+- **short with X:** the net touches net X in the layout. Under it, *touches X* lists X's
+  terminals in the same piece of metal. Click the net to outline the merged shapes in red, which
+  shows where the two nets meet. The summary counts each short once (`1 short (VSS - Z)`).
+
+It also lists **pins without a label** (a schematic pin with no text label in the layout), parts
+**not placed**, and parts **not in schematic**. Click a net to make its flight lines bolder;
+double-click it to zoom to it.
 
 ## Moving between tools
 

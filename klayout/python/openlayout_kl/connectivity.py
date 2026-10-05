@@ -39,15 +39,25 @@ def instance_name(inst):
 
 
 class Terminal:
-    __slots__ = ("owner", "term", "net", "point", "layer", "cluster")
+    __slots__ = ("owner", "term", "net", "point", "layer", "cluster", "floating")
 
     def __init__(self, owner, term, net, point, layer):
         self.owner, self.term, self.net, self.point, self.layer = owner, term, net, point, layer
         self.cluster = None
+        self.floating = False                   # nothing conducting under it
 
     @property
     def label(self):
         return f"{self.owner}.{self.term}" if self.owner else f"pin {self.term}"
+
+    @property
+    def why(self):
+        """The terminal's label, with the reason when it touches nothing."""
+        if not self.floating:
+            return self.label
+        if self.owner is None:
+            return f"{self.label} (its label is not on {self.layer} metal)"
+        return f"{self.label} (nothing drawn at its {self.layer})"
 
 
 def cell_pin_points(cell, recursive=True):
@@ -150,13 +160,33 @@ def _mst(groups):
     return lines
 
 
+MAX_SHORT_SHAPES = 400
+
+
+def _net_shapes(l2n, regions, net, dbu):
+    """The DPolygons of an extracted net on every conductor layer (for outlining a short)."""
+    out = []
+    for name, r in regions.items():
+        if name == "sd":
+            continue
+        for p in l2n.shapes_of_net(net, r, True).merged().each():
+            out.append(p.to_dtype(dbu))
+            if len(out) >= MAX_SHORT_SHAPES:
+                return out
+    return out
+
+
 def check(layout, top, conn):
     """Compare layout connectivity against the schematic link."""
     terms, found = terminals(layout, top, conn)
     l2n, regions = extract(layout, top)
+    probed = {}
     for i, t in enumerate(terms):
         net = l2n.probe_net(regions[t.layer], t.point) if t.layer in regions else None
         t.cluster = net.cluster_id if net is not None else ("isolated", i)
+        t.floating = net is None
+        if net is not None:
+            probed.setdefault(t.cluster, net)
     by_net = {}
     for t in terms:
         by_net.setdefault(t.net, []).append(t)
@@ -174,17 +204,34 @@ def check(layout, top, conn):
         for c in groups:
             shorted |= owners.get(c, set())
         shorted.discard(net)
+        # what of the other nets touches this one: their terminals in this net's pieces
+        touching = {}
+        for c in groups:
+            for t in terms:
+                if t.cluster == c and t.net != net:
+                    touching.setdefault(t.net, []).append(t.label)
         nets[net] = {
             "terminals": len(ts),
             "pieces": len(group_list),
             "lines": _mst(group_list) if len(group_list) > 1 else [],
-            "unconnected": [t.label for g in group_list[1:] for t in g],
+            "unconnected": [t.why for g in group_list[1:] for t in g],
             "shorts": sorted(shorted),
+            "touching": {n: sorted(v) for n, v in sorted(touching.items())},
             "points": [t.point for t in ts],
         }
+    # shorts: each layout net that carries several schematic nets, once, with its shapes
+    shorts = []
+    for cluster, names in owners.items():
+        if len(names) > 1:
+            shorts.append({"nets": sorted(names),
+                           "shapes": _net_shapes(l2n, regions, probed[cluster], layout.dbu)})
+    shorts.sort(key=lambda s: s["nets"])
+    labeled = {t.term for t in terms if t.owner is None}
     in_layout = {instance_name(i) for i in top.each_inst()} - {None}
     return {
         "nets": nets,
+        "shorts": shorts,
+        "unlabeled": sorted(set(conn.get("pins", {})) - labeled),
         "missing": sorted(set(conn["instances"]) - found),
         "extra": sorted(in_layout - set(conn["instances"])),
     }
@@ -193,6 +240,6 @@ def check(layout, top, conn):
 def summary(result):
     nets = result["nets"]
     opens = sum(1 for n in nets.values() if n["pieces"] > 1)
-    shorts = sum(1 for n in nets.values() if n["shorts"])
-    return {"nets": len(nets), "open": opens, "shorts": shorts,
+    return {"nets": len(nets), "open": opens, "shorts": len(result.get("shorts", [])),
+            "unlabeled": len(result.get("unlabeled", [])),
             "missing": len(result["missing"]), "extra": len(result["extra"])}

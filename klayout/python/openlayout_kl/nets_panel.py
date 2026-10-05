@@ -1,9 +1,10 @@
 """Connectivity panel (right dock): schematic nets vs. layout, Layout XL style.
 
 Lists every net of the linked schematic with its state - complete, open (with the unconnected
-terminals) or shorted - plus schematic parts missing from the layout and layout parts that are
-no longer in the schematic. Open nets get flight lines drawn in the layout. The check re-runs a
-moment after the layout changes.
+terminals and why) or shorted (with what of the other net touches it) - plus schematic pins without
+a label, schematic parts missing from the layout and layout parts no longer in the schematic.
+Open nets get flight lines, one vibrant colour per net (the net's name in the list has the same
+colour); a selected short is outlined. The check re-runs a moment after the layout changes.
 """
 import pya
 
@@ -11,6 +12,12 @@ from . import connectivity
 
 POLL_MS = 1000
 USER_ROLE = 256  # Qt::UserRole (the binding wants a plain int for item data roles)
+# flight-line colours: vibrant, far apart, readable on the dark canvas
+PALETTE = [0xFF3B30, 0x30D158, 0x0A84FF, 0xFFD60A, 0xBF5AF2, 0xFF9F0A, 0x64D2FF, 0xFF375F,
+           0xA8E10C, 0x5E5CE6, 0x00E5C0, 0xFF6EC7, 0xFFB340, 0x40C8FF, 0xC77DFF, 0x7CFF6B]
+SHORT_COLOR = 0xFF2D2D
+HELP = ("<b>Open</b>: the net is in several pieces - the flight lines show what still needs wiring. "
+        "<b>Short</b>: two schematic nets touch in the layout - click it to outline the merged shapes.")
 
 
 class NetsPanel:
@@ -37,6 +44,10 @@ class NetsPanel:
         self.summary = pya.QLabel("", body)
         self.summary.wordWrap = True
         lay.addWidget(self.summary)
+        self.help = pya.QLabel(HELP, body)
+        self.help.wordWrap = True
+        self.help.styleSheet = "color: #8a93a3; font-size: 11px;"
+        lay.addWidget(self.help)
         row = pya.QHBoxLayout()
         self.check_btn = pya.QPushButton("Check", body)
         self.check_btn.clicked = lambda: self.run_check(force=True)
@@ -122,7 +133,11 @@ class NetsPanel:
         ok, fail, warn = self.ui["ok"], self.ui["fail"], self.ui["warn"]
         parts = [f"{s['nets']} nets"]
         parts.append(f"<span style='color:{warn if s['open'] else ok}'>{s['open']} open</span>")
-        parts.append(f"<span style='color:{fail if s['shorts'] else ok}'>{s['shorts']} shorts</span>")
+        shorts = " (" + ", ".join(" - ".join(x["nets"]) for x in res.get("shorts", [])) + ")" if s["shorts"] else ""
+        parts.append(f"<span style='color:{fail if s['shorts'] else ok}'>{s['shorts']} "
+                     f"short{'' if s['shorts'] == 1 else 's'}{shorts}</span>")
+        if s["unlabeled"]:
+            parts.append(f"<span style='color:{fail}'>{s['unlabeled']} pin(s) without a label</span>")
         if s["missing"]:
             parts.append(f"<span style='color:{fail}'>{s['missing']} not placed</span>")
         if s["extra"]:
@@ -138,7 +153,7 @@ class NetsPanel:
 
         for name, n in sorted(res["nets"].items(), key=order):
             if n["shorts"]:
-                status, color = f"short: {', '.join(n['shorts'])}", fail
+                status, color = f"short with {', '.join(n['shorts'])}", fail
             elif n["pieces"] > 1:
                 status, color = f"open: {n['pieces']} pieces", warn
             else:
@@ -146,16 +161,25 @@ class NetsPanel:
             item = pya.QTreeWidgetItem(self.tree)
             item.setText(0, name)
             item.setText(1, status)
+            item.setForeground(0, pya.QBrush(pya.QColor(f"#{self.color(name):06x}")))
             item.setForeground(1, pya.QBrush(pya.QColor(color)))
             item.setData(0, USER_ROLE, name)
             self._items.append(item)
+            for other, labels in n.get("touching", {}).items():
+                child = pya.QTreeWidgetItem(item)
+                child.setText(0, f"touches {other}")
+                child.setText(1, ", ".join(labels[:8]) + (" ..." if len(labels) > 8 else ""))
+                child.setForeground(1, pya.QBrush(pya.QColor(fail)))
+                child.setData(0, USER_ROLE, name)
+                self._items.append(child)
             for label in n["unconnected"][:50]:
                 child = pya.QTreeWidgetItem(item)
                 child.setText(0, label)
                 child.setText(1, "unconnected")
                 child.setData(0, USER_ROLE, name)
                 self._items.append(child)
-        for title, names, color in (("Not placed", res["missing"], fail), ("Not in schematic", res["extra"], warn)):
+        for title, names, color in (("Pins without a label", res.get("unlabeled", []), fail),
+                                    ("Not placed", res["missing"], fail), ("Not in schematic", res["extra"], warn)):
             if names:
                 item = pya.QTreeWidgetItem(self.tree)
                 item.setText(0, title)
@@ -170,20 +194,39 @@ class NetsPanel:
             m._destroy()
         self.markers = []
 
+    def color(self, net):
+        """A net's flight-line colour: stable per net name (by its place among the nets)."""
+        names = sorted(self.result["nets"]) if self.result else []
+        return PALETTE[names.index(net) % len(PALETTE)] if net in names else PALETTE[0]
+
     def draw(self):
         self.clear_markers()
         view = self.mw.current_view()
-        if self.result is None or view is None or not self.lines_box.checked:
+        if self.result is None or view is None:
             return
-        for name, n in self.result["nets"].items():
-            hot = name == self.selected
-            for a, b in n["lines"]:
+        if self.lines_box.checked:
+            for name, n in self.result["nets"].items():
+                hot = name == self.selected
+                for a, b in n["lines"]:
+                    m = pya.Marker(view)
+                    m.set(pya.DEdge(a, b))
+                    m.color = self.color(name)
+                    m.line_width = 2 if hot else 1             # thin and solid; the selected net a little bolder
+                    m.line_style = 0
+                    m.vertex_size = 4 if hot else 3
+                    self.markers.append(m)
+        for short in self.result.get("shorts", []):            # the selected short: its merged shapes outlined
+            if self.selected not in short["nets"]:
+                continue
+            for poly in short["shapes"]:
                 m = pya.Marker(view)
-                m.set(pya.DEdge(a, b))
-                m.color = 0xFFFFFF if hot else (0xEF6B6B if n["shorts"] else 0xE8B04B)
-                m.line_width = 2 if hot else 1
-                m.line_style = 0 if hot else 2
-                m.vertex_size = 4 if hot else 2
+                m.set(poly)
+                m.color = SHORT_COLOR
+                m.frame_color = SHORT_COLOR
+                m.line_width = 2
+                m.line_style = 0
+                m.dither_pattern = 1                           # outline only
+                m.vertex_size = 0
                 self.markers.append(m)
 
     def on_click(self, item, _column):
