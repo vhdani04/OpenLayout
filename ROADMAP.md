@@ -58,7 +58,8 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] LVS from KLayout (netlist browser), the hub (LVS button) and `openlayout lvs`; net names and bulk ties checked
 - [ ] Net-level cross-probing schematic <-> layout from the LVS cross-reference
 - [x] Parasitic extraction -> post-layout ngspice simulation: FasterCap 3D capacitances, R networks (docs/PEX.md)
-- [ ] PEX of large blocks (hierarchical: cells, then routing), FEOL dielectric model closer to xACT 3D
+- [x] PEX calibrated against the library's Calibre xACT 3D netlists (54 cells, delays within ~2 %)
+- [ ] PEX of large blocks (hierarchical: cells, then routing)
 
 ## Phase 7 — Custom cell library
 - [x] Device PCells (nfin, fingers, contacts) — done in Phase 4b; DRC-verify in Phase 5

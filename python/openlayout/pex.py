@@ -1,22 +1,22 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# (this module drives KLayout-PEX, which is GPL-3.0-or-later)
 """Parasitic extraction (PEX) of ASAP7 layouts - like Calibre xACT 3D / Quantus from Virtuoso: a
 transistor-level SPICE netlist of the layout with the resistance of every wire and contact and the
 capacitance between all nets, for post-layout simulation (`openlayout sim`).
 
-    openlayout pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--schematic cell.spice]
+    openlayout pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--rmodel reference|openroad]
+                   [--schematic cell.spice]
 
 1. Extraction: the ASAP7 LVS deck (pdk/asap7/klayout/lvs/asap7.lvs -rd pex=1) on a flattened copy
    of the cell - devices, nets and their shapes on the conductor layers.
-2. Capacitance: a 3D field solver. KLayout-PEX (kpex) builds the conductors of every net as 3D
-   bodies from the ASAP7 process stack (pdk/asap7/klayout/pex/asap7_kpex_tech.pb.json) and
-   FasterCap solves the capacitance matrix between all of them, in one dielectric (k = 3.23, which
-   fits all of the library's QRC plate capacitances). Floating shapes (dummy gates) are grounded.
+2. Capacitance: a 3D field solver. fieldsolver.py builds the conductors of every net as 3D bodies
+   from the ASAP7 process description (pdk/asap7/klayout/pex/asap7_pex.json: heights, a denser
+   front-end dielectric under the k = 3.23 metal stack, calibrated against the library's Calibre
+   xACT 3D netlists) and FasterCap solves the capacitance matrix between all of them. Floating
+   shapes (dummy gates) are grounded.
 3. Resistance: KLayout's RNetExtractor turns each signal net into a resistor network between its
-   pins and the transistor terminals (sheet resistances and via resistances from OpenROAD's ASAP7
-   setRC.tcl, the middle-of-line from the library's reference extraction). Supply nets stay ideal.
-   The capacitances of a net are spread over the nodes of its network by the wire area nearest to
-   each node.
+   pins and the transistor terminals (by default the sheet / via resistances of the library's
+   reference extraction; --rmodel openroad: OpenROAD's setRC.tcl for M1-M9). Supply nets stay
+   ideal. The capacitances of a net are spread over the nodes of its network by the wire area
+   nearest to each node.
 4. Netlist: <cell>.pex.spice, a subcircuit with the cell's pins (in the schematic's order when there
    is one) - N<i> d g s b <model> l=... nfin=... for the BSIM-CMG transistors, R and C elements.
 
@@ -32,20 +32,21 @@ import subprocess
 import sys
 import tempfile
 import time
-import types
 from collections import defaultdict
 from pathlib import Path
 
 import klayout.db as kdb
 import klayout.pex as klp
 
+from . import fieldsolver
+
 FLOW = Path(os.environ.get("OPENLAYOUT_HOME", Path.home() / "openlayout/flow"))
 DECK = FLOW / "pdk/asap7/klayout/lvs/asap7.lvs"
-TECH_JSON = FLOW / "pdk/asap7/klayout/pex/asap7_kpex_tech.pb.json"
+TECH_JSON = FLOW / "pdk/asap7/klayout/pex/asap7_pex.json"
 
-K_ILD = 3.23            # the dielectric constant of the whole stack (gen_kpex_tech.py)
-HALO = 0.5              # um of the solver's window around the cell (kpex's default is 8 um)
-DELAUNAY_AMAX = 0.002   # um^2: largest panel of the conductor surfaces
+HALO = 0.3              # um: the substrate plate and the dielectric interfaces reach this far out
+MAX_EDGE = 0.03         # um: initial panel size of the conductor surfaces (FasterCap refines)
+ACCURACY = 0.05         # FasterCap's relative stop criterion (-a)
 FIN_PITCH_W = 0.027     # um of device width per fin (LVS: W = nfin x 27 nm)
 TILE = 0.05             # um: wire pieces assigned to the nearest network node for the capacitance
 MIN_C = 1e-20           # F: smaller capacitances are dropped (0.01 aF)
@@ -104,74 +105,88 @@ def extract_netlist(gds, cell, work, schematic=None):
     return lvsdb
 
 
-# ---- 2. capacitance (kpex + FasterCap) ------------------------------------------------------------
-def capacitance(lvsdb, cell, work):
-    """{(net, net): C} coupling and {net: C} ground capacitances (F), by FasterCap."""
-    from klayout_pex.log import LogLevel, set_log_level
-    from klayout_pex.tech_info import TechInfo
-    from klayout_pex.klayout.lvsdb_extractor import KLayoutExtractionContext
-    from klayout_pex.util.multiple_choice import MultipleChoicePattern
-    import klayout_pex.fastercap.fastercap_input_builder as fib
-    from klayout_pex.fastercap.fastercap_runner import fastercap_parse_capacitance_matrix
+# ---- 2. capacitance (FasterCap) -------------------------------------------------------------------
+def load_tech():
+    return json.loads(Path(TECH_JSON).read_text())
 
-    set_log_level(LogLevel.WARNING)
-    # kpex fixes the window around the cell at 8 um (math.floor(8 / dbu)); a cell needs far less
-    floor = math.floor
-    fib.math = types.SimpleNamespace(
-        floor=lambda v: floor(HALO / lvsdb.internal_layout().dbu)
-        if abs(v - 8 / lvsdb.internal_layout().dbu) < 1e-6 else floor(v))
-    # one dielectric everywhere: no dielectric layers (k_void is the medium)
-    tech = TechInfo.from_json(str(TECH_JSON), MultipleChoicePattern("none"))
-    ctx = KLayoutExtractionContext.prepare_extraction(lvsdb=lvsdb, top_cell=cell, tech=tech,
-                                                      blackbox_devices=False)
-    builder = fib.FasterCapInputBuilder(pex_context=ctx, tech_info=tech,
-                                        substrate_net_name=ctx.substrate_net_name, k_void=K_ILD,
-                                        delaunay_amax=DELAUNAY_AMAX, delaunay_b=0.5)
-    gen = builder.build()
-    fc_dir = work / "fastercap"
-    fc_dir.mkdir(exist_ok=True)
-    lst = gen.write_fastcap(output_dir_path=str(fc_dir), prefix="FC_")
-    out = fc_dir / "fastercap.log"
-    argv = ["FasterCap", "-b", "-i", "-v", "-a0.05", "-d0.5", "-m0.5", "-f2", "-ap", lst]
-    with open(out, "w") as f:
-        res = subprocess.run(argv, stdout=f, stderr=subprocess.DEVNULL, timeout=7200)
-    if res.returncode != 0:
-        raise SystemExit(f"openlayout pex: FasterCap failed (see {out})")
-    cm = fastercap_parse_capacitance_matrix(str(out)).averaged_off_diagonals()
-    names = [n.split("_", 1)[1] for n in cm.conductor_names]     # "g3_A" -> "A"
+
+def solver_conductors(lvsdb, circ, tech, substrate_net):
+    """{net: [(Region, z0, z1)]} for the field solver, and the window (Box, dbu) around them. The
+    source / drain node is the diffusion `sd_gap` off every gate; the substrate is a plate on
+    `substrate_net`."""
+    dbu = lvsdb.internal_layout().dbu
+    gap = int(round(tech["sd_gap"] / dbu))
+    gates = lvsdb.layer_by_name("gate").merged()
+    gates = gates.sized(gap) if gap > 0 else gates
+    heights = {n: (c["z0"], c["z1"]) for n, c in tech["conductors"].items()}
+    heights.update({n: (c["z0"], c["z1"]) for n, c in tech["cuts"].items() if c["z1"] > c["z0"]})
+    sources = {n: ("sd" if n == "sdx" else n) for n in heights}
+    conds, bbox = {}, kdb.Box()
+    for net in circ.each_net():
+        pieces = []
+        for name, (z0, z1) in heights.items():
+            layer = lvsdb.layer_by_name(sources[name])
+            if layer is None:
+                continue
+            r = lvsdb.shapes_of_net(net, layer, True)
+            if r.is_empty():
+                continue
+            r = (r - gates).merged() if name == "sdx" else r.merged()
+            if not r.is_empty():
+                pieces.append((r, z0, z1))
+                bbox += r.bbox()
+        if pieces:
+            conds[net.expanded_name()] = pieces
+    halo = int(round(HALO / dbu))
+    window = bbox.enlarged(halo, halo)
+    conds.setdefault(substrate_net, []).append((kdb.Region(window), tech["substrate_z"], tech["substrate_z"]))
+    return conds, window
+
+
+def capacitance(lvsdb, cell, work, tech, substrate_net):
+    """{net: C} ground and {(net, net): C} coupling capacitances (F), by FasterCap."""
+    circ = lvsdb.netlist().circuit_by_name(cell)
+    conds, window = solver_conductors(lvsdb, circ, tech, substrate_net)
+    diel = tech["dielectric"]
+    names, mat, _ = fieldsolver.capacitance_matrix(
+        conds, lvsdb.internal_layout().dbu, diel["k"], work / "fastercap",
+        [(i["z"], i["k_above"]) for i in diel["interfaces"]], window, MAX_EDGE, ACCURACY)
     ground, coupling = defaultdict(float), {}
     for i, a in enumerate(names):
-        ground[a] += sum(cm.rows[i])                              # what is left: to infinity
+        ground[a] += sum(mat[i])                                   # what is left: to infinity
         for j in range(i + 1, len(names)):
-            c = -cm.rows[i][j]
+            c = -(mat[i][j] + mat[j][i]) / 2
             if c > 0:
                 coupling[(a, names[j])] = c
     return dict(ground), coupling
 
 
 # ---- 3. resistance (KLayout RNetExtractor) --------------------------------------------------------
-def r_tech():
-    """The KLayout R extractor technology: layer ids are indexes into CONDUCTORS + CUTS."""
-    tech_json = json.loads(TECH_JSON.read_text())
-    res = tech_json["process_parasitics"]["resistance"]
-    sheet = {r["layer_name"]: r["resistance"] / 1000 for r in res["layers"]}          # Ohm / sq
-    per_via = {v["via_name"]: v["resistance"] / 1000 for v in res["vias"]}             # Ohm
+def r_tech(tech, rmodel="reference"):
+    """The KLayout R extractor technology (layer ids index CONDUCTORS + CUTS). rmodel "openroad":
+    OpenROAD's M1-M9 / V1-V8 values."""
     ids = {name: i for i, name in enumerate(CONDUCTORS + [c[0] for c in CUTS])}
-    tech = klp.RExtractorTech()
+    rt = klp.RExtractorTech()
     for name in CONDUCTORS:
+        spec = tech["conductors"][name]
         c = klp.RExtractorTechConductor()
         c.layer = ids[name]
-        c.resistance = sheet[name]
+        c.resistance = spec["openroad_sheet"] if rmodel == "openroad" and "openroad_sheet" in spec else spec["sheet"]
         c.algorithm = klp.RExtractorTechConductor.SquareCounting
-        tech.add_conductor(c)
+        rt.add_conductor(c)
     for cut, bottom, top in CUTS:
         v = klp.RExtractorTechVia()
         v.cut_layer, v.bottom_conductor, v.top_conductor = ids[cut], ids[bottom], ids[top]
-        base = "v0" if cut == "v0lig" else cut
-        v.resistance = per_via[base] * CUT_AREA[base] if base in per_via else 1e-6     # Ohm um^2
+        spec = tech["cuts"].get("v0" if cut == "v0lig" else cut)
+        if spec is None:                   # the LIG / LISD overlap: touching, no resistance of its own
+            v.resistance = 1e-7
+        elif rmodel == "openroad" and "openroad_rarea" in spec:
+            v.resistance = spec["openroad_rarea"]
+        else:
+            v.resistance = spec["rarea"]                                               # Ohm um^2
         v.merge_distance = 0.0
-        tech.add_via(v)
-    return tech, ids
+        rt.add_via(v)
+    return rt, ids
 
 
 def net_geometry(lvsdb, net):
@@ -276,8 +291,9 @@ def spice_name(name):
     return re.sub(r"[^A-Za-z0-9_]", "_", name)
 
 
-def extract(gds, cell=None, out=None, mode="rc", schematic=None, keep=False):
+def extract(gds, cell=None, out=None, mode="rc", schematic=None, keep=False, rmodel="reference"):
     """PEX of `cell` in `gds` into `out` (<cell>.pex.spice next to the layout). Returns a summary."""
+    tech = load_tech()
     gds = Path(gds).resolve()
     if cell is None:
         layout = kdb.Layout()
@@ -295,10 +311,6 @@ def extract(gds, cell=None, out=None, mode="rc", schematic=None, keep=False):
     log(f"  extracted: {sum(1 for _ in circ.each_device())} transistors, {sum(1 for _ in circ.each_net())} nets"
         f" ({time.time() - t0:.1f} s)")
 
-    t1 = time.time()
-    ground, coupling = capacitance(lvsdb, cell, work)
-    log(f"  capacitance: FasterCap, {len(ground)} conductors ({time.time() - t1:.1f} s)")
-
     nets = {n.expanded_name(): n for n in circ.each_net()}
     pins = [p.name() for p in circ.each_pin()]
     ref = lvsdb.reference.circuit_by_name(cell.upper()) if lvsdb.reference else None
@@ -313,6 +325,10 @@ def extract(gds, cell=None, out=None, mode="rc", schematic=None, keep=False):
     vdd = next((n for n in pins if n.upper().startswith(("VDD", "VCC", "VPWR"))), None) or \
         next((n for n in nets if n.upper().startswith("VDD")), vss)
     floating = {name for name, n in nets.items() if n.pin_count() == 0 and n.terminal_count() == 0}
+
+    t1 = time.time()
+    ground, coupling = capacitance(lvsdb, cell, work, tech, vss if vss != "0" else "SUBSTRATE")
+    log(f"  capacitance: FasterCap, {len(ground)} conductors ({time.time() - t1:.1f} s)")
 
     # device terminals: (net, (device index, terminal), layer, polygon)
     devices = list(circ.each_device())
@@ -338,7 +354,7 @@ def extract(gds, cell=None, out=None, mode="rc", schematic=None, keep=False):
     r_lines, c_lines = [], []
     net_nodes = {}         # net -> {node name: (weight, DPoint or None)}
     t2 = time.time()
-    tech, ids = r_tech()
+    rt, ids = r_tech(tech, rmodel)
     pts = pin_points(work / f"{cell}.flat.gds", cell) if mode == "rc" else {}
     for name, n in nets.items():
         sname = spice_name(name)
@@ -351,7 +367,7 @@ def extract(gds, cell=None, out=None, mode="rc", schematic=None, keep=False):
             for key, _, _ in terminals[name]:
                 node_of_terminal[key] = sname
             continue
-        nodes, elements, geo = r_network(lvsdb, n, tech, ids, terminals[name], pts.get(name))
+        nodes, elements, geo = r_network(lvsdb, n, rt, ids, terminals[name], pts.get(name))
         names, k = {}, 0
         for nid, (kind, info, _, _) in nodes.items():
             if kind == "pin":
@@ -424,8 +440,9 @@ def extract(gds, cell=None, out=None, mode="rc", schematic=None, keep=False):
     # write
     lines = [f"* {cell} - parasitic extraction by OpenLayout (openlayout pex, mode {mode})",
              f"* layout: {gds}",
-             f"* C: FasterCap 3D field solver (KLayout-PEX), k = {K_ILD}; R: KLayout RNetExtractor,"
-             f" OpenROAD ASAP7 sheet / via resistances",
+             f"* C: FasterCap 3D field solver (k = {tech['dielectric']['k']:g} front end, "
+             + ", ".join(f"{i['k_above']:g} above z = {i['z']:g} um" for i in tech["dielectric"]["interfaces"])
+             + f"); R: KLayout RNetExtractor, {rmodel} sheet / via resistances",
              f"* {len(devices)} transistors, {len(r_lines)} resistors, {len(c_lines)} capacitors",
              "* total capacitance per net (fF): " +
              ", ".join(f"{spice_name(n)} {total[n] * 1e15:.4f}" for n in pins + sorted(set(total) - set(pins) - floating)
@@ -463,10 +480,13 @@ def main(argv=None):
     ap.add_argument("--out", help="netlist file (default <cell>.pex.spice next to the layout)")
     ap.add_argument("--mode", choices=("rc", "c"), default="rc",
                     help="rc: resistor networks and capacitances (default); c: capacitances only")
+    ap.add_argument("--rmodel", choices=("reference", "openroad"), default="reference",
+                    help="reference: the library's xACT 3D sheet / via resistances (default); "
+                         "openroad: OpenROAD's setRC.tcl values for M1-M9 / V1-V8")
     ap.add_argument("--schematic", help="SPICE netlist of the cell, for the order of the pins")
     ap.add_argument("--keep", action="store_true", help="keep the working files (FasterCap input, LVSDB)")
     a = ap.parse_args(argv)
-    extract(a.layout, a.cell, a.out, a.mode, a.schematic, a.keep)
+    extract(a.layout, a.cell, a.out, a.mode, a.schematic, a.keep, a.rmodel)
 
 
 if __name__ == "__main__":

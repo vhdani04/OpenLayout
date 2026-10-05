@@ -1,21 +1,24 @@
 # Parasitic extraction (PEX)
 
-`openlayout pex` turns a layout into a transistor-level SPICE netlist with its parasitics. It is the
-OpenLayout counterpart of Quantus / Calibre xACT 3D run from Virtuoso. The netlist includes the
-resistance of every wire, contact and via on the signal nets and the capacitance between all nets,
-for post-layout simulation in ngspice.
+`openlayout pex` turns a layout into a transistor-level SPICE netlist with its parasitics, like
+Quantus or Calibre xACT 3D run from Virtuoso. The netlist includes the resistance of every wire,
+contact and via on the signal nets and the capacitance between all nets, for post-layout
+simulation in ngspice.
 
 ```
-openlayout pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--schematic cell.sch|cell.spice] [--keep]
+openlayout pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--rmodel reference|openroad]
+               [--schematic cell.sch|cell.spice] [--keep]
 ```
 
 - **From KLayout**: OpenLayout > Run PEX extracts the cell as edited, saved or not. It writes
   `<cell>.pex.spice` next to the layout file and shows the total capacitance per pin.
 - **From the hub**: the PEX button (Tools > PEX, or `ol.pex(lib, cell)` in the CIW) writes
   `verify/<lib>/<cell>/<cell>.pex.spice`. The summary goes to the CIW and the cell's Checks list.
-- **From the shell**: the default output is `<cell>.pex.spice` next to the layout. `--mode c`
-  extracts capacitances only (one node per net). `--keep` keeps the working files (FasterCap
-  input, LVSDB).
+- **From the shell**: the default output is `<cell>.pex.spice` next to the layout.
+  - `--mode c` extracts capacitances only, one node per net.
+  - `--rmodel openroad` uses OpenROAD's metal resistances instead of the library's (see
+    *Resistance*).
+  - `--keep` keeps the working files (FasterCap input, LVSDB).
 
 The netlist is a `.subckt` with the cell's pins. When the cell has a schematic (`<cell>.sch` next
 to the layout, or `--schematic`), the pins follow its order. Library cells follow the CDL order.
@@ -31,9 +34,10 @@ a library cell, rename the subcircuit, because `asap7.lib` already defines the l
 X1 a vdd vss y INVx1_pex
 ```
 
-A standard cell takes 5 to 10 s. FasterCap solves the whole cell as one 3D problem, so larger
-blocks take minutes. A whole CPU needs a hierarchical approach (extract cells, then route
-parasitics), which is future work.
+A standard cell takes about 3-6 s. About 2-3 s of that is the LVS extraction and the
+capacitance solve under 1-3 s. The field solver treats the whole cell as one 3D problem, so large
+blocks scale worse. A whole CPU needs a hierarchical approach (cells, then routing), which is
+future work.
 
 ## How it works
 
@@ -41,138 +45,185 @@ parasitics), which is future work.
    cells are dropped. Then the ASAP7 LVS deck runs on it in extraction mode (`-rd pex=1`). That
    gives the devices, the nets and their shapes. The mode keeps floating shapes (dummy gates) and
    leaves every finger as its own transistor.
-2. **Capacitance: 3D field solver.**
-   - [KLayout-PEX](https://github.com/iic-jku/klayout-pex) (kpex) builds every net's conductors as
-     3D bodies from the ASAP7 process stack below.
-   - [FasterCap](https://github.com/iic-jku/FasterCap) solves the full capacitance matrix between
-     them with a boundary-element method.
+2. **Capacitance: 3D field solver** (`python/openlayout/fieldsolver.py` and
+   [FasterCap](https://github.com/iic-jku/FasterCap)).
+   - Every net becomes a 3D conductor, built from its shapes and the process description below.
+   - The layout is 2.5D, so the z axis is cut at every layer boundary. In each slice a net's
+     cross-section is one 2D region. Its edges, extruded through the slice, are the side walls.
+     The horizontal faces are where the region changes from one slice to the next, so there are
+     no internal faces where a via meets a metal.
+   - The source / drain node is a thin plate, and the substrate is a plate under the cell.
+   - The dielectric is in layers. FastCap-style interface panels sit at each change of dielectric
+     constant, holed where conductors pass through.
+   - FasterCap solves the full capacitance matrix with a boundary-element method.
    - Floating conductors (the dummy gates at the cell edges) are grounded, as Calibre does.
 3. **Resistance.**
    - KLayout's `RNetExtractor` turns each signal net into a resistor network between its pin and
-     the transistor terminals: gate channels and source / drain regions.
+     the transistor terminals (gate channels and source / drain regions).
    - It counts squares on the gate, LIG, LISD and M1-M9, and adds the contacts and vias.
    - Supply nets (VDD*, VSS*, GND*, ...) stay ideal.
    - Nodes joined by less than 1 mOhm become one node, for example two transistors on one shared
-     diffusion.
+     diffusion. ngspice with the OSDI BSIM-CMG model fails to converge on micro-ohm resistors.
 4. **Distribution.**
    - Each net's ground and coupling capacitance is spread over its network nodes in proportion to
      the wire area nearest each node.
-   - The wire is cut into pieces of at most 50 nm.
    - A coupling goes from each node to the nearest node of the other net.
    - Ground capacitances go to VSS.
 
-## Process stack
+## Process description
 
-The stack is generated by `pdk/asap7/klayout/pex/gen_kpex_tech.py`, which writes
-`asap7_kpex_tech.pb.json`. z = 0 is the top of the shallow-trench oxide, and the fins are 32 nm
-tall.
+The description is generated by `pdk/asap7/klayout/pex/gen_pex_tech.py`, which writes
+`asap7_pex.json`. Heights are relative to the top of the fins (the source / drain surface). The
+fins stand 32 nm above the trench oxide.
 
-| conductor | GDS | z bottom (nm) | thickness (nm) | contact above |
-|---|---|---|---|---|
-| GATE | 7/0 | 0 | 56 | LIG sits on it (GCON = GATE & LIG) |
-| source / drain (LVS `sdx`) | ACTIVE - GATE | 32 | 1 | SDT 88/0, 44 nm, to LISD |
-| LIG | 16/0 | 56 | 48 | |
-| LISD | 17/0 | 77 | 27 | V0 18/0, 20 nm, to M1 |
-| M1 | 19/0 | 124 | 36 | V1, 36 nm |
-| M2 | 20/0 | 196 | 36 | V2, 36 nm |
-| M3 | 30/0 | 268 | 36 | V3, 36 nm |
-| M4 | 40/0 | 340 | 48 | V4, 48 nm |
-| M5 | 50/0 | 436 | 48 | V5, 48 nm |
-| M6 | 60/0 | 532 | 64 | V6, 64 nm |
-| M7 | 70/0 | 660 | 64 | V7, 64 nm |
-| M8 | 80/0 | 788 | 80 | V8, 64 nm |
-| M9 | 90/0 | 932 | 80 | |
+| conductor | z (nm) | from |
+|---|---|---|
+| substrate (plate) | -47 | calibrated: 15 nm under the trench oxide |
+| GATE | -32 … 24 | 56 nm thick (xACT 3D) |
+| source / drain node (plate) | 0, 1 nm off every gate | calibrated (xACT 3D: a 1 nm sliver) |
+| trench contact (SDT) | 0 … 37 | |
+| LIG | 24 … 64 | on the gate; top calibrated |
+| LISD | 37 … 64 | 27 nm thick (xACT 3D) |
+| V0 | 64 … 84 | 20 nm (QRC) |
+| M1 / V1 / M2 / V2 / M3 / V3 | 84 … 300, 36 nm each | xACT 3D thickness; via heights from QRC |
+| M4 / V4 / M5 / V5 | 48 nm each | QRC via heights; metal 2 × width |
+| M6 / V6 / M7 / V7 / M8 / V8 / M9 | 64 / 64 / 64 / 64 / 80 / 64 / 80 | QRC via heights; metal 2 × width |
 
-Where the numbers come from:
+**Dielectric.** There are two dielectrics:
 
-- **Thicknesses.** The gate, LIG, LISD, M1 and M2 thicknesses, and the 1 nm source / drain node,
-  come from the library's reference extraction. Those are the Calibre xACT 3D netlists in
-  `$ASAP7_STDCELLS/CDL/xAct3D_extracted`, which state `$layer=... $thickness=...` for every
-  resistor.
-  - The source / drain node is a 1 nm sliver on the fins, 0.5 nm from the gate, as in those netlists.
-  - The intrinsic gate capacitances are in the BSIM-CMG model.
-- **Via heights and dielectric.** These come from the library's QRC technology file
-  (`qrcTechFile_typ03_unscaledV02`). It is encrypted, but its plate-capacitance coefficients
-  between neighbouring layers are readable. With the layer thicknesses above, one dielectric
-  constant, **k = 3.23**, fits all of them. That gives V0 20 nm, V1-V3 36, V4 / V5 48 and V6-V8
-  64 nm.
-- **Upper metals.** M3-M9 thickness is 2 × the minimum width: the ASAP7 paper gives the metal and
-  via aspect ratio as 2:1.
+| region | k | basis |
+|---|---|---|
+| metal stack, above the middle of V0 | 3.23 | fits every plate capacitance between neighbouring layers in the library's QRC technology file (`qrcTechFile_typ03_unscaledV02`; its plate coefficients are readable) |
+| front end, below the middle of V0 | 4.6 | calibrated |
 
-Resistance:
+The front end is denser in a real process: nitride spacers, etch-stop liners and the gate stack
+sit between the gate and the source / drain.
 
-| | sheet (Ω/sq) | | via (Ω, nominal cut) |
+### Calibration
+
+The front-end numbers (gate height, substrate depth, source / drain gap, MOL height, front-end
+k) are fitted to the library's own reference extraction. Those are the Calibre xACT 3D netlists
+in `$ASAP7_STDCELLS/CDL/xAct3D_extracted`.
+
+- **Fit set:** the total capacitance of every pin and the couplings between pins of eight cells:
+  INVx1, INVx4, BUFx2, NAND2xp33, NOR2xp33, AOI21xp33, XOR2xp5, AND2x2.
+- **Score:** RMS of the log errors.
+- **Search:** coordinate descent, then a grid over front-end k and source / drain thickness.
+  - A thicker source / drain node improves the couplings a little but worsens the pin totals,
+    so the node stays a plate.
+- **Kept out of the fit:** a single k for everything also fits (k ≈ 4.3). It was rejected
+  because it would overstate every routing capacitance on M2 and up by a third.
+- **Reproducing it:** the fitting scripts are in `tests/pex/bench/` (see there).
+
+## Resistance
+
+| | sheet at drawn width (Ω/sq) | | via (Ω, nominal cut) |
 |---|---|---|---|
-| GATE | 7.143 | GCON (LIG on gate) | 10.43 (20 × 18 nm) |
-| LIG | 8.334 | SDT (trench contact) | 10.38 (24 × 54 nm) |
-| LISD | 11.243 | V0 | 19.38 (18 × 18 nm) |
-| M1 | 1.268 | V1-V3 | 17.2 (18 × 18 nm) |
-| M2 / M3 | 0.535 / 0.563 | V4 / V5 | 11.8 (24 × 24 nm) |
-| M4 / M5 | 0.433 / 0.456 | V6 / V7 | 8.2 (32 × 32 nm) |
-| M6 / M7 | 0.380 / 0.400 | V8 | 6.3 (40 × 40 nm) |
-| M8 / M9 | 0.338 / 0.356 | | |
+| GATE | 6.80 | GCON (LIG on gate) | 10.4 (20 × 18 nm) |
+| LIG | 8.33 | SDT (trench contact) | none (xACT 3D has none) |
+| LISD | 10.0 | V0 | 19.4 (18 × 18 nm) |
+| M1-M3 | 4.20 | V1-V3 | 19.5 (18 × 18 nm) |
+| M4 / M5 | 2.87 | V4 / V5 | 11.0 (24 × 24 nm) |
+| M6 / M7 | 2.02 | V6 / V7 | 6.2 (32 × 32 nm) |
+| M8 / M9 | 1.56 | V8 | 4.0 (40 × 40 nm) |
 
-- **M1-M9 and V1-V8** are OpenROAD-flow-scripts `platforms/asap7/setRC.tcl`. Its per-µm values
-  are multiplied by the minimum width, and it derives them from the same QRC file.
-- **The middle of line** (gate, LIG, LISD, GCON, SDT, V0) uses medians of the reference
-  extraction.
-- KLayout takes a via as an area resistance (Ω·µm²), so a larger cut has less resistance.
-- **M1 discrepancy.** OpenROAD's M1 (70 Ω/µm at 18 nm) is about 3× lower than what the xACT 3D
-  netlists use (about 220 Ω/µm on their effective width). M1 runs inside a cell are short (tens of
-  nm), so it matters little there. It does matter for long M1 routes.
+**Default, `reference`:** this is what the xACT 3D netlists use.
+
+- **M1 / M2:** 3.03 Ω/sq on a width 5 nm under drawn, i.e. about 230 Ω/µm for a minimum wire.
+  Folded into the drawn width at the minimum width, that is 4.20 Ω/sq. It is exact for minimum
+  wires and a little high for wide ones; vias keep their full landing.
+- **M3-M9:** the same resistivity, scaled by thickness and width.
+- **Gate, LISD, LIG:** the reference values, folded the same way (the gate is drawn 1 nm
+  narrower than xACT models it, LISD 3.8 nm wider).
+- **Vias:** a single specific resistance from xACT's V1, 6.3e-3 Ω·µm² (19.5 Ω per 18 × 18 nm),
+  for V1-V8. OpenROAD's V4-V8 values are within 25 % of it.
+
+**`--rmodel openroad`:** OpenROAD-flow-scripts `platforms/asap7/setRC.tcl` for M1-M9 and V1-V8.
+Its M1 is about 3× lower than the reference and its M2 about 8× lower. 30 Ω/µm for an
+18 × 36 nm copper wire is close to bulk copper, which is not physical at this size.
+
+Resistance hardly moves the delay of a cell: a transistor's on-resistance is several kΩ. It
+matters for long routes.
 
 ## Against the library's reference extraction
 
-The table shows total capacitance per pin (fF) against the Calibre xACT 3D netlists of the same
-cells (ground caps of their `PM_<cell>%<net>` subcircuits plus their `cc_` couplings).
+The benchmark (`tests/pex/bench/bench.py`) runs 54 library cells (176 pins) and 21 delay arcs. It
+compares against the xACT 3D netlists (ground caps of their `PM_<cell>%<net>` subcircuits plus
+their `cc_` couplings).
 
-| cell | pin | OpenLayout | xACT 3D | |
+| | kpex, one dielectric (before) | this model |
+|---|---|---|
+| input pins: mean / RMS error | -1.5 % / 4.8 % | +3.4 % / 4.3 % |
+| output pins: mean / RMS error | -18.2 % / 19.0 % | -5.6 % / 7.6 % |
+| delay, 21 arcs (FO2): mean / RMS | -2.9 % / 4.6 % | -0.3 % / 3.7 % |
+| parasitic delay captured (vs schematic) | 89 % | 100 % |
+
+Examples (total capacitance per pin, fF):
+
+| cell | pin | before | now | xACT 3D |
 |---|---|---|---|---|
-| INVx1 | A | 0.199 | 0.210 | -5 % |
-| | Y | 0.140 | 0.192 | -27 % |
-| NAND2xp33 | A | 0.148 | 0.142 | +5 % |
-| | B | 0.140 | 0.135 | +3 % |
-| | Y | 0.115 | 0.144 | -20 % |
-| INVx4 | A | 0.675 | 0.707 | -5 % |
-| | Y | 0.338 | 0.388 | -13 % |
-| BUFx2 | A | 0.181 | 0.223 | -19 % |
-| | Y | 0.184 | 0.208 | -12 % |
-| XOR2xp5 | A | 0.395 | 0.385 | +3 % |
-| | B | 0.348 | 0.349 | 0 % |
-| | Y | 0.233 | 0.305 | -23 % |
+| INVx1 | A / Y | 0.199 / 0.140 | 0.217 / 0.167 | 0.210 / 0.192 |
+| INVx4 | A / Y | 0.675 / 0.338 | 0.726 / 0.393 | 0.707 / 0.388 |
+| BUFx2 | A / Y | 0.181 / 0.184 | 0.204 / 0.209 | 0.223 / 0.208 |
+| NAND2xp33 | A / B / Y | 0.148 / 0.140 / 0.115 | 0.151 / 0.141 / 0.131 | 0.142 / 0.135 / 0.144 |
+| XOR2xp5 | A / B / Y | 0.395 / 0.349 / 0.233 | 0.404 / 0.363 / 0.271 | 0.385 / 0.349 / 0.305 |
+| FAx1 | A / CON / SN | 0.708 / 0.417 / 0.215 | 0.721 / 0.457 / 0.241 | 0.678 / 0.447 / 0.242 |
+| DFFHQNx1 | CLK / D / QN | 0.186 / 0.213 / 0.148 | 0.183 / 0.208 / 0.169 | 0.175 / 0.200 / 0.194 |
 
-- **Inputs** come within a few %.
-- **Outputs** come out 10-30 % under. The gate-to-drain coupling is about 25 % below xACT's, and so
-  is the drain's capacitance to the neighbouring dummy gate.
-  - xACT's front-end model (spacers, raised source / drain) is not public, and the one dielectric
-    here is a simplification.
-  - A nitride spacer (k 5-7) or a thicker source / drain node closes the coupling gap. However, it
-    pushes the gate capacitances 25-80 % over and makes FasterCap 10-50× slower, so the plain
-    stack stays.
-- **Delay.** A fan-out-2 INVx1 goes from 4.9 ps (schematic) to 7.1 ps (extracted).
+**What remains.**
 
-## Licensing
+- **Inputs** come out a few % high.
+- **Single-stage outputs** come out 5-13 % low (outputs behind a buffer stage match). That is
+  the source / drain node's coupling to the gates beside it.
+- **Delay:**
+  - Most arcs come within 0.5-3 % of xACT 3D, slightly under.
+  - Three arcs come out 7-10 % slower: AOI21 A1→Y, OAI21 B→Y and XOR2 B→Y. Each goes through an
+    internal node of a transistor stack. The reference **extracts nothing** on unlabelled internal
+    nets (`noxref_*`): not one capacitor in its netlists touches one. So there the difference is
+    the reference leaving out real wiring (for AOI21's PMOS stack node, 0.14 fF of M1 / LISD).
 
-`python/openlayout/pex.py` uses KLayout-PEX, which is GPL-3.0-or-later, so that module is marked
-GPL-3.0-or-later too. FasterCap is LGPL-2.1 and runs as a separate program. KLayout itself is
-GPL. Keep this in mind when choosing a license for OpenLayout.
+## Speed
 
-## Install
+This is the capacitance solve alone (FasterCap on 4 cores). The whole `openlayout pex` adds about
+2-3 s for the LVS extraction.
 
-`setup/install.sh fastercap` builds FasterCap from source (pinned in `setup/versions.env`, with its
-LinAlgebra / Geometry siblings and wxWidgets 3.2) into `/usr/local/bin/FasterCap`.
-`setup/install.sh python` installs `klayout` and `klayout-pex` (pinned) into the venv.
-`openlayout doctor` runs the PEX tests.
+| FasterCap setting | INVx1 | NAND2x1 | XOR2xp5 | DFFHQNx1 | vs a converged solve |
+|---|---|---|---|---|---|
+| **default:** -a0.05, 30 nm panels | 1.2 s | 2.1 s | 2.8 s | 9.7 s | -3.6 … -5.3 % |
+| -a0.02, 30 nm panels | 1.3 s | 4.1 s | 6.2 s | 22 s | -2.0 … -3.6 % |
+| -a0.05, 60 nm panels | 0.4 s | 2.4 s | 1.4 s | 5.2 s | -4.5 … -5.7 % |
+| converged: -a0.01, 15 nm panels | 101 s | 302 s | 27 s | 153 s | — |
+| (before: kpex, one dielectric) | ~8 s | | | | |
+
+- **The default is a few % under a converged solve, uniformly.** The error never exceeds its RMS
+  by much, so it is a bias rather than noise.
+- **The calibration absorbs it.** It ran at the same settings, and the remaining cell-to-cell
+  spread is about ±1 %. If the solver settings change (`MAX_EDGE`, `ACCURACY` in `pex.py`), the
+  front end has to be recalibrated.
+- **What changed from kpex:**
+  - The substrate no longer touches the gate (coincident faces stall the solver).
+  - The panels are rectangles at most 30 nm long rather than a fine Delaunay mesh.
+  - The window around the cell is 0.3 µm.
 
 ## Tests
 
 - `tests/pex/test_pex.py` (in `openlayout doctor`):
-  - INVx1 and NAND2xp33 against xACT 3D (inputs ±15 %, outputs -35 / +10 %);
+  - the field solver against parallel plates (one and two dielectrics);
+  - INVx1 and NAND2xp33 against xACT 3D (inputs ±10 %, outputs -20 / +10 %);
   - transistor cards and pin order;
   - resistor networks on the signal nets, with the supplies ideal;
-  - the input network reaching both gates;
+  - the output network against xACT 3D's, and `--rmodel openroad` below it;
   - a hierarchical layout (placed cell, its own labels), giving the same capacitances as the cell;
   - `--mode c`;
   - a post-layout ngspice simulation in which the parasitics slow the inverter down.
+- `tests/pex/bench/`: the benchmark and calibration scripts above (minutes to hours, not in
+  doctor).
 - `tests/klayout/test_lvs_gui.py`: OpenLayout > Run PEX on a workarea cell.
 - `tests/python/test_hub.py`: the hub's PEX button.
+
+## Install
+
+`setup/install.sh fastercap` builds FasterCap from source (pinned in `setup/versions.env`, with its
+LinAlgebra / Geometry siblings and wxWidgets 3.2) into `/usr/local/bin/FasterCap`. FasterCap is
+LGPL-2.1 and runs as a separate program. `setup/install.sh python` installs the `klayout` Python
+module into the venv. `openlayout doctor` runs the PEX tests.

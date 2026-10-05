@@ -12,7 +12,7 @@ from pathlib import Path
 
 import klayout.db as kdb
 
-from openlayout import pex
+from openlayout import fieldsolver, pex
 
 STD = Path(os.environ["ASAP7_STDCELLS"])
 LIB_GDS = STD / "GDS" / "asap7sc7p5t_28_R_220121a.gds"
@@ -63,9 +63,22 @@ def netlist(path):
     return lines, sub.split()[2:]
 
 
+# ---- the field solver: a parallel-plate capacitor, one and two dielectrics -------------------------
+# 1 x 1 um plates 100 nm apart; k = 4 in the lowest 20 nm and 1 above: series plates give
+# eps0 / (0.02 / 4 + 0.08) = 1.04e-16 F, the other way round 2.21e-16 F (plus some 15-25 % fringe)
+sq = kdb.Region(kdb.Box(0, 0, 1000, 1000))
+plates = {"top": [(sq, 0.1, 0.1)], "bottom": [(sq, 0.0, 0.0)]}
+win = kdb.Box(-1000, -1000, 2000, 2000)
+c1 = -fieldsolver.capacitance_matrix(plates, 0.001, 1.0, TMP / "plate1", (), win, 0.1)[1][0][1]
+c41 = -fieldsolver.capacitance_matrix(plates, 0.001, 4.0, TMP / "plate41", [(0.02, 1.0)], win, 0.1)[1][0][1]
+c14 = -fieldsolver.capacitance_matrix(plates, 0.001, 1.0, TMP / "plate14", [(0.02, 4.0)], win, 0.1)[1][0][1]
+check(f"field solver: plates {c1:.3g} F in vacuum (8.85e-17 + fringe)", 1.0 < c1 / 8.854e-17 < 1.3)
+check(f"field solver: dielectric layers {c41:.3g} / {c14:.3g} F (1.04e-16 / 2.21e-16 + fringe)",
+      1.0 < c41 / 1.0417e-16 < 1.35 and 1.0 < c14 / 2.2135e-16 < 1.3)
+
 # ---- library cells against the reference ----------------------------------------------------------
-# (FasterCap in one k = 3.23 dielectric: the gate nets come within a few %, the outputs some 10-30 %
-# under xACT 3D, whose source / drain model adds more around the gates - docs/PEX.md)
+# (the front end is calibrated on these cells and more: inputs come within a few %, single-stage
+# outputs some 5-15 % under xACT 3D - docs/PEX.md)
 for cell, pins in (("INVx1", ["A", "Y"]), ("NAND2xp33", ["A", "B", "Y"])):
     name = f"{cell}_ASAP7_75t_R"
     out = TMP / f"{cell}.pex.spice"
@@ -74,7 +87,7 @@ for cell, pins in (("INVx1", ["A", "Y"]), ("NAND2xp33", ["A", "B", "Y"])):
     lines, order = netlist(out)
     for p in pins:
         ours, theirs = s["total_fF"][p], ref[p] * 1e15
-        lo, hi = (0.85, 1.15) if p != "Y" else (0.65, 1.10)
+        lo, hi = (0.90, 1.10) if p != "Y" else (0.80, 1.10)
         check(f"{cell} C({p}) {ours:.3f} fF vs xACT 3D {theirs:.3f} fF", lo <= ours / theirs <= hi)
     devs = [l for l in lines if l.startswith("N")]
     check(f"{cell}: {len(devs)} transistors, BSIM-CMG cards", len(devs) == (2 if cell == "INVx1" else 4)
@@ -89,6 +102,13 @@ for cell, pins in (("INVx1", ["A", "Y"]), ("NAND2xp33", ["A", "B", "Y"])):
 lines, _ = netlist(TMP / "INVx1.pex.spice")
 gate_r = [float(l.split()[3]) for l in lines if l.startswith("R") and " A" in l]
 check("INVx1: the input network reaches both gates", len(gate_r) >= 3 and all(5 < r < 100 for r in gate_r), gate_r)
+# the output: source / drain -> V0 -> M1 to the pin, 40-50 Ohm in xACT 3D; OpenROAD's M1 is ~3x lower
+out_r = [float(l.split()[3]) for l in lines if l.startswith("R") and " Y" in l]
+pex.extract(LIB_GDS, "INVx1_ASAP7_75t_R", TMP / "INVx1_orfs.spice", rmodel="openroad")
+lines_o, _ = netlist(TMP / "INVx1_orfs.spice")
+out_o = [float(l.split()[3]) for l in lines_o if l.startswith("R") and " Y" in l]
+check("INVx1: output network like xACT 3D's; --rmodel openroad lower", out_r and all(35 < r < 90 for r in out_r)
+      and max(out_o) < min(out_r), (out_r, out_o))
 
 # ---- a hierarchical layout: a placed INVx1 under labels of its own ---------------------------------
 lib = kdb.Layout()

@@ -22,7 +22,8 @@ usage: openlayout <command> [args]
   lvs <layout.gds> [--cell NAME] [--schematic cell.sch|cell.spice] [--report FILE] [--stdcells check]
                             layout versus schematic (default schematic: <cell>.sch next to the layout;
                             none: the standard-cell CDL); results in <layout>.lvsdb (netlist browser)
-  pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--schematic cell.sch|cell.spice] [--keep]
+  pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--rmodel reference|openroad]
+      [--schematic cell.sch|cell.spice] [--keep]
                             parasitic extraction: FasterCap 3D field solver capacitances + wire / via
                             resistor networks; a SPICE subcircuit, default <cell>.pex.spice next to
                             the layout (--mode c: capacitances only)
@@ -149,7 +150,7 @@ case "$cmd" in
       case "$1" in
         --cell) cell="$2"; args+=(--cell "$2"); shift 2 ;;
         --schematic) sch="$(readlink -f "$2")"; shift 2 ;;
-        --out|--mode) args+=("$1" "$2"); shift 2 ;;
+        --out|--mode|--rmodel) args+=("$1" "$2"); shift 2 ;;
         --keep) args+=(--keep); shift ;;
         *) echo "openlayout pex: unknown option '$1'" >&2; exit 1 ;;
       esac
