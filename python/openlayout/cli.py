@@ -4,8 +4,8 @@
   openlayout hubcmd select   <file> [--cell NAME]          show the cell in the Library Manager
   openlayout hubcmd netlist  <file>                        netlist the cell (hub CIW shows output)
   openlayout hubcmd simulate <file>                        netlist + simulate the cell
-  openlayout hubcmd maestro  <file>                        the cell's Maestro (simulation setup)
-  openlayout hubcmd viva     <file>                        the waveform viewer
+  openlayout hubcmd olsim    <file>                        the cell's OLSim (simulation setup)
+  openlayout hubcmd waves    <file>                        the waveform viewer
   openlayout hubcmd ping     [<file>]
 """
 import argparse
@@ -39,7 +39,7 @@ def hub_port(path: str | None) -> int | None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="openlayout hubcmd", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["open", "select", "netlist", "simulate", "maestro", "viva", "ping"])
+    ap.add_argument("cmd", choices=["open", "select", "netlist", "simulate", "olsim", "waves", "ping"])
     ap.add_argument("path", nargs="?")
     ap.add_argument("view", nargs="?")
     ap.add_argument("--cell")

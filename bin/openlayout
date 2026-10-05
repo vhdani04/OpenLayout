@@ -16,11 +16,11 @@ usage: openlayout <command> [args]
   xschem [args]             start xschem in the current workarea
   klayout [args]            start KLayout (editor mode, ASAP7 technology)
   sim <netlist.sp>          run ngspice in batch mode (BSIM-CMG + ASAP7 cards preloaded)
-  maestro [<lib> <cell> | setup.maestro]
+  olsim [<lib> <cell> | setup.olsim]
                             the simulation environment (tests, variables, corners, vector files,
-                            outputs with specs); `maestro run ...` runs it in batch and prints the
-                            results table, `maestro new <lib> <cell>` creates a testbench's setup
-  viva [file.raw ... | <maestro history dir>]
+                            outputs with specs); "olsim run ..." runs it in batch and prints the
+                            results table, "olsim new <lib> <cell>" creates a testbench's setup
+  waves [file.raw ... | <olsim history dir>]
                             the waveform viewer
   drc <layout.gds> [--cell NAME] [--report FILE]
                             ASAP7 design rule check (KLayout deck from the DRM); prints a summary
@@ -117,8 +117,8 @@ case "$cmd" in
   sim)
     [ $# -ge 1 ] || { usage; exit 1; }
     exec ngspice -b "$@" ;;
-  maestro|viva)
-    PYTHONPATH="$OPENLAYOUT_HOME/python" exec "$OPENLAYOUT_ROOT/venv/bin/python" -m openlayout.maestro.cli "$cmd" "$@" ;;
+  olsim|waves)
+    PYTHONPATH="$OPENLAYOUT_HOME/python" exec "$OPENLAYOUT_ROOT/venv/bin/python" -m openlayout.olsim.cli "$cmd" "$@" ;;
   lvs)
     [ $# -ge 1 ] || { usage; exit 1; }
     gds="$(readlink -f "$1")"; shift; cell=""; report=""; sch=""; std=""
@@ -267,11 +267,11 @@ case "$cmd" in
 '
     else printf '  [FAIL] parasitic extraction
 '; grep -E "^FAIL|rror" <<< "$out" | head -4 | sed 's/^/         /'; ok=0; fi
-    echo "Simulation environment (Maestro, waveform viewer):"
-    out="$(cd "$OPENLAYOUT_HOME" && PYTHONPATH="$OPENLAYOUT_HOME/python" QT_QPA_PLATFORM=offscreen timeout 900 "$OPENLAYOUT_ROOT/venv/bin/python" -m pytest -q -p no:cacheprovider tests/python/test_maestro.py tests/python/test_maestro_gui.py 2>&1 || true)"
+    echo "Simulation environment (OLSim, waveform viewer):"
+    out="$(cd "$OPENLAYOUT_HOME" && PYTHONPATH="$OPENLAYOUT_HOME/python" QT_QPA_PLATFORM=offscreen timeout 900 "$OPENLAYOUT_ROOT/venv/bin/python" -m pytest -q -p no:cacheprovider tests/python/test_olsim.py tests/python/test_olsim_gui.py 2>&1 || true)"
     last="$(tail -1 <<< "$out")"
     if grep -q "passed" <<< "$last" && ! grep -qE "failed|error" <<< "$last"; then printf '  [ok]   corners / sweeps / vector files / specs / post-layout, results table, plots, cursors (%s)\n' "${last%% in *}"
-    else printf '  [FAIL] Maestro\n'; grep -E "^FAILED|Error" <<< "$out" | head -4 | sed 's/^/         /'; ok=0; fi
+    else printf '  [FAIL] OLSim\n'; grep -E "^FAILED|Error" <<< "$out" | head -4 | sed 's/^/         /'; ok=0; fi
     echo "xschem netlist + simulate:"
     tmp="$(mktemp -d)"
     mkdir -p "$tmp/home"   # xschem writes ~/.xschem: keep the user's untouched

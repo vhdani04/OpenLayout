@@ -1,4 +1,4 @@
-"""Maestro and the waveform viewer in the hub (offscreen Qt): a testbench schematic's maestro view,
+"""OLSim and the waveform viewer in the hub (offscreen Qt): a testbench schematic's olsim view,
 variables copied from the cellview, a run across corners, the results table, plots, cursors,
 the calculator and exports."""
 import os
@@ -33,7 +33,7 @@ def hub(app, tmp_path):
     (tb / "tb_inv.sch").write_text(sch.replace("name=VDD value=0.7", r"name=VDD value=\{vdd\}"))
     w = MainWindow(wa)
     yield w
-    for m in getattr(w, "_maestros", {}).values():
+    for m in getattr(w, "_olsims", {}).values():
         m._dirty = False
         m.close()
     w.close()
@@ -48,12 +48,12 @@ def wait_run(app, m, timeout=180):
         app.processEvents()
 
 
-def test_maestro_in_the_hub(hub, app):
+def test_olsim_in_the_hub(hub, app):
     cell = hub.workarea.library("cpu8").cell("tb_inv")
     hub.lm.select("cpu8", "tb_inv")
-    assert hub.a_maestro.isEnabled()
-    m = hub.open_maestro(cell)
-    assert cell.view("maestro") is not None                      # created for the testbench
+    assert hub.a_olsim.isEnabled()
+    m = hub.open_olsim(cell)
+    assert cell.view("olsim") is not None                      # created for the testbench
     assert m.t_lib.currentText() == "cpu8" and m.t_cell.currentText() == "tb_inv"
 
     # Variables > Copy From Cellview finds {vdd}
@@ -87,19 +87,19 @@ def test_maestro_in_the_hub(hub, app):
     v = hub.viewer()
     assert sum(len(s.curves) for s in v.strips) == 5
     # the setup was saved with the run and reloads
-    from openlayout.maestro.setup import Setup
-    s = Setup.load(cell.view("maestro").path)
+    from openlayout.olsim.setup import Setup
+    s = Setup.load(cell.view("olsim").path)
     assert s.variables == {"vdd": "0.7"} and s.tests[0].analyses[0].type == "dc" and len(s.corners) == 4
 
 
 def test_viewer_cursors_calculator_export(hub, app, tmp_path):
-    from openlayout.maestro.engine import Run
-    from openlayout.maestro.setup import Analysis, Output, Setup
-    from openlayout.maestro.setup import Test as MTest
+    from openlayout.olsim.engine import Run
+    from openlayout.olsim.setup import Analysis, Output, Setup
+    from openlayout.olsim.setup import Test as MTest
     (tmp_path / "rc.sp").write_text("* RC step\nV1 in 0 pwl(0 0 10p 0 11p 1)\nR1 in out 1k\nC1 out 0 10f\n")
     s = Setup(tests=[MTest("t", {"netlist": "rc.sp"}, [Analysis("tran", True, {"step": "0.1p", "stop": "100p"})])],
               outputs=[Output("t", "out", 'v("out")', plot=True)], jobs=1)
-    s.path = str(tmp_path / "rc.maestro")
+    s.path = str(tmp_path / "rc.olsim")
     h = Run(s, tmp_path / "res").run()
     v = hub.viewer()
     v.clear_all()
@@ -141,10 +141,10 @@ def test_viewer_cursors_calculator_export(hub, app, tmp_path):
 
 
 def test_vector_check_and_parametric_plots(hub, app, tmp_path):
-    from openlayout.hub.maestro_window import MaestroWindow
-    from openlayout.maestro.engine import Run
-    from openlayout.maestro.setup import Analysis, Output, Setup
-    from openlayout.maestro.setup import Test as MTest
+    from openlayout.hub.olsim_window import OLSimWindow
+    from openlayout.olsim.engine import Run
+    from openlayout.olsim.setup import Analysis, Output, Setup
+    from openlayout.olsim.setup import Test as MTest
     lines = ["* 4-bit inverter bank", "Vdd vdd 0 0.7"]
     for i in range(4):
         lines += [f"N{i}a q[{i}] d[{i}] 0 0 nmos_rvt l=20n nfin=2", f"N{i}b q[{i}] d[{i}] vdd vdd pmos_rvt l=20n nfin=2",
@@ -156,9 +156,9 @@ def test_vector_check_and_parametric_plots(hub, app, tmp_path):
                            ["bank.vec"])],
               variables={"cl": "0.5f 1f 2f"},
               outputs=[Output("vec", "tq0", 'delay(v("d[0]"), v("q[0]"), 0.35, 0.35, "rise", "fall")')], jobs=3)
-    s.save(tmp_path / "bank.maestro")
-    m = MaestroWindow(tmp_path / "bank.maestro", None, tmp_path / "res", viewer=hub.viewer())
-    m.history = Run(Setup.load(tmp_path / "bank.maestro"), tmp_path / "res").run()
+    s.save(tmp_path / "bank.olsim")
+    m = OLSimWindow(tmp_path / "bank.olsim", None, tmp_path / "res", viewer=hub.viewer())
+    m.history = Run(Setup.load(tmp_path / "bank.olsim"), tmp_path / "res").run()
     m.show_results()
     v = hub.viewer()
     v.clear_all()
@@ -181,7 +181,7 @@ def test_vector_check_and_parametric_plots(hub, app, tmp_path):
 
 def test_raw_file_in_viewer(app, tmp_path):
     import subprocess
-    from openlayout.hub.viva import Viewer
+    from openlayout.hub.waveview import Viewer
     (tmp_path / "t.sp").write_text("* ac\nV1 a 0 ac 1\nR1 a b 1k\nC1 b 0 1f\n.ac dec 10 1e6 1e13\n.end\n")
     subprocess.run(["ngspice", "-b", "-r", "t.raw", "t.sp"], cwd=tmp_path, capture_output=True, timeout=120)
     v = Viewer()

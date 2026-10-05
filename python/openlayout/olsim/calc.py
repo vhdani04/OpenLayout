@@ -1,4 +1,4 @@
-"""The waveform calculator: Maestro output expressions and the viewer's calculator.
+"""The waveform calculator: OLSim output expressions and the viewer's calculator.
 
 Expressions are Python syntax over waveforms and numbers, with SPICE suffixes allowed on numbers
 (10p, 1.5meg, 3G) and Cadence-calculator style functions:

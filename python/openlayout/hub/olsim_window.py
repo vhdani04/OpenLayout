@@ -1,8 +1,8 @@
-"""The Maestro window (like Cadence ADE Maestro): one setup - tests, design variables, corners,
+"""The OLSim (OpenLayoutSim) window: one setup - tests, design variables, corners,
 outputs with specs - run with ngspice in parallel, results as a table of outputs x points
-(pass / fail coloured), waveforms in the viewer (viva.py).
+(pass / fail coloured), waveforms in the viewer (waves.py).
 
-    openlayout maestro [setup.maestro | <lib> <cell>]      (also: the hub, a cell's maestro view)
+    openlayout olsim [setup.olsim | <lib> <cell>]      (also: the hub, a cell's olsim view)
 """
 from __future__ import annotations
 
@@ -19,9 +19,9 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
                                QTableWidgetItem, QTabWidget, QToolBar, QTreeWidget, QTreeWidgetItem,
                                QVBoxLayout, QWidget)
 
-from ..maestro.calc import fmt, guess_unit, si, variable_unit
-from ..maestro.engine import History, Run, delete_history, design_variables, histories
-from ..maestro.setup import (ANALYSIS_DEFAULTS, ANALYSIS_TYPES, SECTIONS, Analysis, Corner, Output, Setup,
+from ..olsim.calc import fmt, guess_unit, si, variable_unit
+from ..olsim.engine import History, Run, delete_history, design_variables, histories
+from ..olsim.setup import (ANALYSIS_DEFAULTS, ANALYSIS_TYPES, SECTIONS, Analysis, Corner, Output, Setup,
                              Test, default_setup)
 from ..workarea import Workarea
 from . import theme
@@ -68,7 +68,7 @@ def _kv(text) -> dict:
     return out
 
 
-class MaestroWindow(QMainWindow):
+class OLSimWindow(QMainWindow):
     def __init__(self, setup_path, workarea: Workarea | None = None, results_dir=None, viewer=None, parent=None):
         super().__init__(parent)
         self.setup_path = Path(setup_path)
@@ -77,7 +77,7 @@ class MaestroWindow(QMainWindow):
         self.setup.path = str(self.setup_path)
         cell = workarea.cell_for_path(self.setup_path) if workarea else None
         self.results_dir = Path(results_dir) if results_dir else (
-            workarea.run_dir(cell) / "maestro" if cell else self.setup_path.parent / f"{self.setup_path.stem}.results")
+            workarea.run_dir(cell) / "olsim" if cell else self.setup_path.parent / f"{self.setup_path.stem}.results")
         self._viewer = viewer
         self.run = None
         self.history: History | None = None
@@ -93,8 +93,8 @@ class MaestroWindow(QMainWindow):
 
     # ---- layout ---------------------------------------------------------------------------------
     def _build(self):
-        tb = QToolBar("Maestro")
-        tb.setObjectName("maestro")
+        tb = QToolBar("OLSim")
+        tb.setObjectName("olsim")
         self.addToolBar(tb)
 
         def act(text, slot, key=None, tip=None):
@@ -316,7 +316,7 @@ class MaestroWindow(QMainWindow):
             self._title()
 
     def _title(self):
-        self.setWindowTitle(f"Maestro - {self.setup_path.name}{' *' if self._dirty else ''}")
+        self.setWindowTitle(f"OLSim - {self.setup_path.name}{' *' if self._dirty else ''}")
 
     def load_setup(self):
         self._loading = True
@@ -549,7 +549,7 @@ class MaestroWindow(QMainWindow):
             self._mark()
 
     def copy_variables(self):
-        """Like ADE's Variables > Copy From Cellview: the {names} the testbench uses."""
+        """Variables > Copy from Cellview: the {names} the testbench uses."""
         self._read_test()
         t = self.setup.test(self._current_test)
         try:
@@ -572,7 +572,7 @@ class MaestroWindow(QMainWindow):
             self._mark()
 
     def _calc_help(self):
-        from ..maestro import calc
+        from ..olsim import calc
         QMessageBox.information(self, "Calculator", calc.__doc__)
 
     # ---- data view ------------------------------------------------------------------------------
@@ -678,7 +678,7 @@ class MaestroWindow(QMainWindow):
             return
         setup = self.read_setup()
         try:
-            setup.save(self.setup_path)                # Maestro saves the setup with each run
+            setup.save(self.setup_path)                # OLSim saves the setup with each run
             self._dirty = False
             self._title()
             n = len(setup.points())
@@ -716,7 +716,7 @@ class MaestroWindow(QMainWindow):
         self.a_stop.setEnabled(False)
         if self.run.error:
             self.log.appendPlainText(f"ERROR: {self.run.error}")
-            QMessageBox.warning(self, "Maestro", self.run.error)
+            QMessageBox.warning(self, "OLSim", self.run.error)
             return
         self.log.appendPlainText(f"---- {self.run.name}: {self.run.history.data['status']}")
         self._load_histories(select=self.run.name)
@@ -862,7 +862,7 @@ class MaestroWindow(QMainWindow):
 
     def plot_vs(self, name, var):
         """A scalar output against a swept variable, one curve per corner (and per value of the
-        other swept variables) - Maestro's "plot across design points"."""
+        other swept variables) - OLSim's "plot across design points"."""
         groups = {}
         for p in self.history.points:
             e = self.history.result(p["index"]).get(name) or {}
@@ -956,13 +956,13 @@ class MaestroWindow(QMainWindow):
 
     def viewer(self):
         if self._viewer is None:
-            from .viva import Viewer
+            from .waveview import Viewer
             self._viewer = Viewer()
         return self._viewer
 
     def closeEvent(self, e):
         if self._dirty:
-            r = QMessageBox.question(self, "Maestro", "Save the setup changes?",
+            r = QMessageBox.question(self, "OLSim", "Save the setup changes?",
                                      QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
             if r == QMessageBox.Cancel:
                 e.ignore()
@@ -975,7 +975,7 @@ class MaestroWindow(QMainWindow):
 
 
 def main(argv=None):
-    from ..maestro.cli import locate
+    from ..olsim.cli import locate
     argv = list(sys.argv[1:] if argv is None else argv)
     app = QApplication.instance() or QApplication(sys.argv[:1])
     theme.apply(app)
@@ -983,10 +983,10 @@ def main(argv=None):
     if argv:
         f, results = locate(argv, wa)
     else:
-        f, _ = QFileDialog.getOpenFileName(None, "Maestro setup", ".", "Maestro (*.maestro)")
+        f, _ = QFileDialog.getOpenFileName(None, "OLSim setup", ".", "OLSim (*.olsim)")
         if not f:
             return 0
         f, results = locate([f], wa)
-    w = MaestroWindow(f, wa, results)
+    w = OLSimWindow(f, wa, results)
     w.show()
     return app.exec()

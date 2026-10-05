@@ -1,4 +1,4 @@
-"""Running a Maestro setup: netlist each test's testbench, build one ngspice deck per point
+"""Running a OLSim setup: netlist each test's testbench, build one ngspice deck per point
 (corner x swept variables), run them in parallel, evaluate the outputs and the vector checks,
 and keep everything in a history:
 
@@ -37,7 +37,7 @@ NOT_VARS = {"temper", "hertz", "time", "pi", "e", "abs", "sqrt", "exp", "log", "
             "nint", "u", "uramp", "agauss", "gauss", "unif", "aunif", "limit", "ternary_fcn", "if", "defined"}
 
 
-class MaestroError(Exception):
+class OLSimError(Exception):
     pass
 
 
@@ -49,12 +49,12 @@ def netlist_schematic(sch: Path, out_dir: Path, workarea_root: Path | None) -> s
     res = subprocess.run(argv, cwd=workarea_root or sch.parent, capture_output=True, text=True, timeout=300)
     net = out_dir / f"{sch.stem}.spice"
     if not net.is_file():
-        raise MaestroError(f"xschem could not netlist {sch}:\n{(res.stdout + res.stderr)[-600:]}")
+        raise OLSimError(f"xschem could not netlist {sch}:\n{(res.stdout + res.stderr)[-600:]}")
     return net.read_text()
 
 
 def clean_netlist(text: str):
-    """The testbench netlist without what Maestro controls: .control blocks, analyses and
+    """The testbench netlist without what OLSim controls: .control blocks, analyses and
     measurements, the model corner (.lib asap7.lib), .temp, .end. Returns (body, removed)."""
     out, removed = [], []
     skipping = in_control = False
@@ -92,7 +92,7 @@ def use_extracted(body: str, cell: str, pex_text: str):
     only instantiates it). Returns (body, how)."""
     new = subckt_block(pex_text, cell)
     if new is None:
-        raise MaestroError(f"the PEX netlist has no subcircuit {cell}")
+        raise OLSimError(f"the PEX netlist has no subcircuit {cell}")
     block = pex_text[new[0]:new[1]].rstrip() + "\n"
     old = subckt_block(body, cell)
     if old:
@@ -131,7 +131,7 @@ def spiceinit(threads: int | None) -> str:
 
 def deck(setup: Setup, point: Point, body: str, vecs: list) -> str:
     test = setup.test(point.test)
-    lines = [f"* OpenLayout Maestro: test {test.name}, point {point.index} ({point.label})",
+    lines = [f"* OpenLayout OLSim: test {test.name}, point {point.index} ({point.label})",
              f".lib asap7.lib {point.section}", f".temp {point.temp}"]
     params = [f"{k}={v}" for k, v in point.variables.items() if v != ""]
     if params:
@@ -259,7 +259,7 @@ class Run:
         if self._thread:
             self._thread.join(timeout)
         if self.error:
-            raise MaestroError(self.error)
+            raise OLSimError(self.error)
         return self.history
 
     def running(self):
@@ -277,7 +277,7 @@ class Run:
     def run(self, progress=None):
         self._safe_run(progress)
         if self.error:
-            raise MaestroError(self.error)
+            raise OLSimError(self.error)
         return self.history
 
     def _safe_run(self, progress):
@@ -301,12 +301,12 @@ class Run:
                 from ..workarea import Workarea
                 wa = Workarea(self.workarea_root) if self.workarea_root else Workarea.find(self.setup.directory)
                 if wa is None:
-                    raise MaestroError(f"test {test.name}: {d['lib']}/{d['cell']} needs a workarea")
+                    raise OLSimError(f"test {test.name}: {d['lib']}/{d['cell']} needs a workarea")
                 lib = wa.library(d["lib"])
                 cell = lib.cell(d["cell"]) if lib else None
                 view = cell.view("schematic") if cell else None
                 if view is None:
-                    raise MaestroError(f"test {test.name}: no schematic {d['lib']}/{d['cell']}")
+                    raise OLSimError(f"test {test.name}: no schematic {d['lib']}/{d['cell']}")
                 sch, root = view.path, wa.root
             else:
                 sch, root = self._resolve(d["schematic"]), self.workarea_root
@@ -327,24 +327,24 @@ class Run:
         if entry.endswith((".spice", ".sp")):
             p = self._resolve(entry)
             if not p.is_file():
-                raise MaestroError(f"no PEX netlist {p}")
+                raise OLSimError(f"no PEX netlist {p}")
             return p, p.name.split(".")[0], ""
         from ..workarea import Workarea
         wa = Workarea(self.workarea_root) if self.workarea_root else Workarea.find(self.setup.directory)
         if wa is None:
-            raise MaestroError(f"extracted {entry}: needs a workarea (or give the .pex.spice file)")
+            raise OLSimError(f"extracted {entry}: needs a workarea (or give the .pex.spice file)")
         lib_name, _, cell_name = entry.rpartition("/")
         libs = [wa.library(lib_name)] if lib_name else wa.libraries()
         cell = next((lb.cell(cell_name) for lb in libs if lb and lb.cell(cell_name)), None)
         if cell is None:
-            raise MaestroError(f"extracted {entry}: no such cell")
+            raise OLSimError(f"extracted {entry}: no such cell")
         layout = cell.view("layout")
         cands = [wa.verify_dir(cell) / f"{cell_name}.pex.spice"]
         if layout and not layout.gds_cell:
             cands.append(layout.path.parent / f"{cell_name}.pex.spice")
         found = [c for c in cands if c.is_file()]
         if not found:
-            raise MaestroError(f"{cell.key} has no PEX netlist yet - run PEX on its layout first")
+            raise OLSimError(f"{cell.key} has no PEX netlist yet - run PEX on its layout first")
         pex = max(found, key=lambda c: c.stat().st_mtime)
         stale = layout is not None and layout.path.is_file() and layout.path.stat().st_mtime > pex.stat().st_mtime
         return pex, cell_name, "the layout changed since this extraction" if stale else ""
@@ -357,13 +357,13 @@ class Run:
         (self.path / "setup.json").write_text(json.dumps(snapshot, indent=1) + "\n")
         points = setup.points()
         if not points:
-            raise MaestroError("nothing to run: no enabled test")
+            raise OLSimError("nothing to run: no enabled test")
         bodies, vecs, notes = {}, {}, []
         for test in {p.test for p in points}:
             t = setup.test(test)
             bodies[test], removed, pex_notes = self._netlist(t)
             if removed:
-                notes.append(f"{test}: ignored {len(removed)} line(s) of the testbench (Maestro sets analyses, "
+                notes.append(f"{test}: ignored {len(removed)} line(s) of the testbench (OLSim sets analyses, "
                              f"corner and temperature): {removed[0].strip()[:60]}")
             notes += pex_notes
             vecs[test] = [vectors.parse(self._resolve(v)) for v in t.vectors]

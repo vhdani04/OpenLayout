@@ -1,5 +1,5 @@
-"""The Maestro setup: tests, design variables, corners and outputs - one JSON file, the cell's
-`maestro` view (<cell>.maestro), like Cadence's maestro cellview.
+"""The OLSim setup: tests, design variables, corners and outputs - one JSON file, the cell's
+`olsim` view (<cell>.olsim).
 
     {"tests": [{"name": "tran", "design": {"lib": "cpu8", "cell": "tb_inv"},
                 "analyses": [{"type": "tran", "stop": "200p", "step": "0.5p"}],

@@ -1,9 +1,9 @@
-# Maestro and the waveform viewer
+# OLSim and the waveform viewer
 
-OpenLayout's simulation environment, modelled on Cadence ADE Maestro, together with its waveform
-viewer, modelled on ViVA.
+OLSim (OpenLayoutSim) is OpenLayout's simulation environment for setting up, running and checking
+simulations across corners and sweeps, together with its waveform viewer.
 
-- **Maestro** holds a cell's simulation setup:
+- **OLSim** holds a cell's simulation setup:
   - tests (a testbench, analyses, vector files);
   - design variables, which can sweep;
   - corners (model section, temperature, variables);
@@ -20,19 +20,19 @@ viewer, modelled on ViVA.
 Plotting uses [pyqtgraph](https://www.pyqtgraph.org) (MIT), which is fast with millions of points.
 
 ```
-openlayout maestro <lib> <cell>               the Maestro window of a testbench cell (or a .maestro file)
-openlayout maestro run <lib> <cell> [--jobs N] batch run: progress, the results table, RESULT line
-openlayout maestro new <lib> <cell>           create the cell's maestro view
-openlayout viva [file.raw ... | history dir]  the waveform viewer
+openlayout olsim <lib> <cell>               the OLSim window of a testbench cell (or a .olsim file)
+openlayout olsim run <lib> <cell> [--jobs N] batch run: progress, the results table, RESULT line
+openlayout olsim new <lib> <cell>           create the cell's olsim view
+openlayout waves [file.raw ... | history dir]  the waveform viewer
 ```
 
 From the hub:
 
-- **Tools > Maestro (F9)** on a testbench cell creates its `maestro` view the first time. It shows
-  as the M chip in the Library Manager; double-click it to open it.
+- **Tools > OLSim (F9)** on a testbench cell creates its `olsim` view the first time. It shows
+  as the O chip in the Library Manager; double-click it to open it.
 - **Tools > Waveform Viewer** opens the viewer.
-- **CIW:** `ol.maestro(lib, cell)` and `ol.viva()` do the same.
-- **xschem:** the OpenLayout menu has Maestro and Waveform Viewer entries for the schematic being
+- **CIW:** `ol.olsim(lib, cell)` and `ol.waves()` do the same.
+- **xschem:** the OpenLayout menu has OLSim and Waveform Viewer entries for the schematic being
   edited.
 
 ## The testbench
@@ -41,10 +41,10 @@ A testbench is an ordinary xschem schematic: the design, supply and input source
 
 - **Design variables:** write `{vdd}`, `{cload}`, … in source and component values. Variables >
   Copy from Cellview finds them.
-- **Maestro decides the rest:** the analyses, the model corner (`.lib asap7.lib <section>`) and the
+- **OLSim decides the rest:** the analyses, the model corner (`.lib asap7.lib <section>`) and the
   temperature. Analysis statements, `.control` blocks, `.meas`, `.lib asap7.lib` and `.temp` in
   the testbench are dropped, with a note in the Log tab. An existing testbench with its own
-  `.control` block still works under Maestro.
+  `.control` block still works under OLSim.
 - **Other files:** a test can also point at a schematic file or a SPICE netlist (`.sp`), with no
   workarea needed.
 
@@ -78,7 +78,7 @@ copy or delete tests.
   - An expression that gives a number goes into the results table.
   - Specs: `< 10p`, `<= 1n`, `> 1G`, `>= 0`, `== 0`, `range 0.3 0.4`.
 
-The setup is the cell's `<cell>.maestro` file (JSON). It is saved with every run, and also by
+The setup is the cell's `<cell>.olsim` file (JSON). It is saved with every run, and also by
 Save (Ctrl+S).
 
 ## The calculator
@@ -158,7 +158,7 @@ F 0
     - a status cell shows the point's deck and log.
   - Right-click: Plot Across All Points, Plot vs ‹variable›, Plot Vector Check, Open Point in Viewer,
     Show Deck and Log.
-- **Histories:** every run is a history (`Interactive.1`, `.2`, …) in `sim/<lib>/<cell>/maestro/`
+- **Histories:** every run is a history (`Interactive.1`, `.2`, …) in `sim/<lib>/<cell>/olsim/`
   (in the workarea; standalone: next to the setup file). Pick one in the Results tab's list.
 
 ```
@@ -169,13 +169,13 @@ Interactive.3/setup.json                 the setup as run
              history.json                points, values, pass / fail, notes
 ```
 
-`openlayout maestro run` prints the same table on the terminal and ends with
-`RESULT MAESTRO <history> points=N pass=P fail=F errors=E`. It exits non-zero on failures, so it can
+`openlayout olsim run` prints the same table on the terminal and ends with
+`RESULT OLSIM <history> points=N pass=P fail=F errors=E`. It exits non-zero on failures, so it can
 gate scripts.
 
 ## Post-layout simulation
 
-**Post-layout** in a test lists cells to simulate extracted, like ADE's config view. The test then
+**Post-layout** in a test lists cells to simulate extracted. The test then
 uses the cell's latest PEX netlist instead of its schematic subcircuit.
 
 - **Where the netlist comes from:** the hub's PEX button writes `verify/<lib>/<cell>/<cell>.pex.spice`,
@@ -187,15 +187,15 @@ uses the cell's latest PEX netlist instead of its schematic subcircuit.
 
 ## The waveform viewer
 
-The **Results** dock browses Maestro histories (point → analysis → signals) and raw files (Open, or
-`openlayout viva file.raw`).
+The **Results** dock browses OLSim histories (point → analysis → signals) and raw files (Open, or
+`openlayout waves file.raw`).
 
 - **Browsing:**
   - The filter takes substrings or wildcards (`out*`, `i(*)`).
   - Internal BSIM-CMG device nodes (`n1#di`) are hidden unless asked for.
 - **Plotting:**
   - Double-click a signal to plot it (Ctrl: in a new strip).
-  - Right-click for Plot in New Strip, Plot Across All Points (a Maestro history: every corner /
+  - Right-click for Plot in New Strip, Plot Across All Points (a OLSim history: every corner /
     sweep point overlaid), and Plot as Digital.
 - **Strips:** each strip is a plot; strips with the same x quantity share their x axis.
   - AC signals plot as dB magnitude on a log axis, with the phase in a strip below.
@@ -215,15 +215,15 @@ The **Results** dock browses Maestro histories (point → analysis → signals) 
 
 ## Tests
 
-- `tests/python/test_maestro.py`:
+- `tests/python/test_olsim.py`:
   - the calculator against analytic waveforms (delays, edges, periodic, statistics, AC: bandwidth,
     UGF, phase margin);
   - specs, vector files (buses, masks, compact lines, errors), raw files (binary multi-plot from
     ngspice, ASCII), netlist cleaning, design-variable detection, sweeps / corners;
   - full runs: 6 points with vectors, a deliberate vector mismatch, AC and DC, and post-layout
     with the PEX netlist swapped in.
-- `tests/python/test_maestro_gui.py`:
-  - Maestro in the hub on an xschem testbench: maestro view created, variables copied, PVT corners,
+- `tests/python/test_olsim_gui.py`:
+  - OLSim in the hub on an xschem testbench: olsim view created, variables copied, PVT corners,
     run, results table, auto-plot, setup saved;
   - the viewer: overlays, cursors and the readout, the calculator, PNG / CSV export, curve and
     strip editing;

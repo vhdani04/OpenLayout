@@ -1,9 +1,9 @@
-"""`openlayout maestro` and `openlayout viva`.
+"""`openlayout olsim` and `openlayout waves`.
 
-    openlayout maestro [setup.maestro | <lib> <cell>]        the Maestro window
-    openlayout maestro run <setup.maestro | <lib> <cell>> [--jobs N] [--results DIR]
-    openlayout maestro new <lib> <cell>                       a maestro view for a testbench cell
-    openlayout viva [file.raw ... | history-dir]              the waveform viewer
+    openlayout olsim [setup.olsim | <lib> <cell>]        the OLSim window
+    openlayout olsim run <setup.olsim | <lib> <cell>> [--jobs N] [--results DIR]
+    openlayout olsim new <lib> <cell>                       a olsim view for a testbench cell
+    openlayout waves [file.raw ... | history-dir]              the waveform viewer
 """
 from __future__ import annotations
 
@@ -13,25 +13,25 @@ from pathlib import Path
 
 from ..workarea import Workarea, WorkareaError
 from .calc import fmt
-from .engine import History, MaestroError, Run
+from .engine import History, OLSimError, Run
 from .setup import Setup, default_setup
 from .vectors import VectorError
 
 
 def locate(args, wa: Workarea | None):
     """(setup file, results dir) from a path or <lib> <cell>."""
-    if len(args) == 1 and (args[0].endswith(".maestro") or Path(args[0]).is_file()):
+    if len(args) == 1 and (args[0].endswith(".olsim") or Path(args[0]).is_file()):
         f = Path(args[0]).resolve()
         cell = wa.cell_for_path(f) if wa else None
-        results = wa.run_dir(cell) / "maestro" if cell else f.parent / f"{f.stem}.results"
+        results = wa.run_dir(cell) / "olsim" if cell else f.parent / f"{f.stem}.results"
         return f, results
     if len(args) == 2 and wa:
         lib = wa.library(args[0])
         cell = lib.cell(args[1]) if lib else None
         if cell is None:
             raise WorkareaError(f"no cell {args[0]}/{args[1]}")
-        return cell.path / f"{cell.name}.maestro", wa.run_dir(cell) / "maestro"
-    raise WorkareaError("give a .maestro file, or <lib> <cell> inside a workarea")
+        return cell.path / f"{cell.name}.olsim", wa.run_dir(cell) / "olsim"
+    raise WorkareaError("give a .olsim file, or <lib> <cell> inside a workarea")
 
 
 def new_view(wa: Workarea, lib_name: str, cell_name: str) -> Path:
@@ -43,7 +43,7 @@ def new_view(wa: Workarea, lib_name: str, cell_name: str) -> Path:
     cell = lib.cell(cell_name)
     if cell is None or cell.view("schematic") is None:
         raise WorkareaError(f"{lib_name}/{cell_name} has no schematic (the testbench)")
-    f = cell.path / f"{cell_name}.maestro"
+    f = cell.path / f"{cell_name}.olsim"
     if f.exists():
         raise WorkareaError(f"{f} exists")
     s = default_setup(lib_name, cell_name)
@@ -98,7 +98,7 @@ def summary(h: History):
 
 
 def run_cmd(argv):
-    ap = argparse.ArgumentParser(prog="openlayout maestro run")
+    ap = argparse.ArgumentParser(prog="openlayout olsim run")
     ap.add_argument("target", nargs="+")
     ap.add_argument("--jobs", type=int)
     ap.add_argument("--results")
@@ -106,39 +106,39 @@ def run_cmd(argv):
     wa = Workarea.find(".")
     f, results = locate(a.target, wa)
     if not f.is_file():
-        raise WorkareaError(f"no setup {f} (openlayout maestro new <lib> <cell> creates one)")
+        raise WorkareaError(f"no setup {f} (openlayout olsim new <lib> <cell> creates one)")
     setup = Setup.load(f)
     if a.jobs:
         setup.jobs = a.jobs
     run = Run(setup, Path(a.results) if a.results else results, wa.root if wa else None)
-    print(f"MAESTRO {f}: {len(setup.points())} point(s), results in {run.path}", flush=True)
+    print(f"OLSIM {f}: {len(setup.points())} point(s), results in {run.path}", flush=True)
     h = run.run(lambda done, total, msg: print(f"  [{done}/{total}] {msg}", flush=True))
     print(table(h))
     for n in h.data.get("notes", []):
         print(f"note: {n}")
     p, fl, e = summary(h)
-    print(f"RESULT MAESTRO {run.name} points={len(h.points)} pass={p} fail={fl} errors={e}")
+    print(f"RESULT OLSIM {run.name} points={len(h.points)} pass={p} fail={fl} errors={e}")
     return 0 if fl == 0 and e == 0 else 1
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    tool = argv.pop(0) if argv and argv[0] in ("maestro", "viva") else "maestro"
+    tool = argv.pop(0) if argv and argv[0] in ("olsim", "waves") else "olsim"
     try:
-        if tool == "viva":
-            from ..hub.viva import main as viva_main
-            return viva_main(argv)
+        if tool == "waves":
+            from ..hub.waveview import main as waves_main
+            return waves_main(argv)
         if argv and argv[0] == "run":
             return run_cmd(argv[1:])
         if argv and argv[0] == "new":
             wa = Workarea.find(".")
             if wa is None or len(argv) != 3:
-                raise WorkareaError("openlayout maestro new <lib> <cell>, inside a workarea")
+                raise WorkareaError("openlayout olsim new <lib> <cell>, inside a workarea")
             print(f"created {new_view(wa, argv[1], argv[2])}")
             return 0
-        from ..hub.maestro_window import main as gui_main
+        from ..hub.olsim_window import main as gui_main
         return gui_main(argv)
-    except (WorkareaError, MaestroError, VectorError, ValueError, OSError) as e:
+    except (WorkareaError, OLSimError, VectorError, ValueError, OSError) as e:
         print(f"openlayout {tool}: {e}", file=sys.stderr)
         return 2
 

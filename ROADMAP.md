@@ -62,7 +62,7 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [ ] PEX of large blocks (hierarchical: cells, then routing)
 
 ## Phase 6b — Simulation environment
-- [x] Maestro: tests, design variables / sweeps, corners, outputs + specs, parallel ngspice runs, histories (docs/MAESTRO.md)
+- [x] OLSim: tests, design variables / sweeps, corners, outputs + specs, parallel ngspice runs, histories (docs/OLSIM.md)
 - [x] Digital vector files (.vec): PWL stimulus, output checking, vector-check plots
 - [x] Waveform viewer (pyqtgraph): strips, overlays, cursors, calculator, digital / bus lanes, parametric plots, export
 - [x] Post-layout tests: cells simulated with their PEX netlist

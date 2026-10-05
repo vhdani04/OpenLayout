@@ -1,4 +1,4 @@
-"""Maestro engine: the calculator, vector files, raw files, netlist handling and full runs
+"""OLSim engine: the calculator, vector files, raw files, netlist handling and full runs
 (corners x sweeps, vector checks, AC / DC analyses) with ngspice."""
 import json
 import math
@@ -7,11 +7,11 @@ import subprocess
 import numpy as np
 import pytest
 
-from openlayout.maestro import calc, rawfile, vectors
-from openlayout.maestro.calc import CalcError, Context, Waveform, evaluate
-from openlayout.maestro.engine import History, Run, clean_netlist, deck, design_variables
-from openlayout.maestro.setup import Analysis, Corner, Output, Setup, sweep_values
-from openlayout.maestro.setup import Test as MTest
+from openlayout.olsim import calc, rawfile, vectors
+from openlayout.olsim.calc import CalcError, Context, Waveform, evaluate
+from openlayout.olsim.engine import History, Run, clean_netlist, deck, design_variables
+from openlayout.olsim.setup import Analysis, Corner, Output, Setup, sweep_values
+from openlayout.olsim.setup import Test as MTest
 
 INV = """* inverter testbench
 Vdd vdd 0 {vdd}
@@ -203,8 +203,8 @@ def inverter_setup(tmp_path, vec=VEC):
                        Output("tran", "out", 'v("out")', "", True),
                        Output("tran", "broken", 'v("nonode")')],
               jobs=4)
-    s.save(tmp_path / "inv.maestro")
-    return Setup.load(tmp_path / "inv.maestro")
+    s.save(tmp_path / "inv.olsim")
+    return Setup.load(tmp_path / "inv.olsim")
 
 
 def test_run_corners_sweeps_vectors(tmp_path):
@@ -258,7 +258,7 @@ def test_post_layout_swap(tmp_path):
                      MTest("pex", {"netlist": "tb.sp"}, tran, extracted=["inv.pex.spice"])],
               outputs=[Output(t, "tphl", 'delay(v("in"), v("out"), 0.35, 0.35, "rise", "fall")') for t in ("sch", "pex")],
               jobs=2)
-    s.path = str(tmp_path / "pl.maestro")
+    s.path = str(tmp_path / "pl.olsim")
     h = Run(s, tmp_path / "res").run()
     by_test = {p["test"]: h.result(p["index"])["tphl"]["value"] for p in h.points}
     assert by_test["pex"] > 1.15 * by_test["sch"], by_test                 # the parasitics slow it down
@@ -277,7 +277,7 @@ def test_ac_and_dc_analyses(tmp_path):
               outputs=[Output("ac", "f3db", 'bandwidth(v("out"))'),
                        Output("ac", "gain", 'db20(v("out"))', plot=True),
                        Output("ac", "dcgain", 'value(v("out"), 0.5)', analysis="dc")], jobs=2)
-    s.path = str(tmp_path / "rc.maestro")
+    s.path = str(tmp_path / "rc.olsim")
     h = Run(s, tmp_path / "res").run()
     f3 = [h.result(i)["f3db"]["value"] for i in range(2)]
     assert f3[0] == pytest.approx(1 / (2 * math.pi * 1e3 * 1e-15), rel=0.02)

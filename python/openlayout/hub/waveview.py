@@ -1,9 +1,9 @@
-"""The waveform viewer (like Cadence ViVA): results of Maestro runs and SPICE raw files, plotted
+"""The waveform viewer: results of OLSim runs and SPICE raw files, plotted
 in stacked strips with linked time axes, overlays across corners and sweeps, A / B cursors with a
 readout, markers, a calculator, log / dB / phase display and PNG / CSV export. Plotting is
 pyqtgraph (MIT): fast enough for millions of points, zoom and pan with the mouse.
 
-    openlayout viva [file.raw ... | <maestro history dir>]
+    openlayout waves [file.raw ... | <olsim history dir>]
 
 Mouse: wheel zooms, left drag pans (zoom box mode: drags a box), right drag zooms an axis,
 double-click a signal in the browser to plot it. Keys: F fit, A / B put the cursor at the mouse,
@@ -29,8 +29,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget, 
 import pyqtgraph as pg  # noqa: E402
 import pyqtgraph.exporters  # noqa: E402,F401
 
-from ..maestro import rawfile  # noqa: E402
-from ..maestro.calc import CalcError, Context, Waveform, evaluate, fmt  # noqa: E402
+from ..olsim import rawfile  # noqa: E402
+from ..olsim.calc import CalcError, Context, Waveform, evaluate, fmt  # noqa: E402
 from . import theme  # noqa: E402
 
 CANVAS = theme.THEME["canvas"]
@@ -53,7 +53,7 @@ def _unit_of(name, unit_word):
 
 # ---- data sources -------------------------------------------------------------------------------
 class Source:
-    """Something with plots to browse: a raw file, or one point of a Maestro history."""
+    """Something with plots to browse: a raw file, or one point of a OLSim history."""
 
     def __init__(self, label, loader, variables=None, history=None, index=None):
         self.label = label
@@ -267,7 +267,7 @@ class Viewer(QMainWindow):
         tb = QToolBar("Viewer")
         tb.setObjectName("viewer")
         self.addToolBar(tb)
-        self._act(tb, "Open…", self.open_files, "Ctrl+O", tip="Open SPICE raw files or a Maestro history")
+        self._act(tb, "Open…", self.open_files, "Ctrl+O", tip="Open SPICE raw files or a OLSim history")
         tb.addSeparator()
         self._act(tb, "Fit", self.fit, "F")
         self.zoom_box = self._act(tb, "Zoom Box", self._toggle_zoom_box, checkable=True,
@@ -301,7 +301,7 @@ class Viewer(QMainWindow):
         return src
 
     def add_history(self, history):
-        """Every point of a Maestro history (engine.History) as a source."""
+        """Every point of a OLSim history (engine.History) as a source."""
         added = []
         for p in history.points:
             if p["index"] in {s.index for s in self.sources if s.history is not None and s.history.path == history.path}:
@@ -322,7 +322,7 @@ class Viewer(QMainWindow):
             parent = self.tree
             if src.history is not None:
                 if src.history.path not in groups:
-                    g = QTreeWidgetItem(self.tree, [f"{src.history.name}  (Maestro)"])
+                    g = QTreeWidgetItem(self.tree, [f"{src.history.name}  (OLSim)"])
                     g.setData(0, Qt.UserRole, ("history", str(src.history.path)))
                     groups[src.history.path] = g
                 parent = groups[src.history.path]
@@ -492,7 +492,7 @@ class Viewer(QMainWindow):
         unit = _unit_of(name, p.units[p.index(name)] if p.index(name) is not None else "")
         lab = label or (name if len(self.sources) == 1 else f"{name} [{src.label.split(' / ')[-1]}]")
         c = self.plot_wave(w, lab, kind, unit, new_strip, color)
-        if p.complex and kind == "ac":                 # the phase below the magnitude, like ViVA's AC plots
+        if p.complex and kind == "ac":                 # the phase in a strip below the magnitude
             self.plot_wave(w, lab, kind, "°", new_strip=True, color=color, complex_mode="phase")
         return c
 
@@ -510,7 +510,7 @@ class Viewer(QMainWindow):
                 continue
 
     def plot_output(self, history, output_name, indexes=None, new_strip=True):
-        """A Maestro output (a waveform expression) at the given points (default all), overlaid."""
+        """A OLSim output (a waveform expression) at the given points (default all), overlaid."""
         self.add_history(history)
         first = True
         for p in history.points:
@@ -626,10 +626,10 @@ class Viewer(QMainWindow):
         return c
 
     def plot_vector_check(self, history, index):
-        """What a vector file drives and checks at one Maestro point: inputs, outputs as simulated,
+        """What a vector file drives and checks at one OLSim point: inputs, outputs as simulated,
         the expected outputs dashed, mismatches marked; buses in hex."""
         import json as _json
-        from ..maestro import vectors
+        from ..olsim import vectors
         p = history.points[index]
         setup = history.setup()
         test = setup.test(p["test"])
@@ -923,12 +923,12 @@ def main(argv=None):
     for a in argv:
         p = Path(a)
         if p.is_dir() and (p / "history.json").is_file():
-            from ..maestro.engine import History
+            from ..olsim.engine import History
             v.add_history(History.load(p))
         elif p.is_file():
             v.add_raw(p)
         else:
-            print(f"openlayout viva: {a}: not a raw file or Maestro history", file=sys.stderr)
+            print(f"openlayout waves: {a}: not a raw file or OLSim history", file=sys.stderr)
     v.show()
     return app.exec()
 
