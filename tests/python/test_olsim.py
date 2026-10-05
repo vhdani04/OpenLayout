@@ -265,10 +265,87 @@ def test_post_layout_swap(tmp_path):
     h = Run(s, tmp_path / "res").run()
     by_test = {p["test"]: h.result(p["index"])["tphl"]["value"] for p in h.points}
     assert by_test["pex"] > 1.15 * by_test["sch"], by_test                 # the parasitics slow it down
-    assert any("inv extracted (inv.pex.spice, replaced)" in n for n in h.data["notes"])
+    assert any("inv extracted (inv.pex.spice): X1, X2, X3" in n for n in h.data["notes"]), h.data["notes"]
     pex_point = next(p["index"] for p in h.points if p["test"] == "pex")
     d = (h.path / "points" / str(pex_point) / "deck.sp").read_text()
-    assert "* inv: extracted (PEX)" in d and d.count(".subckt inv") == 1 and "\nR1 " in d
+    assert "* inv: extracted (PEX inv.pex.spice)" in d and d.count(".subckt inv") == 1 and "\nR1 " in d
+    assert "*   X1 (inv): extracted" in d                                   # the deck says what it binds
+
+
+HIER = """* top
+X1 a b buf
+X2 b c inv
+.subckt buf A Z
+x1 A m inv
+x2 m Z inv
+.ends
+.subckt inv A Z
+NM1 Z A VSS VSS nmos_rvt l=20n nfin=2
+NM2 Z A VDD VDD pmos_rvt l=20n nfin=2
+.ends
+.GLOBAL VDD
+.GLOBAL VSS
+"""
+PEX_INV = (".subckt inv Z A VSS VDD\nN1 Z A_1 VSS VSS nmos_rvt l=20n nfin=2\nN2 Z A_1 VDD VDD pmos_rvt l=20n nfin=2\n"
+           "R1 A A_1 30\nC1 Z VSS 0.1f\n.ends\n")
+
+
+def test_config_bind(tmp_path):
+    """The config view's bindings: per cell, per instance (bound copies of the cells above it),
+    a default; PEX pins matched by name, global supplies dropped from them."""
+    from openlayout.olsim.config import Config, ConfigError, Netlist, bind
+    pex = tmp_path / "inv.pex.spice"
+    pex.write_text(PEX_INV)
+
+    def pex_for(cell):
+        if cell.lower() == "inv":
+            return pex, ""
+        raise ConfigError(f"{cell} has no PEX netlist")
+
+    tree = Netlist(HIER).tree()
+    assert [(n.path, n.cell) for n in tree] == [("X1", "buf"), ("X2", "inv")]
+    assert [n.path for n in tree[0].children] == ["X1/x1", "X1/x2"]
+    # every inv extracted: its subcircuit replaced, pins in the schematic's order, VSS VDD global
+    out, notes, res = bind(HIER, Config(cells={"demo/inv": "extracted"}), pex_for)
+    n = Netlist(out)
+    assert n.subckts["inv"].ports == ["A", "Z"] and "R1 A A_1 30" in out and out.count(".subckt inv ") == 1
+    assert "X1 a b buf" in out and {p for p, (c, v, h) in res.items() if v == "extracted"} == {"X1/x1", "X1/x2", "X2"}
+    assert "VSS VDD connect to the global" in notes[0]
+    # one instance extracted: buf gets a bound copy, everything else stays schematic
+    out, notes, res = bind(HIER, Config(instances={"X1/x2": "extracted"}), pex_for)
+    n = Netlist(out)
+    assert set(n.subckts) == {"buf", "inv", "inv_pex", "buf_cfg1"}
+    assert [s.cell for s in n.subckts["buf_cfg1"].instances] == ["inv", "inv_pex"]
+    assert [s.cell for s in n.top if s.cell] == ["buf_cfg1", "inv"]
+    # an instance binding beats its cell's
+    out, _, res = bind(HIER, Config(cells={"inv": "extracted"}, instances={"X2": "schematic"}), pex_for)
+    assert res["X2"][1] == "schematic" and res["X1/x1"][1] == "extracted"
+    assert [s.cell for s in Netlist(out).top if s.cell] == ["buf_cfg1", "inv"]
+    # default extracted: wherever a PEX netlist exists (buf has none: its schematic, the invs in it extracted)
+    _, _, res = bind(HIER, Config(default="extracted"), pex_for)
+    assert res["X1"][1] == "schematic" and res["X1/x1"][1] == "extracted" and res["X2"][1] == "extracted"
+    # asked for but missing: an error
+    with pytest.raises(ConfigError, match="buf has no PEX"):
+        bind(HIER, Config(cells={"buf": "extracted"}), pex_for)
+    # a layout pin that the schematic lacks (and not a global net): an error
+    pex.write_text(PEX_INV.replace("VSS VDD\n", "VSS VDD EN\n", 1))
+    with pytest.raises(ConfigError, match="pin.*EN"):
+        bind(HIER, Config(cells={"inv": "extracted"}), pex_for)
+
+
+def test_extracted_with_global_supplies(tmp_path):
+    """A PEX netlist with VDD / VSS pins in a design whose schematics use them as global nets (the
+    xschem flow) simulates: the pins connect to the global supplies."""
+    tb = HIER.replace("* top\n", "* top\nVDD VDD 0 0.7\nV_OL_VSS VSS 0 0\nVA a 0 pwl(0 0 20p 0 30p 0.7)\nCL c 0 1f\n")
+    (tmp_path / "tb.sp").write_text(tb)
+    (tmp_path / "inv.pex.spice").write_text(PEX_INV)
+    tran = [Analysis("tran", True, {"step": "0.1p", "stop": "150p"})]
+    s = Setup(tests=[MTest("pex", {"netlist": "tb.sp"}, tran, extracted=["inv.pex.spice"])], jobs=1)
+    s.path = str(tmp_path / "g.olsim")
+    h = Run(s, tmp_path / "res").run()
+    assert h.result(0)["_status"] == "done", h.result(0)
+    c = Context(h.plots(0), {}, "tran").signal("v", "c", "tran")
+    assert c.y[0] > 0.65 and c.y[-1] < 0.05                    # three inverting stages: c follows not a
 
 
 def test_ac_and_dc_analyses(tmp_path):

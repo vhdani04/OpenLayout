@@ -44,8 +44,9 @@ SYMBOL = ViewType("symbol", (".sym",), "xschem")
 LAYOUT = ViewType("layout", (".gds", ".oas"), "klayout")
 NETLIST = ViewType("netlist", (".spice", ".cdl"), "text")
 OLSIM = ViewType("olsim", (".olsim",), "olsim")   # simulation setup (openlayout.olsim)
-VIEW_TYPES = [SCHEMATIC, SYMBOL, LAYOUT, NETLIST, OLSIM]
-CREATABLE = [SCHEMATIC, SYMBOL, LAYOUT, OLSIM]
+CONFIG = ViewType("config", (".config",), "config")   # views per cell / instance (openlayout.olsim.config)
+VIEW_TYPES = [SCHEMATIC, SYMBOL, LAYOUT, NETLIST, OLSIM, CONFIG]
+CREATABLE = [SCHEMATIC, SYMBOL, LAYOUT, OLSIM, CONFIG]
 
 
 def view_type(name: str) -> ViewType:
@@ -270,6 +271,10 @@ class Workarea:
             # a setup whose test simulates this cell's schematic (the testbench)
             from .olsim.setup import default_setup
             default_setup(lib.name, cell_name).save(path)
+        elif vt is CONFIG:
+            # the hierarchy of this cell's schematic, every instance simulated with its schematic
+            from .olsim.config import Config
+            Config(top={"lib": lib.name, "cell": cell_name}).save(path)
         else:
             raise WorkareaError(f"cannot create {vt.name} views")
         return View(cell, vt, path)

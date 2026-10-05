@@ -1,7 +1,7 @@
 """The OLSim setup: tests, design variables, corners and outputs - one JSON file, the cell's
 `olsim` view (<cell>.olsim).
 
-    {"tests": [{"name": "tran", "design": {"lib": "cpu8", "cell": "tb_inv"},
+    {"tests": [{"name": "tran", "design": {"lib": "cpu8", "cell": "tb_inv", "view": "config"},   # its config view
                 "analyses": [{"type": "tran", "stop": "200p", "step": "0.5p"}],
                 "vectors": ["stim.vec"], "section": "tt", "temp": "27",
                 "extracted": ["cpu8/inv"]}],          # post-layout: inv's PEX netlist instead of its schematic
@@ -61,7 +61,7 @@ class Analysis:
 @dataclass
 class Test:
     name: str
-    design: dict = field(default_factory=dict)      # {"lib", "cell"} | {"schematic": path} | {"netlist": path}
+    design: dict = field(default_factory=dict)      # {"lib", "cell"[, "view": "config"]} | {"schematic": path} | {"netlist": path}
     analyses: list = field(default_factory=list)
     vectors: list = field(default_factory=list)     # .vec files (relative to the setup file)
     enabled: bool = True
@@ -75,7 +75,7 @@ class Test:
     def design_label(self) -> str:
         d = self.design
         if "lib" in d:
-            return f"{d['lib']}/{d['cell']}"
+            return f"{d['lib']}/{d['cell']}" + (" config" if d.get("view") == "config" else "")
         return Path(d.get("schematic") or d.get("netlist") or "?").name
 
 

@@ -54,7 +54,8 @@ CDL, run from KLayout, the hub or `openlayout lvs` - see [docs/LVS.md](docs/LVS.
 **PEX**: capacitances from the FasterCap 3D field solver, resistor networks for wires and vias, a
 post-layout SPICE netlist; from KLayout, the hub or `openlayout pex` - see [docs/PEX.md](docs/PEX.md).
 **OLSim**: the simulation environment (tests, variables and sweeps, corners, vector files, outputs with
-specs, post-layout) and a waveform viewer (pyqtgraph); from the hub (Tools > OLSim, F9) or
+specs, post-layout through config views - schematic or extracted per cell / instance) and a waveform
+viewer (pyqtgraph); from the hub (Tools > OLSim, F9) or
 `openlayout olsim` / `openlayout waves` - see [docs/OLSIM.md](docs/OLSIM.md).
 
 Cross-tool menus call `openlayout hubcmd`, which talks to the hub over localhost

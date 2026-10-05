@@ -183,7 +183,8 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     """OLSim on a circuit offers it a testbench (supply source, loads, vectors); the hierarchy
     chooses schematic / extracted per cell; Select on Schematic adds what is selected in xschem."""
     from PySide6.QtWidgets import QMessageBox
-    from openlayout.hub.olsim_dialogs import HierarchyDialog, SchematicPicker
+    from openlayout.hub.olsim_dialogs import SchematicPicker
+    from openlayout.olsim.config import Config, Netlist
     from openlayout.symbolgen import make_symbol
     wa = hub.workarea
     d = wa.library("cpu8").path / "inv2"
@@ -208,20 +209,35 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     wait_run(app, w)
     r = w.history.result(0)
     assert r["vector errors"]["value"] == 0, r
-    # the hierarchy: inv2 simulates its schematic until it has a PEX netlist
-    t = w.setup.test("tran")
-    dlg = HierarchyDialog(w, w._netlist_run(), t, wa)
-    (entry, combo), = dlg.rows
-    assert entry == "cpu8/inv2" and not combo.model().item(1).isEnabled()
+    # the hierarchy: the testbench's config view; inv2 simulates its schematic until it has a PEX netlist
+    assert tb.view("config") is not None and w.setup.test("tran").design.get("view") == "config"
+    assert "config cpu8/tb_inv2" in w.t_hier.text()
+    ed = w.edit_hierarchy()
+    assert ed is not None and ed.net is not None
+    x1 = ed.tree.topLevelItem(0)
+    assert (x1.text(0), x1.text(1), x1.text(3)) == ("X1", "inv2", "schematic")
+    ed.cells.cellWidget(0, 2).setCurrentText("extracted")          # no PEX netlist yet: flagged
+    assert ed.tree.topLevelItem(0).text(3) == "error" and "without a PEX netlist" in ed.summary.text()
     pex = wa.verify_dir(inv2) / "inv2.pex.spice"
     pex.parent.mkdir(parents=True)
-    pex.write_text(".subckt inv2 A Z\nN1 Z A VSS VSS nmos_rvt l=20n nfin=2\nN2 Z A VDD VDD pmos_rvt l=20n nfin=2\n"
-                   "C1 Z VSS 0.1f\n.ends\n")
-    dlg = HierarchyDialog(w, w._netlist_run(), t, wa)
-    (entry, combo), = dlg.rows
-    assert combo.model().item(1).isEnabled()
-    combo.setCurrentIndex(1)
-    assert dlg.extracted() == ["cpu8/inv2"]
+    pex.write_text(".subckt inv2 Z A VSS VDD\nN1 Z A VSS VSS nmos_rvt l=20n nfin=2\n"
+                   "N2 Z A VDD VDD pmos_rvt l=20n nfin=2\nC1 Z VSS 0.1f\n.ends\n")
+    ed.rescan()
+    assert ed.tree.topLevelItem(0).text(3) == "extracted"
+    text = ed.netlist()
+    assert "* inv2: extracted (PEX inv2.pex.spice)" in text and sorted(Netlist(text).subckts["inv2"].ports) == ["A", "Z"]
+    ed.save()
+    assert Config.load(tb.view("config").path).cells == {"cpu8/inv2": "extracted"}
+    assert "inv2 extracted" in w.t_hier.text()
+    w.start_run()                                      # the run simulates what the config says
+    wait_run(app, w)
+    assert w.history.result(0)["vector errors"]["value"] == 0, w.history.result(0)
+    assert any("inv2 extracted (inv2.pex.spice): X1" in n for n in w.history.data["notes"]), w.history.data["notes"]
+    # an instance binding beats the cell's
+    ed.tree.itemWidget(ed.tree.topLevelItem(0), 2).setCurrentText("schematic")
+    assert ed.tree.topLevelItem(0).text(3) == "schematic" and ed.cfg.instances == {"X1": "schematic"}
+    ed._dirty = False
+    ed.close()
 
     # Select on Schematic: what xschem reports as selected becomes plotted outputs (once)
     class FakeXschem:

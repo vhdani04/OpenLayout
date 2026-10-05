@@ -1,19 +1,14 @@
-"""OLSim's dialogs: the hierarchy (which view each cell of a testbench simulates with - its
-schematic or its extracted netlist, like a config view) and picking signals on the schematic in
-xschem.
+"""OLSim's dialogs: picking signals on the schematic in xschem. (The views each cell simulates
+with are the config view's - hub/config_editor.py.)
 """
 from __future__ import annotations
 
-import datetime
 import re
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QHeaderView, QLabel, QListWidget,
-                               QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout)
+from PySide6.QtWidgets import QDialog, QLabel, QListWidget, QPushButton, QVBoxLayout
 
-from ..olsim.engine import OLSimError, Run
-from ..olsim.setup import Test
 from ..tools import XschemBridge
 from ..workarea import WorkareaError
 
@@ -22,13 +17,6 @@ TCL_LIST_RE = re.compile(r"\{([^{}]*)\}|(\S+)")
 
 def tcl_list(text: str) -> list[str]:
     return [a or b for a, b in TCL_LIST_RE.findall(text or "")]
-
-
-def testbench_cells(run: Run, test: Test) -> list[str]:
-    """The subcircuits a test's testbench instantiates (the cells of its hierarchy)."""
-    plain = Test(**{**test.__dict__, "extracted": []})
-    body, _, _ = run._netlist(plain)
-    return list(dict.fromkeys(re.findall(r"(?im)^\s*\.subckt\s+(\S+)", body)))
 
 
 class AttachedXschem(XschemBridge):
@@ -48,59 +36,6 @@ class AttachedXschem(XschemBridge):
 
     def start(self):
         raise WorkareaError("the hub's xschem is not running")
-
-
-class HierarchyDialog(QDialog):
-    """Per cell of the testbench: simulate its schematic, or its extracted (PEX) netlist."""
-
-    def __init__(self, parent, run: Run, test: Test, workarea):
-        super().__init__(parent)
-        self.setWindowTitle(f"Hierarchy - test {test.name}")
-        self.resize(820, 360)
-        self.workarea = workarea
-        lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("Which view each cell of the testbench is simulated with. Extracted: the cell's "
-                             "latest PEX netlist (run PEX on its layout first)."))
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["cell", "library", "view", "extracted netlist"])
-        self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        lay.addWidget(self.table)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        lay.addWidget(buttons)
-        chosen = {e.split("/")[-1].split(".")[0] for e in test.extracted}
-        self.rows = []
-        for name in testbench_cells(run, test):
-            lib = next((lb.name for lb in (workarea.libraries() if workarea else [])
-                        if lb.cell(name) and lb.cell(name).view("schematic")), "")
-            entry = f"{lib}/{name}" if lib else name
-            try:
-                pex, _, note = run._pex_netlist(entry)
-                when = datetime.datetime.fromtimestamp(pex.stat().st_mtime).strftime("%b %d %H:%M")
-                status, available = f"{pex}  ({when})" + (f" - {note}" if note else ""), True
-            except OLSimError as e:
-                status, available = str(e), False
-            r = self.table.rowCount()
-            self.table.insertRow(r)
-            self.table.setItem(r, 0, QTableWidgetItem(name))
-            self.table.setItem(r, 1, QTableWidgetItem(lib or "-"))
-            combo = QComboBox()
-            combo.addItems(["schematic", "extracted"])
-            if not available:
-                combo.model().item(1).setEnabled(False)
-            combo.setCurrentIndex(1 if name in chosen and available else 0)
-            self.table.setCellWidget(r, 2, combo)
-            self.table.setItem(r, 3, QTableWidgetItem(status))
-            self.rows.append((entry, combo))
-        if not self.rows:
-            self.table.insertRow(0)
-            self.table.setItem(0, 0, QTableWidgetItem("(the testbench instantiates no subcircuits)"))
-        self.table.resizeColumnsToContents()
-
-    def extracted(self) -> list[str]:
-        return [entry for entry, combo in self.rows if combo.currentText() == "extracted"]
 
 
 class SchematicPicker(QDialog):

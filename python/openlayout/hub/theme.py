@@ -12,8 +12,8 @@ THEME = json.loads((SHARE / "theme" / "openlayout.json").read_text())
 C = THEME["ui"]
 FONT = THEME["font"]
 VIEW_COLORS = {"schematic": C["ok"], "symbol": C["warn"], "layout": C["accent"], "netlist": "#9aa3b2",
-               "olsim": "#c678dd"}
-VIEW_LETTERS = {"schematic": "S", "symbol": "Y", "layout": "L", "netlist": "N", "olsim": "O"}
+               "olsim": "#c678dd", "config": "#56b6c2"}
+VIEW_LETTERS = {"schematic": "S", "symbol": "Y", "layout": "L", "netlist": "N", "olsim": "O", "config": "C"}
 ICON_FILE = SHARE / "icons" / "openlayout.svg"
 
 QSS = f"""

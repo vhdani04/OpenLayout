@@ -458,6 +458,9 @@ class MainWindow(QMainWindow):
         if target.type.tool == "olsim":
             self.open_olsim(target.cell)
             return
+        if target.type.tool == "config":
+            self.open_config(target)
+            return
         bridge = self.xschem if target.type.tool == "xschem" else self.klayout
         if not bridge.running:
             self.ciw.info(f"starting {bridge.name}…")
@@ -516,12 +519,29 @@ class MainWindow(QMainWindow):
         w = self._olsims.get(str(view.path))
         if w is None or not w.isVisible():
             w = OLSimWindow(view.path, self.workarea, self.workarea.run_dir(cell) / "olsim", self.viewer(),
-                            xschem=self.xschem, open_cell=self.open_olsim)
+                            xschem=self.xschem, open_cell=self.open_olsim, open_config=self.open_config)
             self._olsims[str(view.path)] = w
         w.show()
         w.raise_()
         self.ciw.info(f"OLSim {cell.key}")
         return w
+
+    def open_config(self, view):
+        """A config view in its editor (the hierarchy editor), one window per config."""
+        from .config_editor import ConfigEditor
+        self._configs = getattr(self, "_configs", {})
+        ed = self._configs.get(str(view.path))
+        if ed is None or not ed.isVisible():
+            try:
+                ed = ConfigEditor(view.path, self.workarea, open_olsim=self.open_olsim)
+            except (OSError, ValueError) as e:
+                self.ciw.error(f"{view.cell.key} config: {e}")
+                return None
+            self._configs[str(view.path)] = ed
+        ed.show()
+        ed.raise_()
+        self.ciw.info(f"config {view.cell.key}")
+        return ed
 
     def _start_tool(self, name):
         bridge = self.xschem if name == "xschem" else self.klayout

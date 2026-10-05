@@ -48,8 +48,10 @@ open OLSim on a cell with pins (a circuit, not a testbench). It creates `tb_<cel
 - a label on every pin, and a load `{cload}` on every output;
 - a vector file `tb_<cell>.vec` that steps the inputs through every combination, one input changing
   at a time. The outputs are `X` (not checked) until you write the expected 0 / 1 in their column;
-- the OLSim setup `tb_<cell>.olsim`, with `vdd = 0.7` and `cload = 1f` and no outputs: pick them
-  with Select on Schematic.
+- the config view `tb_<cell>.config`, every instance simulated with its schematic (see
+  [Post-layout simulation](#post-layout-simulation-the-config-view));
+- the OLSim setup `tb_<cell>.olsim`, simulating that config, with `vdd = 0.7` and `cload = 1f` and no
+  outputs: pick them with Select on Schematic.
 
 If `tb_<cell>` already exists, OLSim on the cell opens it.
 
@@ -69,12 +71,12 @@ copy or delete tests.
 
 | | |
 |---|---|
-| Design | library / cell of the testbench, or a `.sch` / `.sp` file |
+| Design | library / cell of the testbench and its view - `schematic`, or `config` (views per cell / instance, below) - or a `.sch` / `.sp` file |
 | Analyses | `tran` (step, stop, start), `dc` (source, start, stop, step), `ac` (variation, points, start, stop), `op`, `noise` - edit the parameters as `key=value` |
 | Vector files | digital stimulus and expected outputs (below) |
 | Simulation | model section (tt ff ss fs sf), temperature, saved signals (`all` or a list) |
 | Options | extra SPICE lines, `;` separated (`.options reltol=1e-4`) |
-| Post-layout | cells simulated with their **extracted** netlist instead of their schematic; **Hierarchy…** chooses per cell (below) |
+| Hierarchy | what each cell simulates with; **Hierarchy…** opens the design's config view (below) |
 
 - **Design variables:** a value, or a sweep.
   - `1f 2f 4f` (or `1f, 2f, 4f`) lists the values.
@@ -193,21 +195,63 @@ Interactive.3/setup.json                 the setup as run
 `RESULT OLSIM <history> points=N pass=P fail=F errors=E`. It exits non-zero on failures, so it can
 gate scripts.
 
-## Post-layout simulation
+## Post-layout simulation: the config view
 
-**Post-layout** in a test lists cells to simulate extracted. The test then uses the cell's latest
-PEX netlist instead of its schematic subcircuit.
+A **config** view (`<cell>.config`, the C chip in the Library Manager) says which view each
+instance of a design is simulated with, like Virtuoso's hierarchy editor:
 
-**Hierarchy…** is the config view. It lists every cell the testbench instantiates and lets you
-choose its view: schematic, or extracted. Extracted is available once the cell has a PEX netlist;
-the dialog shows the netlist's path and date, or why there is none (run PEX on its layout).
+- **schematic:** the cell's schematic subcircuit. The instances inside it are bound in turn.
+- **extracted:** the cell's latest PEX netlist. It is a leaf: nothing below it is simulated.
 
-- **Where the netlist comes from:** the hub's PEX button writes `verify/<lib>/<cell>/<cell>.pex.spice`,
-  and KLayout's Run PEX writes `<cell>.pex.spice` next to the layout. The newer one wins.
-- **Names:** `cpu8/inv` or just `inv`, or a `.pex.spice` file.
-- **Stale extractions:** the Log notes when the layout changed after the extraction.
-- **Pre vs post:** a copy of the test without the entry gives pre- and post-layout side by side in
-  one run (Data View: Copy Test).
+A test simulates a config when its Design view is `config`. New testbenches start that way. In
+any test, **Hierarchy…** opens the cell's config view in the editor, making it first if needed
+(every instance schematic) and switching the test to it. You can also create a config with New
+Cell View, or open one from the Library Manager.
+
+The editor:
+
+- **Top cell:** the design whose schematic is the top of the hierarchy (normally the testbench
+  itself).
+- **Instance tree:** every instance, with its cell, an **instance binding**, what it is
+  **simulated as**, and why. Instances inside an extracted one are greyed out.
+- **Cell bindings:** one view for every instance of a cell, with the cell's PEX netlist (path and
+  date) or why it has none (run PEX on its layout).
+- **Default view:** `schematic`, or `extracted where available` (every cell that has a PEX
+  netlist, the others their schematic).
+- **Precedence:** an instance binding beats its cell's binding, which beats the default.
+- **Show Netlist…:** the exact netlist OLSim will simulate.
+- **Rescan:** netlists the top schematic again (after you edit it) and looks for new PEX netlists.
+
+What the run does with it:
+
+- **Cell extracted everywhere:** its subcircuit is replaced by the PEX one.
+- **Cell extracted at only some instances:** it gets a `<cell>_pex` subcircuit, and each cell above
+  those instances gets a bound copy (`<cell>_cfg1`, …). Every other instance keeps the schematic.
+- **Pins:** the PEX subcircuit's pins are matched to the schematic's by name. Layout pins that are
+  global nets of the design (VDD, VSS from the `vdd` / `gnd` symbols) are left off the pin list,
+  so inside the cell they connect to those nets. A layout pin that is neither is an error, and so
+  is an explicit `extracted` binding for a cell without a PEX netlist.
+
+How you know what was simulated:
+
+- **The Hierarchy line** of the test, and the test in the Data View, summarize the bindings.
+- **The Log** of every run says it, for example
+  `tran: config demo/tb_inv config: 1 instance(s) extracted (X1), 0 schematic` and
+  `tran: inv extracted (inv.pex.spice): X1 - layout pin(s) VSS VDD connect to the global net(s)`.
+- **The netlist:** `sim/<lib>/<cell>/olsim/<run>/netlist/<test>.spice` (and every point's
+  `deck.sp`) starts with the same list, one `*   X1 (inv): extracted` line per instance. The
+  extracted subcircuit follows a `* inv: extracted (PEX inv.pex.spice)` comment.
+
+Notes:
+
+- **Where the PEX netlist comes from:** the hub's PEX button writes
+  `verify/<lib>/<cell>/<cell>.pex.spice`, and KLayout's Run PEX writes `<cell>.pex.spice` next to
+  the layout. The newer one wins.
+- **Stale extractions:** the Log and the editor note when the layout changed after the extraction.
+- **Pre vs post:** two tests, one with the schematic view and one with the config, give pre- and
+  post-layout side by side in one run (Data View: Copy Test).
+- **Older setups:** a test's `extracted` list (cells, or `.pex.spice` files) still works, bound on top
+  of the config. Hierarchy… moves its cells into the config.
 
 ## The waveform viewer
 

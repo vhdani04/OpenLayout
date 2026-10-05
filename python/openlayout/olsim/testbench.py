@@ -1,6 +1,7 @@
 """A testbench for a cell, ready for OLSim: tb_<cell> with the cell's symbol, the supply source
 (VDD = {vdd}), a label on every pin for the vector file to drive or check, a load on every output
-({cload}), its OLSim setup (tb_<cell>.olsim, no outputs yet) and a starting vector file
+({cload}), its config view (tb_<cell>.config: schematic or extracted per cell / instance), its
+OLSim setup (tb_<cell>.olsim, simulating the config, no outputs yet) and a starting vector file
 (tb_<cell>.vec).
 
     make_testbench(workarea, library, cell) -> tb Cell
@@ -117,7 +118,9 @@ def make_testbench(wa: Workarea, lib: Library, cell_name: str, tb_name: str | No
     vec, n_vectors = vector_file(inputs, outputs)
     (tb_dir / f"{tb_name}.vec").write_text(vec)
     stop = f"{n_vectors * PERIOD_PS}p"
-    s = Setup(tests=[Test("tran", {"lib": lib.name, "cell": tb_name},
+    from .config import Config
+    Config(top={"lib": lib.name, "cell": tb_name}).save(tb_dir / f"{tb_name}.config")
+    s = Setup(tests=[Test("tran", {"lib": lib.name, "cell": tb_name, "view": "config"},
                           [Analysis("tran", True, {"step": "1p", "stop": stop, "start": "0"})], [f"{tb_name}.vec"])],
               variables={"vdd": "0.7", "cload": "1f"})            # outputs: picked by the user
     s.save(tb_dir / f"{tb_name}.olsim")

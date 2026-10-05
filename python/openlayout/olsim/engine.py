@@ -3,7 +3,7 @@
 and keep everything in a history:
 
     <results>/<history>/setup.json            the setup as run
-                        netlist/<test>.spice  the testbench netlist (cleaned)
+                        netlist/<test>.spice  the testbench netlist (cleaned, the config's views bound)
                         points/<n>/deck.sp, ngspice.log, sim.raw, results.json
                         history.json          points, output values, pass / fail
 
@@ -25,6 +25,7 @@ from pathlib import Path
 
 from . import rawfile, vectors
 from .calc import CalcError, Context, Waveform, check_spec, evaluate, fmt
+from .config import Config, ConfigError, bind, counts, find_pex
 from .setup import Point, Setup
 
 ANALYSIS_RE = re.compile(r"^\s*\.(tran|dc|ac|op|noise|tf|sens|pz|disto|four|meas|measure)\b", re.I)
@@ -79,25 +80,6 @@ def clean_netlist(text: str):
             continue
         out.append(line)
     return "\n".join(out) + "\n", [r for r in removed if r.strip() and r.strip().lower() != ".end"]
-
-
-def subckt_block(text: str, name: str):
-    """(start, end) of `.subckt name ... .ends` in a netlist, or None."""
-    m = re.search(rf"(?ims)^\s*\.subckt\s+{re.escape(name)}\b.*?^\s*\.ends\b[^\n]*\n?", text)
-    return (m.start(), m.end()) if m else None
-
-
-def use_extracted(body: str, cell: str, pex_text: str):
-    """The netlist with cell's subcircuit replaced by its extracted one (appended if the netlist
-    only instantiates it). Returns (body, how)."""
-    new = subckt_block(pex_text, cell)
-    if new is None:
-        raise OLSimError(f"the PEX netlist has no subcircuit {cell}")
-    block = pex_text[new[0]:new[1]].rstrip() + "\n"
-    old = subckt_block(body, cell)
-    if old:
-        return body[:old[0]] + f"* {cell}: extracted (PEX)\n" + block + body[old[1]:], "replaced"
-    return body.rstrip() + f"\n* {cell}: extracted (PEX)\n" + block, "added"
 
 
 def design_variables(body: str) -> list[str]:
@@ -291,63 +273,99 @@ class Run:
         p = Path(os.path.expandvars(os.path.expanduser(rel)))
         return p if p.is_absolute() else self.setup.directory / p
 
+    def _workarea(self):
+        from ..workarea import Workarea
+        return Workarea(self.workarea_root) if self.workarea_root else Workarea.find(self.setup.directory)
+
+    def config(self, test) -> Config | None:
+        """The config view a test's design names ({"lib", "cell", "view": "config"}), else None."""
+        d = test.design
+        if d.get("view") != "config" or "lib" not in d:
+            return None
+        wa = self._workarea()
+        lib = wa.library(d["lib"]) if wa else None
+        cell = lib.cell(d["cell"]) if lib else None
+        view = cell.view("config") if cell else None
+        if view is None:
+            raise OLSimError(f"test {test.name}: {d['lib']}/{d['cell']} has no config view")
+        cfg = Config.load(view.path)
+        cfg.top = cfg.top or {"lib": d["lib"], "cell": d["cell"]}
+        return cfg
+
     def _netlist(self, test):
+        """(netlist, removed lines, notes) of a test's design: the testbench netlisted by xschem,
+        cleaned, with the views of its config (and its Post-layout cells) bound."""
         d = test.design
         out = self.path / "netlist"
+        cfg = self.config(test)
         if "netlist" in d:
             text = self._resolve(d["netlist"]).read_text()
         else:
             if "lib" in d:
-                from ..workarea import Workarea
-                wa = Workarea(self.workarea_root) if self.workarea_root else Workarea.find(self.setup.directory)
+                wa = self._workarea()
                 if wa is None:
                     raise OLSimError(f"test {test.name}: {d['lib']}/{d['cell']} needs a workarea")
-                lib = wa.library(d["lib"])
-                cell = lib.cell(d["cell"]) if lib else None
+                top = cfg.top if cfg else d
+                lib = wa.library(top.get("lib", ""))
+                cell = lib.cell(top.get("cell", "")) if lib else None
                 view = cell.view("schematic") if cell else None
                 if view is None:
-                    raise OLSimError(f"test {test.name}: no schematic {d['lib']}/{d['cell']}")
+                    raise OLSimError(f"test {test.name}: no schematic {top.get('lib')}/{top.get('cell')}")
                 sch, root = view.path, wa.root
             else:
                 sch, root = self._resolve(d["schematic"]), self.workarea_root
             text = netlist_schematic(sch, out / test.name, root)
         body, removed = clean_netlist(text)
-        notes = []
-        for entry in test.extracted:
-            pex, cell_name, note = self._pex_netlist(entry)
-            body, how = use_extracted(body, cell_name, pex.read_text())
-            notes.append(f"{test.name}: {cell_name} extracted ({pex.name}, {how})" + (f" - {note}" if note else ""))
+        body, notes = self.bind(test, body, cfg)
         out.mkdir(parents=True, exist_ok=True)
         (out / f"{test.name}.spice").write_text(body)
         return body, removed, notes
 
+    def bind(self, test, body, cfg=None):
+        """(netlist, notes): the config's views - and the test's Post-layout cells, extracted on
+        top of it - bound into a netlist."""
+        cfg = Config(**{**cfg.__dict__, "cells": dict(cfg.cells)}) if cfg else Config()
+        files = {}
+        for entry in test.extracted:
+            if entry.endswith((".spice", ".sp")):
+                name = Path(entry).name.split(".")[0]
+                files[name.lower()] = entry
+                cfg.cells[name] = "extracted"
+            else:
+                cfg.cells[entry] = "extracted"
+        if not (cfg.path or cfg.cells or cfg.instances or cfg.default != "schematic"):
+            return body, []
+
+        def pex_for(cell):
+            key = files.get(cell.lower()) or cfg.cell_binding(cell)[0] or cell
+            p, _, note = self._pex_netlist(key if "/" in key or key.endswith((".spice", ".sp")) else cell)
+            return p, note
+
+        try:
+            body, bnotes, resolved = bind(body, cfg, pex_for)
+        except ConfigError as e:
+            raise OLSimError(f"test {test.name}: {e}") from None
+        head = [f"* OpenLayout hierarchy" + (f" - config {test.design_label()}" if cfg.path else "")
+                + f": {counts(resolved)}"]
+        head += [f"*   {p} ({c}): {v}" for p, (c, v, _) in list(resolved.items())[:200] if v]
+        notes = [f"{test.name}: " + (f"config {test.design_label()}: " if cfg.path else "") + counts(resolved)]
+        return "\n".join(head) + "\n" + body, notes + [f"{test.name}: {n}" for n in bnotes]
+
     def _pex_netlist(self, entry):
-        """(netlist, cell name, warning) of a cell's latest PEX run: the hub writes it to
-        verify/<lib>/<cell>/, KLayout's Run PEX next to the layout; or a .spice file given."""
+        """(netlist, cell name, warning) of a cell's latest PEX run, or of a .spice file given."""
         if entry.endswith((".spice", ".sp")):
             p = self._resolve(entry)
             if not p.is_file():
                 raise OLSimError(f"no PEX netlist {p}")
             return p, p.name.split(".")[0], ""
-        from ..workarea import Workarea
-        wa = Workarea(self.workarea_root) if self.workarea_root else Workarea.find(self.setup.directory)
+        wa = self._workarea()
         if wa is None:
             raise OLSimError(f"extracted {entry}: needs a workarea (or give the .pex.spice file)")
-        lib_name, _, cell_name = entry.rpartition("/")
-        libs = [wa.library(lib_name)] if lib_name else wa.libraries()
-        cell = next((lb.cell(cell_name) for lb in libs if lb and lb.cell(cell_name)), None)
-        if cell is None:
-            raise OLSimError(f"extracted {entry}: no such cell")
-        layout = cell.view("layout")
-        cands = [wa.verify_dir(cell) / f"{cell_name}.pex.spice"]
-        if layout and not layout.gds_cell:
-            cands.append(layout.path.parent / f"{cell_name}.pex.spice")
-        found = [c for c in cands if c.is_file()]
-        if not found:
-            raise OLSimError(f"{cell.key} has no PEX netlist yet - run PEX on its layout first")
-        pex = max(found, key=lambda c: c.stat().st_mtime)
-        stale = layout is not None and layout.path.is_file() and layout.path.stat().st_mtime > pex.stat().st_mtime
-        return pex, cell_name, "the layout changed since this extraction" if stale else ""
+        try:
+            p, note = find_pex(wa, entry)
+        except ConfigError as e:
+            raise OLSimError(str(e)) from None
+        return p, entry.split("/")[-1], note
 
     def _run(self, progress):
         setup = self.setup

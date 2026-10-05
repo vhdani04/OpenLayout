@@ -70,8 +70,9 @@ def _kv(text) -> dict:
 
 class OLSimWindow(QMainWindow):
     def __init__(self, setup_path, workarea: Workarea | None = None, results_dir=None, viewer=None, parent=None,
-                 xschem=None, open_cell=None):
+                 xschem=None, open_cell=None, open_config=None):
         super().__init__(parent)
+        self._open_config = open_config        # the hub's config editors; else one of our own
         self.setup_path = Path(setup_path)
         self.workarea = workarea
         self._xschem = xschem                  # the hub's xschem (Select on Schematic); else one of our own
@@ -168,6 +169,10 @@ class OLSimWindow(QMainWindow):
         form.addRow("Name", row)
         self.t_lib = QComboBox()
         self.t_cell = QComboBox()
+        self.t_view = QComboBox()
+        self.t_view.addItems(["schematic", "config"])
+        self.t_view.setToolTip("schematic: every cell simulates its schematic. config: the cell's config view "
+                               "chooses, per cell or instance, schematic or extracted (Hierarchy…)")
         self.t_file = QLineEdit()
         self.t_file.setPlaceholderText("or a schematic (.sch) / netlist (.sp, .spice) file")
         browse = QPushButton("…")
@@ -176,6 +181,7 @@ class OLSimWindow(QMainWindow):
         drow = QHBoxLayout()
         drow.addWidget(self.t_lib)
         drow.addWidget(self.t_cell)
+        drow.addWidget(self.t_view)
         drow.addWidget(self.t_file, 1)
         drow.addWidget(browse)
         form.addRow("Design", drow)
@@ -225,22 +231,22 @@ class OLSimWindow(QMainWindow):
         self.t_options = QLineEdit()
         self.t_options.setPlaceholderText(".options reltol=1e-4  (extra SPICE lines, ; separated)")
         form.addRow("Options", self.t_options)
-        self.t_extracted = QLineEdit()
-        self.t_extracted.setPlaceholderText("cells simulated with their PEX netlist instead of their schematic: "
-                                            "cpu8/inv nand2 ...  (run PEX on their layouts first)")
+        self.t_hier = QLabel()
+        self.t_hier.setWordWrap(True)
         hier = QPushButton("Hierarchy…")
-        hier.setToolTip("Choose, per cell of the testbench, its schematic or its extracted (PEX) view")
+        hier.setToolTip("The design's config view: schematic or extracted (PEX), per cell or per instance")
         hier.clicked.connect(self.edit_hierarchy)
         prow = QHBoxLayout()
-        prow.addWidget(self.t_extracted, 1)
+        prow.addWidget(self.t_hier, 1)
         prow.addWidget(hier)
-        form.addRow("Post-layout", prow)
-        for w in (self.t_name, self.t_file, self.t_temp, self.t_saves, self.t_options, self.t_extracted):
+        form.addRow("Hierarchy", prow)
+        for w in (self.t_name, self.t_file, self.t_temp, self.t_saves, self.t_options):
             w.textEdited.connect(self._mark)
         self.t_enabled.toggled.connect(self._mark)
         self.t_section.currentIndexChanged.connect(self._mark)
         self.t_lib.currentTextChanged.connect(self._lib_changed)
         self.t_cell.currentTextChanged.connect(self._mark)
+        self.t_view.currentTextChanged.connect(self._view_changed)
         self.analyses.itemChanged.connect(self._mark)
         split.addWidget(self.test_box)
 
@@ -380,6 +386,8 @@ class OLSimWindow(QMainWindow):
         self.t_lib.addItems([""] + libs)
         self.t_lib.setVisible(bool(libs))
         self.t_cell.setVisible(bool(libs))
+        self.t_view.setVisible(bool(libs))
+        self.t_view.setCurrentText(t.design.get("view", "schematic"))
         if "lib" in t.design:
             self.t_lib.setCurrentText(t.design["lib"])
             self._lib_changed(t.design["lib"])
@@ -396,8 +404,8 @@ class OLSimWindow(QMainWindow):
         self.t_temp.setText(t.temp)
         self.t_saves.setText(t.saves)
         self.t_options.setText(t.options.replace("\n", " ; "))
-        self.t_extracted.setText(" ".join(t.extracted))
         self._loading = was
+        self._show_hierarchy(t)
 
     def _lib_changed(self, lib):
         if not self._loading:
@@ -424,6 +432,8 @@ class OLSimWindow(QMainWindow):
             t.design = {"netlist": f} if not f.endswith(".sch") else {"schematic": f}
         elif self.t_lib.currentText() and self.t_cell.currentText():
             t.design = {"lib": self.t_lib.currentText(), "cell": self.t_cell.currentText()}
+            if self.t_view.currentText() == "config":
+                t.design["view"] = "config"
         t.analyses = []
         for r in range(self.analyses.rowCount()):
             typ = self.analyses.item(r, 1).text()
@@ -434,7 +444,6 @@ class OLSimWindow(QMainWindow):
         t.temp = self.t_temp.text().strip() or "27"
         t.saves = self.t_saves.text().strip() or "all"
         t.options = "\n".join(p.strip() for p in self.t_options.text().split(";") if p.strip())
-        t.extracted = self.t_extracted.text().replace(",", " ").split()
 
     def read_setup(self) -> Setup:
         """Widgets -> self.setup."""
@@ -634,6 +643,12 @@ class OLSimWindow(QMainWindow):
                 QTreeWidgetItem(it, [f"vectors: {v}"])
             for x in t.extracted:
                 QTreeWidgetItem(it, [f"extracted: {x}"])
+            if t.design.get("view") == "config":
+                cell = self._design_cell(t)
+                view = cell.view("config") if cell else None
+                if view is not None:
+                    from ..olsim.config import Config
+                    QTreeWidgetItem(it, [f"views: {Config.load(view.path).summary()}"])
             QTreeWidgetItem(it, [f"{t.section}, {t.temp} °C"])
             if t.name == self._current_test:
                 self.tree.setCurrentItem(it)
@@ -1002,22 +1017,101 @@ class OLSimWindow(QMainWindow):
         r.path.mkdir(parents=True, exist_ok=True)
         return r
 
-    def edit_hierarchy(self):
-        """Per cell of the testbench: schematic or extracted view (the test's Post-layout list)."""
-        from .olsim_dialogs import HierarchyDialog
+    def _design_cell(self, t):
+        d = t.design
+        lib = self.workarea.library(d.get("lib", "")) if self.workarea and "lib" in d else None
+        return lib.cell(d["cell"]) if lib else None
+
+    def _show_hierarchy(self, t):
+        """The Hierarchy line: what the test's design simulates each cell with."""
+        from ..olsim.config import Config
+        cell = self._design_cell(t)
+        extra = f"   Post-layout (older setups): {' '.join(t.extracted)}" if t.extracted else ""
+        if t.design.get("view") == "config":
+            view = cell.view("config") if cell else None
+            if view is None:
+                text = f"config: {t.design_label()} has no config view yet - Hierarchy… makes one"
+            else:
+                cfg = Config.load(view.path)
+                text = f"config {cell.key}: top {cfg.top_label}, {cfg.summary()}"
+        elif "lib" in t.design:
+            text = "schematic: every cell simulates its schematic (Hierarchy… to choose views per cell or instance)"
+        else:
+            text = "a file: simulated as it is"
+        self.t_hier.setText(text + extra)
+
+    def _view_changed(self, view):
+        if self._loading:
+            return
+        self._mark()
         self._read_test()
         t = self.setup.test(self._current_test)
-        try:
-            dlg = HierarchyDialog(self, self._netlist_run(), t, self.workarea)
-        except Exception as e:
-            QMessageBox.warning(self, "Hierarchy", f"Could not netlist the testbench:\n{e}")
-            return None
-        if dlg.exec():
-            self.t_extracted.setText(" ".join(dlg.extracted()))
-            self._mark()
-            self._read_test()
+        if t is not None and view == "config":
+            self._ensure_config(t)
+        if t is not None:
+            self._show_hierarchy(t)
             self._refresh_tree()
-        return dlg
+
+    def _ensure_config(self, t):
+        """The design cell's config view (made - every instance its schematic - when missing)."""
+        from ..workarea import CONFIG
+        cell = self._design_cell(t)
+        if cell is None:
+            return None
+        view = cell.view("config")
+        if view is None:
+            if cell.library.readonly:
+                QMessageBox.warning(self, "Hierarchy", f"{cell.key} is read-only: no config view can be made there")
+                return None
+            view = self.workarea.new_view(cell.library, cell.name, CONFIG)
+            self.log.appendPlainText(f"created {cell.key} config")
+        return view
+
+    def edit_hierarchy(self):
+        """The design's config view in its editor (made for the test's cell, and the test switched
+        to it, when needed). The test's older Post-layout cells move into it."""
+        from ..olsim.config import Config
+        self._read_test()
+        t = self.setup.test(self._current_test)
+        if t is None or "lib" not in t.design:
+            QMessageBox.information(self, "Hierarchy", "Views per cell need a library cell as the design "
+                                    "(pick its library and cell).")
+            return None
+        view = self._ensure_config(t)
+        if view is None:
+            return None
+        cells = [e for e in t.extracted if not e.endswith((".spice", ".sp"))]
+        if cells:
+            cfg = Config.load(view.path)
+            for e in cells:
+                cfg.cells.setdefault(e, "extracted")
+            cfg.save()
+            t.extracted = [e for e in t.extracted if e not in cells]
+        if t.design.get("view") != "config":
+            t.design["view"] = "config"
+            self.t_view.blockSignals(True)
+            self.t_view.setCurrentText("config")
+            self.t_view.blockSignals(False)
+            self._mark()
+        self._show_hierarchy(t)
+        self._refresh_tree()
+        if self._open_config:
+            ed = self._open_config(view)
+        else:
+            from .config_editor import ConfigEditor
+            ed = ConfigEditor(view.path, self.workarea)
+            self._config_editor = ed
+            ed.show()
+        self._config_editors = getattr(self, "_config_editors", set())
+        if ed is not None and id(ed) not in self._config_editors:   # (the hub reuses its editors)
+            self._config_editors.add(id(ed))
+            ed.saved.connect(self._config_saved)
+        return ed
+
+    def _config_saved(self):
+        t = self.setup.test(self._current_test)
+        if t is not None:
+            self._show_hierarchy(t)
 
     def xschem(self):
         """The xschem to pick signals in: the hub's (given, or found through the workarea session),
