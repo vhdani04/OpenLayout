@@ -24,8 +24,8 @@ def check(name, cond, detail=""):
         failures.append(name)
 
 
-wa = Workarea.create(Path(tempfile.mkdtemp()) / "wa", "cpu8")
-lib = wa.library("cpu8")
+wa = Workarea.create(Path(tempfile.mkdtemp()) / "wa", "testlib")
+lib = wa.library("testlib")
 (lib.path / "inv").mkdir()
 shutil.copy(HOME / "tests/klayout/inv_pins.sch", lib.path / "inv" / "inv.sch")
 sch = lib.path / "inv" / "inv.sch"

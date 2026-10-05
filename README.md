@@ -6,7 +6,7 @@ FasterCap (parasitic extraction).
 
 ## Install (Ubuntu 24.04)
 
-    git clone git@github.com:vhdani04/OpenLayout.git ~/openlayout/flow
+    git clone https://github.com/vhdani04/OpenLayout.git ~/openlayout/flow
     ~/openlayout/flow/setup/install.sh        # tools, PDK, models, shell setup — idempotent
     source ~/.bashrc && openlayout doctor
 
@@ -35,7 +35,7 @@ view chips S/Y/L and a pass/fail dot per cell) above a **CIW** (log + Python com
   (moves to `<workarea>/.trash/`).
 - Tools: Netlist (F7) and Simulate (F8) run xschem + ngspice batch; results land in
   `sim/<lib>/<cell>/` and the cell's checks in `.openlayout/state.json`.
-- CIW: Python with an `ol` object — `help(ol)`, e.g. `ol.sim('cpu8', 'tb_inv')`.
+- CIW: Python with an `ol` object — `help(ol)`, e.g. `ol.sim('mychip', 'tb_inv')`.
 
 ## Look & feel
 
@@ -84,8 +84,8 @@ re-checks as you edit.
 
 ## Using it
 
-    openlayout new-workarea ~/designs/cpu8      # libs.def, xschemrc, sim/, libraries/cpu8
-    cd ~/designs/cpu8
+    openlayout new-workarea ~/designs/mychip      # libs.def, xschemrc, sim/, libraries/mychip
+    cd ~/designs/mychip
     openlayout new-lib alu                      # add a design library
     openlayout libs                             # libraries visible here (incl. PDK libraries)
     openlayout xschem                           # schematic editor with workarea libraries

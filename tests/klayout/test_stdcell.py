@@ -212,8 +212,8 @@ sys.path.insert(0, str(HOME / "python"))
 from openlayout.workarea import Workarea  # noqa: E402
 from openlayout_kl import connectivity, generate  # noqa: E402
 
-wa = Workarea.create(Path(tempfile.mkdtemp()) / "wa", "cpu8")
-wlib = wa.library("cpu8")
+wa = Workarea.create(Path(tempfile.mkdtemp()) / "wa", "testlib")
+wlib = wa.library("testlib")
 (wlib.path / "inv").mkdir()
 shutil.copy(HOME / "tests/klayout/inv_pins.sch", wlib.path / "inv" / "inv.sch")
 gds = wlib.path / "inv" / "inv.gds"
@@ -236,7 +236,7 @@ check("generation in a framed cell: row-mode transistors parked below the cell (
 check("rail pins are not added again", sorted(rep["pins_added"]) == ["A", "Y"], rep["pins_added"])
 # generating a cell without a frame draws one with its boundary at (0, 0); the transistors are
 # parked below it, none overlapping
-wlib2 = wa.library("cpu8")
+wlib2 = wa.library("testlib")
 (wlib2.path / "inv2").mkdir()
 shutil.copy(HOME / "tests/klayout/inv_pins.sch", wlib2.path / "inv2" / "inv2.sch")
 generate.generate(wlib2.path / "inv2" / "inv2.sch")

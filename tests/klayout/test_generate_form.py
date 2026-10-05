@@ -28,8 +28,8 @@ def check(name, cond, detail=""):
 
 mw = pya.Application.instance().main_window()
 gui.start(mw)
-wa = Workarea.create(Path(tempfile.mkdtemp()) / "wa", "cpu8")
-lib = wa.library("cpu8")
+wa = Workarea.create(Path(tempfile.mkdtemp()) / "wa", "testlib")
+lib = wa.library("testlib")
 for name in ("inv", "inv2"):
     (lib.path / name).mkdir()
     shutil.copy(HOME / "tests/klayout/inv_globals.sch", lib.path / name / f"{name}.sch")   # ports A, Z; VDD, VSS

@@ -25,8 +25,8 @@ def app():
 @pytest.fixture
 def hub(app, tmp_path):
     from openlayout.hub.main_window import MainWindow
-    wa = Workarea.create(tmp_path / "wa", "cpu8")
-    tb = wa.library("cpu8").path / "tb_inv"
+    wa = Workarea.create(tmp_path / "wa", "testlib")
+    tb = wa.library("testlib").path / "tb_inv"
     tb.mkdir()
     sch = (Path(os.environ["OPENLAYOUT_HOME"]) / "tests/xschem/tb_inv/tb_inv.sch").read_text()
     # value={vdd} as the property form stores it (braces escaped inside the .sch)
@@ -49,12 +49,12 @@ def wait_run(app, m, timeout=180):
 
 
 def test_olsim_in_the_hub(hub, app):
-    cell = hub.workarea.library("cpu8").cell("tb_inv")
-    hub.lm.select("cpu8", "tb_inv")
+    cell = hub.workarea.library("testlib").cell("tb_inv")
+    hub.lm.select("testlib", "tb_inv")
     assert hub.a_olsim.isEnabled()
     m = hub.open_olsim(cell)
     assert cell.view("olsim") is not None                      # created for the testbench
-    assert m.t_lib.currentText() == "cpu8" and m.t_cell.currentText() == "tb_inv"
+    assert m.t_lib.currentText() == "testlib" and m.t_cell.currentText() == "tb_inv"
 
     # Variables > Copy From Cellview finds {vdd}
     m.copy_variables()
@@ -187,17 +187,17 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     from openlayout.olsim.config import Config, Netlist
     from openlayout.symbolgen import make_symbol
     wa = hub.workarea
-    d = wa.library("cpu8").path / "inv2"
+    d = wa.library("testlib").path / "inv2"
     d.mkdir()
     (d / "inv2.sch").write_text((Path(os.environ["OPENLAYOUT_HOME"]) / "tests/klayout/inv_globals.sch").read_text())
     make_symbol(d / "inv2.sch")
-    inv2 = wa.library("cpu8").cell("inv2")
+    inv2 = wa.library("testlib").cell("inv2")
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
     w = hub.open_olsim(inv2)
-    tb = wa.library("cpu8").cell("tb_inv2")
+    tb = wa.library("testlib").cell("tb_inv2")
     assert tb is not None and tb.view("olsim") and w.setup_path == tb.view("olsim").path
     sch = tb.view("schematic").path.read_text()
-    assert r"{name=VDD value=\{vdd\}}" in sch and "{cpu8/inv2/inv2.sym}" in sch and "capa.sym" in sch
+    assert r"{name=VDD value=\{vdd\}}" in sch and "{testlib/inv2/inv2.sym}" in sch and "capa.sym" in sch
     s = w.setup
     assert s.variables == {"vdd": "0.7", "cload": "1f"} and s.tests[0].vectors == ["tb_inv2.vec"]
     assert s.outputs == [] and w.outputs.rowCount() == 0          # blank: the user picks the outputs
@@ -211,7 +211,7 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     assert r["vector errors"]["value"] == 0, r
     # the hierarchy: the testbench's config view; inv2 simulates its schematic until it has a PEX netlist
     assert tb.view("config") is not None and w.setup.test("tran").design.get("view") == "config"
-    assert "config cpu8/tb_inv2" in w.t_hier.text()
+    assert "config testlib/tb_inv2" in w.t_hier.text()
     ed = w.edit_hierarchy()
     assert ed is not None and ed.net is not None
     x1 = ed.tree.topLevelItem(0)
@@ -227,7 +227,7 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     text = ed.netlist()
     assert "* inv2: extracted (PEX inv2.pex.spice)" in text and sorted(Netlist(text).subckts["inv2"].ports) == ["A", "Z"]
     ed.save()
-    assert Config.load(tb.view("config").path).cells == {"cpu8/inv2": "extracted"}
+    assert Config.load(tb.view("config").path).cells == {"testlib/inv2": "extracted"}
     assert "inv2 extracted" in w.t_hier.text()
     w.start_run()                                      # the run simulates what the config says
     wait_run(app, w)
@@ -242,7 +242,7 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     t = w.setup.test("tran")
     t.design = {"schematic": str(tb.view("schematic").path)}
     w._show_test()
-    assert t.design == {"lib": "cpu8", "cell": "tb_inv2"} and w.t_view.currentText() == "schematic"
+    assert t.design == {"lib": "testlib", "cell": "tb_inv2"} and w.t_view.currentText() == "schematic"
     assert "has a config view" in w.t_hier.text() and "inv2 extracted" in w.t_hier.text()
     w._dirty = False
 
@@ -353,7 +353,7 @@ def test_outputs_delete_key_and_xschem_fallback(hub, app):
     from openlayout.hub.olsim_window import OLSimWindow
     from openlayout.hub.olsim_dialogs import AttachedXschem
     from openlayout.tools import XschemBridge
-    cell = hub.workarea.library("cpu8").cell("tb_inv")
+    cell = hub.workarea.library("testlib").cell("tb_inv")
     w = OLSimWindow(cell.path / "x.olsim", hub.workarea)
     w._add_output('v("a")', "a")
     w._add_output('v("b")', "b")

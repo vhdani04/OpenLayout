@@ -22,8 +22,8 @@ def app():
 @pytest.fixture
 def win(app, tmp_path):
     from openlayout.hub.main_window import MainWindow
-    wa = Workarea.create(tmp_path / "wa", "cpu8")
-    tb = wa.library("cpu8").path / "tb_inv"
+    wa = Workarea.create(tmp_path / "wa", "testlib")
+    tb = wa.library("testlib").path / "tb_inv"
     tb.mkdir()
     shutil.copy(Path(os.environ["OPENLAYOUT_HOME"]) / "tests/xschem/tb_inv/tb_inv.sch", tb)
     w = MainWindow(wa)
@@ -36,7 +36,7 @@ def items(column):
 
 
 def test_library_manager_lists(win):
-    assert items(win.lm.libs)[0] == "cpu8"
+    assert items(win.lm.libs)[0] == "testlib"
     assert "asap7sc7p5t_28_R" in items(win.lm.libs)
     win.lm.select("asap7sc7p5t_28_R", "INVx1_ASAP7_75t_R")
     assert items(win.lm.views) == ["symbol", "layout"]
@@ -52,16 +52,16 @@ def test_cell_filter(win):
 
 
 def test_ciw_commands(win):
-    win._run_ciw("ol.new_view('cpu8', 'nand2', 'schematic')")
-    assert win.workarea.library("cpu8").cell("nand2").view("schematic")
-    win._run_ciw("print(ol.cells('cpu8'))")
+    win._run_ciw("ol.new_view('testlib', 'nand2', 'schematic')")
+    assert win.workarea.library("testlib").cell("nand2").view("schematic")
+    win._run_ciw("print(ol.cells('testlib'))")
     assert "['nand2', 'tb_inv']" in win.ciw.log.toPlainText()
     win._run_ciw("1/0")
     assert "ZeroDivisionError" in win.ciw.log.toPlainText()
 
 
 def test_simulate_records_state(win, app):
-    cell = win.workarea.library("cpu8").cell("tb_inv")
+    cell = win.workarea.library("testlib").cell("tb_inv")
     win.simulate(cell)
     end = time.time() + 60
     while time.time() < end and "sim" not in win.workarea.cell_state(cell):
@@ -91,7 +91,7 @@ def test_drc_records_state(win, app):
     assert (win.workarea.verify_dir(inv) / "INVx1_ASAP7_75t_R.drc.lyrdb").is_file()
     # a cell with an M1 width error: not clean, and the results go to KLayout
     import subprocess
-    cell = win.workarea.new_view(win.workarea.library("cpu8"), "bad", view_type("layout")).cell
+    cell = win.workarea.new_view(win.workarea.library("testlib"), "bad", view_type("layout")).cell
     script = cell.path / "mk.py"
     script.write_text("\n".join([
         "import pya",
@@ -111,13 +111,13 @@ def test_drc_records_state(win, app):
 
 def test_checks_from_klayout(win):
     """OpenLayout > Run DRC / LVS / PEX in KLayout report to the hub (openlayout hubcmd checked)."""
-    cell = win.workarea.library("cpu8").cell("tb_inv")
+    cell = win.workarea.library("testlib").cell("tb_inv")
     req = {"cmd": "checked", "path": str(cell.path / "tb_inv.gds"), "cell": "tb_inv", "step": "drc", "ok": False,
            "detail": "2 violation(s) of 1 rule(s)"}
     assert win.handle_request(req)["ok"]
     state = win.workarea.cell_state(cell)["drc"]
     assert state["ok"] is False and state["detail"] == "2 violation(s) of 1 rule(s)"
-    assert "DRC cpu8/tb_inv (in KLayout): 2 violation(s)" in win.ciw.log.toPlainText()
+    assert "DRC testlib/tb_inv (in KLayout): 2 violation(s)" in win.ciw.log.toPlainText()
     assert win.handle_request({**req, "step": "lvs", "ok": True, "detail": "match"})["ok"]
     assert win.workarea.cell_state(cell)["lvs"]["ok"] is True
     assert not win.handle_request({**req, "step": "sim"})["ok"]
@@ -152,7 +152,7 @@ def test_command_server(win, app):
     import threading
     from openlayout import cli
     port = win.workarea.session()["hub_port"]
-    assert cli.hub_port(str(win.workarea.root / "libraries" / "cpu8" / "tb_inv" / "tb_inv.sch")) == port
+    assert cli.hub_port(str(win.workarea.root / "libraries" / "testlib" / "tb_inv" / "tb_inv.sch")) == port
 
     def call(req):
         out = []
@@ -165,9 +165,9 @@ def test_command_server(win, app):
         return out[0]
 
     assert call({"cmd": "ping"})["ok"]
-    sch = str(win.workarea.library("cpu8").path / "tb_inv" / "tb_inv.sch")
+    sch = str(win.workarea.library("testlib").path / "tb_inv" / "tb_inv.sch")
     reply = call({"cmd": "select", "path": sch})
-    assert reply["ok"] and win.lm.current_cell().key == "cpu8/tb_inv"
+    assert reply["ok"] and win.lm.current_cell().key == "testlib/tb_inv"
     reply = call({"cmd": "open", "path": sch, "view": "layout"})
     assert not reply["ok"] and "no layout view" in reply["error"]
     assert not call({"cmd": "select", "path": "/tmp/not/in/workarea.sch"})["ok"]

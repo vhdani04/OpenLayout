@@ -31,8 +31,8 @@ gui.start(mw)
 check("Run LVS is in the OpenLayout menu", mw.menu().is_valid("openlayout_menu.run_lvs"))
 
 # the cell: an inverter schematic (3-fin devices, output Y) and the INVx1 geometry as its layout
-wa = Workarea.create(Path(tempfile.mkdtemp()) / "wa", "cpu8")
-cell_dir = wa.library("cpu8").path / "inv"
+wa = Workarea.create(Path(tempfile.mkdtemp()) / "wa", "testlib")
+cell_dir = wa.library("testlib").path / "inv"
 cell_dir.mkdir()
 sch = (HOME / "tests/klayout/inv_globals.sch").read_text().replace("lab=Z", "lab=Y").replace("nfin=2", "nfin=3")
 (cell_dir / "inv.sch").write_text(sch)
@@ -64,7 +64,7 @@ for s in list(top.shapes(v0).each()):
 res = lvs.run_current(mw)
 check("after an edit that opens the output, Run LVS reports the mismatch", res is not None and not res["match"]
       and res["circuits"] >= 1, res)
-inv_cell = wa.library("cpu8").cell("inv")
+inv_cell = wa.library("testlib").cell("inv")
 state = wa.cell_state(inv_cell).get("lvs", {})
 check("Run LVS records its result for the hub's Checks list (no hub running: in the workarea state)",
       state.get("ok") is False and "circuit" in state.get("detail", ""), state)

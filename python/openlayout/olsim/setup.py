@@ -1,10 +1,10 @@
 """The OLSim setup: tests, design variables, corners and outputs - one JSON file, the cell's
 `olsim` view (<cell>.olsim).
 
-    {"tests": [{"name": "tran", "design": {"lib": "cpu8", "cell": "tb_inv", "view": "config"},   # its config view
+    {"tests": [{"name": "tran", "design": {"lib": "mychip", "cell": "tb_inv", "view": "config"},   # its config view
                 "analyses": [{"type": "tran", "stop": "200p", "step": "0.5p"}],
                 "vectors": ["stim.vec"], "section": "tt", "temp": "27",
-                "extracted": ["cpu8/inv"]}],          # post-layout: inv's PEX netlist instead of its schematic
+                "extracted": ["mychip/inv"]}],          # post-layout: inv's PEX netlist instead of its schematic
      "variables": {"vdd": "0.7", "cload": "1f 2f 4f"},
      "corners": [{"name": "ss_hot", "section": "ss", "temp": "125", "variables": {"vdd": "0.63"}}],
      "outputs": [{"test": "tran", "name": "tpd", "expr": "delay(v('in'), v('out'), vdd/2, vdd/2)",
