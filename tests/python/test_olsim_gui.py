@@ -238,6 +238,13 @@ def test_testbench_hierarchy_and_picker(hub, app, monkeypatch):
     assert ed.tree.topLevelItem(0).text(3) == "schematic" and ed.cfg.instances == {"X1": "schematic"}
     ed._dirty = False
     ed.close()
+    # a design given as the cell's schematic file is the library cell; its config is pointed out
+    t = w.setup.test("tran")
+    t.design = {"schematic": str(tb.view("schematic").path)}
+    w._show_test()
+    assert t.design == {"lib": "cpu8", "cell": "tb_inv2"} and w.t_view.currentText() == "schematic"
+    assert "has a config view" in w.t_hier.text() and "inv2 extracted" in w.t_hier.text()
+    w._dirty = False
 
     # Select on Schematic: what xschem reports as selected becomes plotted outputs (once)
     class FakeXschem:

@@ -235,7 +235,9 @@ What the run does with it:
 How you know what was simulated:
 
 - **The Hierarchy line** of the test, and the test in the Data View, summarize the bindings.
-- **The Log** of every run says it, for example
+- **The Log** of every run says it. A test with the schematic view logs
+  `tran: demo/tb_inv: every cell simulates its schematic (design view: schematic)`; one with a
+  config logs, for example
   `tran: config demo/tb_inv config: 1 instance(s) extracted (X1), 0 schematic` and
   `tran: inv extracted (inv.pex.spice): X1 - layout pin(s) VSS VDD connect to the global net(s)`.
 - **The netlist:** `sim/<lib>/<cell>/olsim/<run>/netlist/<test>.spice` (and every point's
@@ -250,6 +252,8 @@ Notes:
 - **Stale extractions:** the Log and the editor note when the layout changed after the extraction.
 - **Pre vs post:** two tests, one with the schematic view and one with the config, give pre- and
   post-layout side by side in one run (Data View: Copy Test).
+- **A design given as a file:** a test whose design is a cell's own `.sch` file is shown (and saved)
+  as that library cell, so its config view can be chosen.
 - **Older setups:** a test's `extracted` list (cells, or `.pex.spice` files) still works, bound on top
   of the config. Hierarchy… moves its cells into the config.
 

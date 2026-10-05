@@ -317,6 +317,10 @@ class Run:
             text = netlist_schematic(sch, out / test.name, root)
         body, removed = clean_netlist(text)
         body, notes = self.bind(test, body, cfg)
+        if not notes:                                  # no views bound: say so - never leave it to guesswork
+            what = "the netlist file as it is" if "netlist" in d else "every cell simulates its schematic (design view: schematic)"
+            notes = [f"{test.name}: {test.design_label()}: {what}"]
+            body = f"* OpenLayout hierarchy: {what}\n" + body
         out.mkdir(parents=True, exist_ok=True)
         (out / f"{test.name}.spice").write_text(body)
         return body, removed, notes

@@ -376,6 +376,7 @@ class OLSimWindow(QMainWindow):
         self.test_box.setEnabled(t is not None)
         if t is None:
             return
+        self._as_cell(t)
         was = self._loading
         self._loading = True
         self.t_name.setText(t.name)
@@ -1017,6 +1018,18 @@ class OLSimWindow(QMainWindow):
         r.path.mkdir(parents=True, exist_ok=True)
         return r
 
+    def _as_cell(self, t):
+        """A design given as a cell's own schematic file is that library cell (which can have a
+        config view)."""
+        if "schematic" not in t.design or self.workarea is None:
+            return
+        p = Path(t.design["schematic"]).expanduser()
+        p = p if p.is_absolute() else self.setup_path.parent / p
+        cell = self.workarea.cell_for_path(p)
+        sch = cell.view("schematic") if cell else None
+        if sch is not None and sch.path.resolve() == p.resolve():
+            t.design = {"lib": cell.library.name, "cell": cell.name}
+
     def _design_cell(self, t):
         d = t.design
         lib = self.workarea.library(d.get("lib", "")) if self.workarea and "lib" in d else None
@@ -1035,7 +1048,12 @@ class OLSimWindow(QMainWindow):
                 cfg = Config.load(view.path)
                 text = f"config {cell.key}: top {cfg.top_label}, {cfg.summary()}"
         elif "lib" in t.design:
-            text = "schematic: every cell simulates its schematic (Hierarchy… to choose views per cell or instance)"
+            text = "schematic: every cell simulates its schematic"
+            if cell is not None and cell.view("config") is not None:
+                cfg = Config.load(cell.view("config").path)
+                text += f" - {cell.key} has a config view ({cfg.summary()}): set the view to config to use it"
+            else:
+                text += " (Hierarchy… to choose views per cell or instance)"
         else:
             text = "a file: simulated as it is"
         self.t_hier.setText(text + extra)

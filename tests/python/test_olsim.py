@@ -270,6 +270,7 @@ def test_post_layout_swap(tmp_path):
     d = (h.path / "points" / str(pex_point) / "deck.sp").read_text()
     assert "* inv: extracted (PEX inv.pex.spice)" in d and d.count(".subckt inv") == 1 and "\nR1 " in d
     assert "*   X1 (inv): extracted" in d                                   # the deck says what it binds
+    assert "sch: tb.sp: the netlist file as it is" in h.data["notes"]        # and so does a run without bindings
 
 
 HIER = """* top
