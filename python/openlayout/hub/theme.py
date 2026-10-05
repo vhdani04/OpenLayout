@@ -11,8 +11,9 @@ SHARE = Path(__file__).resolve().parents[3] / "share"
 THEME = json.loads((SHARE / "theme" / "openlayout.json").read_text())
 C = THEME["ui"]
 FONT = THEME["font"]
-VIEW_COLORS = {"schematic": C["ok"], "symbol": C["warn"], "layout": C["accent"], "netlist": "#9aa3b2"}
-VIEW_LETTERS = {"schematic": "S", "symbol": "Y", "layout": "L", "netlist": "N"}
+VIEW_COLORS = {"schematic": C["ok"], "symbol": C["warn"], "layout": C["accent"], "netlist": "#9aa3b2",
+               "maestro": "#c678dd"}
+VIEW_LETTERS = {"schematic": "S", "symbol": "Y", "layout": "L", "netlist": "N", "maestro": "M"}
 ICON_FILE = SHARE / "icons" / "openlayout.svg"
 
 QSS = f"""

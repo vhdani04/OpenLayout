@@ -43,8 +43,9 @@ SCHEMATIC = ViewType("schematic", (".sch",), "xschem")
 SYMBOL = ViewType("symbol", (".sym",), "xschem")
 LAYOUT = ViewType("layout", (".gds", ".oas"), "klayout")
 NETLIST = ViewType("netlist", (".spice", ".cdl"), "text")
-VIEW_TYPES = [SCHEMATIC, SYMBOL, LAYOUT, NETLIST]
-CREATABLE = [SCHEMATIC, SYMBOL, LAYOUT]
+MAESTRO = ViewType("maestro", (".maestro",), "maestro")   # simulation setup (openlayout.maestro)
+VIEW_TYPES = [SCHEMATIC, SYMBOL, LAYOUT, NETLIST, MAESTRO]
+CREATABLE = [SCHEMATIC, SYMBOL, LAYOUT, MAESTRO]
 
 
 def view_type(name: str) -> ViewType:
@@ -265,6 +266,10 @@ class Workarea:
             path.write_text(symbol_text(pins) if pins else BLANK)
         elif vt is LAYOUT:
             run_klayout_script("new_layout.py", file=path, cell=cell_name)
+        elif vt is MAESTRO:
+            # a setup whose test simulates this cell's schematic (the testbench)
+            from .maestro.setup import default_setup
+            default_setup(lib.name, cell_name).save(path)
         else:
             raise WorkareaError(f"cannot create {vt.name} views")
         return View(cell, vt, path)

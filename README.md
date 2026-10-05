@@ -53,6 +53,9 @@ or F1 in the hub) and get an **OpenLayout** menu:
 CDL, run from KLayout, the hub or `openlayout lvs` - see [docs/LVS.md](docs/LVS.md).
 **PEX**: capacitances from the FasterCap 3D field solver, resistor networks for wires and vias, a
 post-layout SPICE netlist; from KLayout, the hub or `openlayout pex` - see [docs/PEX.md](docs/PEX.md).
+**Maestro**: the simulation environment (tests, variables and sweeps, corners, vector files, outputs with
+specs, post-layout) and a ViVA-like waveform viewer (pyqtgraph); from the hub (Tools > Maestro, F9) or
+`openlayout maestro` / `openlayout viva` - see [docs/MAESTRO.md](docs/MAESTRO.md).
 
 Cross-tool menus call `openlayout hubcmd`, which talks to the hub over localhost
 (`<workarea>/.openlayout/session.json` holds its port); the hub starts the other tool if needed.

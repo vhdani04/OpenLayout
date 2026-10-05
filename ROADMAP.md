@@ -61,6 +61,13 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [x] PEX calibrated against the library's Calibre xACT 3D netlists (54 cells, delays within ~2 %)
 - [ ] PEX of large blocks (hierarchical: cells, then routing)
 
+## Phase 6b — Simulation environment
+- [x] Maestro: tests, design variables / sweeps, corners, outputs + specs, parallel ngspice runs, histories (docs/MAESTRO.md)
+- [x] Digital vector files (.vec): PWL stimulus, output checking, vector-check plots
+- [x] Waveform viewer (pyqtgraph): strips, overlays, cursors, calculator, digital / bus lanes, parametric plots, export
+- [x] Post-layout tests: cells simulated with their PEX netlist
+- [ ] Monte Carlo (needs mismatch statistics the ASAP7 models do not have), optimization
+
 ## Phase 7 — Custom cell library
 - [x] Device PCells (nfin, fingers, contacts) — done in Phase 4b; DRC-verify in Phase 5
 - [ ] INV, NAND2, NOR2, XOR, MUX2, latch, DFF — each: sch -> sim -> layout -> DRC -> LVS -> PEX sim

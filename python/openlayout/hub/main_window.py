@@ -42,6 +42,8 @@ class HubAPI:
     ol.drc(lib, cell)                 design rule check of the layout (results in verify/<lib>/<cell>/)
     ol.lvs(lib, cell)                 layout versus schematic (results in verify/<lib>/<cell>/)
     ol.pex(lib, cell)                 parasitic extraction: verify/<lib>/<cell>/<cell>.pex.spice
+    ol.maestro(lib, cell)             the cell's Maestro (simulation setup, results in sim/<lib>/<cell>/maestro)
+    ol.viva()                         the waveform viewer
     ol.xschem(tcl)                    send a Tcl command to the running xschem
     ol.klayout(cmd, **args)           send a request to the running KLayout bridge
     ol.wa                             the Workarea object (full Python API)
@@ -88,6 +90,8 @@ class HubAPI:
     def drc(self, lib, cell): self._win.drc(self._cell(lib, cell))
     def lvs(self, lib, cell): self._win.lvs(self._cell(lib, cell))
     def pex(self, lib, cell): self._win.pex(self._cell(lib, cell))
+    def maestro(self, lib, cell): return self._win.open_maestro(self._cell(lib, cell))
+    def viva(self): return self._win.show_viewer()
     def xschem(self, tcl): return self._win.xschem.send(tcl)
     def klayout(self, cmd, **args): return self._win.klayout.request({"cmd": cmd, **args})
 
@@ -182,6 +186,11 @@ class MainWindow(QMainWindow):
         self.a_pex = self._act("PEX", lambda: self.pex(self.lm.current_cell()), None, S.SP_FileDialogDetailedView,
                                "Parasitic extraction of the cell's layout (FasterCap 3D field solver + "
                                "resistor networks): a post-layout SPICE netlist")
+        self.a_maestro = self._act("Maestro", lambda: self.open_maestro(self.lm.current_cell()), "F9",
+                                   S.SP_ComputerIcon, "Simulation environment: tests, variables, corners, vector "
+                                   "files, outputs with specs (the cell's maestro view)")
+        self.a_viva = self._act("Waveform Viewer", self.show_viewer, None, None,
+                                "Plot simulation results (Maestro histories, SPICE raw files)")
         self.a_start_xs = self._act("Start xschem", lambda: self._start_tool("xschem"))
         self.a_start_kl = self._act("Start KLayout", lambda: self._start_tool("klayout"))
         self.a_show_pdk = self._act("Show PDK Libraries", self._toggle_pdk, checkable=True)
@@ -196,7 +205,8 @@ class MainWindow(QMainWindow):
             ("&File", [self.a_new_wa, self.a_open_wa, None, self.a_new_lib, self.a_new_view, None,
                        self.a_refresh, None, self.a_quit]),
             ("&Edit", [self.a_open, None, self.a_copy, self.a_rename, self.a_delete]),
-            ("&Tools", [self.a_netlist, self.a_sim, self.a_gensym, None, self.a_drc, self.a_lvs, self.a_pex, None,
+            ("&Tools", [self.a_netlist, self.a_sim, self.a_maestro, self.a_viva, self.a_gensym, None, self.a_drc,
+                        self.a_lvs, self.a_pex, None,
                         self.a_start_xs, self.a_start_kl]),
             ("&View", [self.a_show_pdk]),
             ("&Help", [self.a_keys, self.a_help_cmds, self.a_about]),
@@ -210,7 +220,8 @@ class MainWindow(QMainWindow):
         tb.setObjectName("main_toolbar")
         tb.setMovable(False)
         tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        for a in [self.a_new_view, self.a_open, None, self.a_netlist, self.a_sim, None, self.a_drc, self.a_lvs,
+        for a in [self.a_new_view, self.a_open, None, self.a_netlist, self.a_sim, self.a_maestro, None, self.a_drc,
+                  self.a_lvs,
                   self.a_pex, None, self.a_refresh]:
             tb.addSeparator() if a is None else tb.addAction(a)
 
@@ -273,6 +284,12 @@ class MainWindow(QMainWindow):
             self.ciw.info(f"open {cell.key} {view.name} (requested by a tool)")
             self.open_target(view)
             return {"ok": True, "message": f"opening {cell.key} {view.name}"}
+        if cmd == "maestro":
+            self.open_maestro(cell)
+            return {"ok": True, "message": f"Maestro {cell.key}"}
+        if cmd == "viva":
+            self.show_viewer()
+            return {"ok": True, "message": "waveform viewer"}
         if cmd in ("select", "netlist", "simulate"):
             self.lm.select(cell.library.name, cell.name)
             self.raise_hub()
@@ -426,10 +443,53 @@ class MainWindow(QMainWindow):
         if target.type.tool == "text":
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.path)))
             return
+        if target.type.tool == "maestro":
+            self.open_maestro(target.cell)
+            return
         bridge = self.xschem if target.type.tool == "xschem" else self.klayout
         if not bridge.running:
             self.ciw.info(f"starting {bridge.name}…")
         self._in_thread(bridge, lambda: bridge.open(target))
+
+    # ---- simulation environment ---------------------------------------------------------------
+    def viewer(self):
+        """The waveform viewer, one per hub (Maestro windows plot into it)."""
+        if getattr(self, "_viewer", None) is None:
+            from .viva import Viewer
+            self._viewer = Viewer()
+        return self._viewer
+
+    def show_viewer(self):
+        v = self.viewer()
+        v.show()
+        v.raise_()
+        return v
+
+    def open_maestro(self, cell):
+        """The cell's Maestro window (its maestro view, created for a testbench schematic)."""
+        if not cell:
+            return None
+        from ..workarea import MAESTRO
+        from .maestro_window import MaestroWindow
+        view = cell.view("maestro")
+        if view is None:
+            if cell.library.readonly or cell.view("schematic") is None:
+                self.ciw.warn(f"{cell.key}: Maestro needs a writable cell with a schematic (the testbench)")
+                return None
+            view = self._guard(lambda: self.workarea.new_view(cell.library, cell.name, MAESTRO))
+            if not view:
+                return None
+            self.ciw.ok(f"created {cell.key} maestro")
+            self.lm.refresh()
+        self._maestros = getattr(self, "_maestros", {})
+        w = self._maestros.get(str(view.path))
+        if w is None or not w.isVisible():
+            w = MaestroWindow(view.path, self.workarea, self.workarea.run_dir(cell) / "maestro", self.viewer())
+            self._maestros[str(view.path)] = w
+        w.show()
+        w.raise_()
+        self.ciw.info(f"Maestro {cell.key}")
+        return w
 
     def _start_tool(self, name):
         bridge = self.xschem if name == "xschem" else self.klayout
@@ -664,6 +724,8 @@ class MainWindow(QMainWindow):
         self.a_drc.setEnabled(bool(cell and cell.view("layout")) and idle and self.klayout is not None)
         self.a_lvs.setEnabled(bool(cell and cell.view("layout")) and idle and self.klayout is not None)
         self.a_pex.setEnabled(bool(cell and cell.view("layout")) and idle)
+        self.a_maestro.setEnabled(bool(cell and (cell.view("maestro") or (cell.view("schematic")
+                                                                            and not cell.library.readonly))))
         self.a_start_xs.setEnabled(has_wa)
         self.a_start_kl.setEnabled(has_wa)
 

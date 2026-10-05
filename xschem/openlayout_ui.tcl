@@ -159,6 +159,8 @@ proc ol_add_menu {} {
   $m add separator
   $m add command -label "Netlist (hub)" -command {ol_hubcmd netlist}
   $m add command -label "Simulate (hub)" -command {ol_hubcmd simulate}
+  $m add command -label "Maestro (hub)" -command {ol_hubcmd maestro}
+  $m add command -label "Waveform Viewer (hub)" -command {ol_hubcmd viva}
   $m add separator
   $m add command -label "Virtuoso Keys…" -command ol_show_keys
 }
