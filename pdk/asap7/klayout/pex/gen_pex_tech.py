@@ -95,5 +95,5 @@ def build(c=CALIBRATED):
 
 if __name__ == "__main__":
     out = Path(__file__).with_name("asap7_pex.json")
-    out.write_text(json.dumps(build(), indent=1) + "\n")
+    out.write_text(json.dumps(build(), indent=1) + "\n", newline="\n")
     print(f"wrote {out}")
