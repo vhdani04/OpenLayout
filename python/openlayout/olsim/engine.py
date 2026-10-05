@@ -78,7 +78,7 @@ def clean_netlist(text: str):
             skipping = True
             continue
         out.append(line)
-    return "\n".join(out) + "\n", [r for r in removed if r.strip()]
+    return "\n".join(out) + "\n", [r for r in removed if r.strip() and r.strip().lower() != ".end"]
 
 
 def subckt_block(text: str, name: str):
