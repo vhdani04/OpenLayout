@@ -79,6 +79,21 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 ```
 
+### ASAP7 citations
+
+The ASAP7 authors ask that published work using the PDK cite [1], and work using the 7.5-track
+standard-cell library cite [2]. The DRC deck is written from the design rule manual [3].
+
+1. L. T. Clark, V. Vashishtha, L. Shifren, A. Gujja, S. Sinha, B. Cline, C. Ramamurthy and G. Yeric,
+   "ASAP7: A 7-nm finFET predictive process design kit," *Microelectronics Journal*, vol. 53,
+   pp. 105-115, Jul. 2016. [doi:10.1016/j.mejo.2016.04.006](https://doi.org/10.1016/j.mejo.2016.04.006)
+2. V. Vashishtha, M. Vangala and L. T. Clark, "ASAP7 predictive design kit development and cell
+   design technology co-optimization: Invited paper," *Proc. IEEE/ACM International Conference on
+   Computer-Aided Design (ICCAD)*, pp. 992-998, Nov. 2017.
+   [doi:10.1109/ICCAD.2017.8203889](https://doi.org/10.1109/ICCAD.2017.8203889)
+3. *ASAP7 PDK Design Rule Manual*, PDK release 1p7 (`asap7_drm_201207a.pdf`), Arizona State
+   University, Dec. 2020. [github.com/The-OpenROAD-Project/asap7_pdk_r1p7](https://github.com/The-OpenROAD-Project/asap7_pdk_r1p7)
+
 ## Trademarks
 
 Virtuoso is a trademark of Cadence Design Systems, Inc. HSPICE is a trademark of Synopsys, Inc. All

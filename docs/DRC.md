@@ -1,7 +1,8 @@
 # Design rule check (ASAP7)
 
 OpenLayout's DRC deck is a KLayout DRC script written rule by rule from the **ASAP7 Design Rule
-Manual, PDK release 1p7** (`$ASAP7_PDK/docs/asap7_drm_201207a.pdf`):
+Manual, PDK release 1p7** (`$ASAP7_PDK/docs/asap7_drm_201207a.pdf`; ASU, Dec. 2020 - see the
+citations in the [README](../README.md#acknowledgements-and-citations)):
 [`pdk/asap7/klayout/drc/asap7.drc`](../pdk/asap7/klayout/drc/asap7.drc). Every check reports under
 the DRM's rule name (e.g. `M1.S.2`), with the rule's description, so a marker can be looked up in
 the manual directly.

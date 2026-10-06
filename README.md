@@ -127,6 +127,23 @@ placement. Regenerate with `pdk/asap7/klayout/gen_asap7_{lyp,lyt}.py`.
 
 See [ROADMAP.md](ROADMAP.md) for the plan.
 
+## Acknowledgements and citations
+
+OpenLayout is built around the ASAP7 predictive PDK and its 7.5-track standard-cell library,
+developed at Arizona State University with ARM. The DRC deck is written from the ASAP7 design rule
+manual; the LVS and PEX regressions and the PCell geometry follow the standard-cell library. If you
+publish work done with OpenLayout, please cite the ASAP7 papers, as their authors ask:
+
+1. L. T. Clark, V. Vashishtha, L. Shifren, A. Gujja, S. Sinha, B. Cline, C. Ramamurthy and G. Yeric,
+   "ASAP7: A 7-nm finFET predictive process design kit," *Microelectronics Journal*, vol. 53,
+   pp. 105-115, Jul. 2016. [doi:10.1016/j.mejo.2016.04.006](https://doi.org/10.1016/j.mejo.2016.04.006)
+2. V. Vashishtha, M. Vangala and L. T. Clark, "ASAP7 predictive design kit development and cell
+   design technology co-optimization: Invited paper," *Proc. IEEE/ACM International Conference on
+   Computer-Aided Design (ICCAD)*, pp. 992-998, Nov. 2017.
+   [doi:10.1109/ICCAD.2017.8203889](https://doi.org/10.1109/ICCAD.2017.8203889)
+3. *ASAP7 PDK Design Rule Manual*, PDK release 1p7 (`asap7_drm_201207a.pdf`), Arizona State
+   University, Dec. 2020. [github.com/The-OpenROAD-Project/asap7_pdk_r1p7](https://github.com/The-OpenROAD-Project/asap7_pdk_r1p7)
+
 ## License
 
 OpenLayout is free software, released under the GNU General Public License v3.0 or later - see
