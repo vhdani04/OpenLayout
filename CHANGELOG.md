@@ -75,7 +75,8 @@ and the BSIM-CMG model. It takes a while the first time; afterwards it is idempo
 
 ### Known limitations
 
-- Ubuntu 24.04 only, and ASAP7 is the only PDK.
+- Ubuntu 24.04 only, and ASAP7 is the only PDK for now. Support for more PDKs is coming: the
+  environment is built so another PDK plugs into the same infrastructure.
 - PEX is per cell. Large blocks are not extracted hierarchically yet.
 - No net cross-probing between schematic and layout yet.
 - No Monte Carlo: the ASAP7 models have no mismatch statistics.

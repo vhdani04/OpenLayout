@@ -2,7 +2,7 @@
 
 An open-source custom IC design environment for the ASAP7 7nm FinFET PDK:
 xschem (schematics) + ngspice (simulation, BSIM-CMG via OSDI) + KLayout (layout, DRC, LVS) +
-FasterCap (parasitic extraction).
+FasterCap (parasitic extraction). ASAP7 is the first PDK; support for more PDKs is coming.
 
 ## Install (Ubuntu 24.04)
 
