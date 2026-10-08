@@ -9,6 +9,9 @@ The behaviour:
   then repeats: click the next object to move (it follows from that click), and so on, until Esc
   or a right click.
 - Stretch (`s`): the edge or corner under the mouse follows it and a click places it.
+- Hover: where KLayout's hover highlight would show a frame shape although a click takes something
+  else (stdcell.pick_non_frame - a wire, a contact, a transistor on top of the frame), that object is
+  outlined instead, so the highlight always shows what a click selects.
 - Right-click in Select mode: the mirror / rotate menu (mirror.py) for the selection - or for the
   object under the mouse, which is selected first.
 
@@ -138,6 +141,34 @@ class DragMove(pya.Plugin):
         self.last_p = None         # the mouse position of the previous move event
         self.inst_cache = {}       # (cell name, angle, mirror) -> {layer: [DPolygon]} for Instance mode
         self.inst_shown = False
+        self.hover_markers = []    # the outline of what a click takes, where KLayout's hover shows the frame
+        self.hover_target = None   # ... and that object (an ObjectInstPath)
+        view.on_transient_selection_changed += self._hover_changed
+
+    # ---- hover highlight ------------------------------------------------------------------------
+    def _clear_hover(self):
+        for m in self.hover_markers:
+            m._destroy()
+        self.hover_markers = []
+        self.hover_target = None
+
+    def _hover_changed(self):
+        """KLayout's hover highlight changed: if it shows only frame shapes while a click would
+        take something else, show that instead."""
+        view = self._view
+        objs = list(view.each_object_selected_transient())
+        if not objs or self.last_p is None or view.mode_name() != "select":
+            return
+        if not all(stdcell.is_frame_object(o) for o in objs):
+            self._clear_hover()
+            return
+        better = stdcell.pick_non_frame(view, self.last_p)
+        if better is None:
+            return
+        view.clear_transient_selection()
+        self._clear_hover()
+        self.hover_markers = hover_outline(view, better)
+        self.hover_target = better
 
     def _grab(self):
         if not self.grabbed:
@@ -250,6 +281,8 @@ class DragMove(pya.Plugin):
     def mouse_moved_event(self, p, buttons, prio):
         global _under_mouse
         self._grab()
+        if prio and self.hover_markers:
+            self._clear_hover()
         _under_mouse = (self, p)
         mode = self._view.mode_name()
         last, self.last_p = self.last_p, p
@@ -360,6 +393,8 @@ class DragMove(pya.Plugin):
                 if q != pts[-1]:
                     pts.append(q)
             return False
+        if prio and self.hover_markers:
+            self._clear_hover()
         if prio and self.command and buttons & pya.ButtonState.RightButton:
             self.end_command()
             return True
@@ -669,6 +704,29 @@ class DragMove(pya.Plugin):
 
     def deactivated(self):
         self.dragging = False
+
+
+def hover_outline(view, oip):
+    """Markers outlining an object (an ObjectInstPath at the top), styled like the hover highlight."""
+    color = view.get_config("sel-color")
+    color = int(color.lstrip("#"), 16) if color.startswith("#") else 0xFFFFFF
+    layout = view.cellview(oip.cv_index).layout()
+    if oip.is_cell_inst():
+        shapes = [oip.inst().dbbox()]
+    else:
+        shapes = [oip.shape.dpolygon] if oip.shape.is_box() or oip.shape.is_polygon() or oip.shape.is_path() \
+            else [oip.shape.dbbox()]
+    out = []
+    for s in shapes:
+        m = pya.Marker(view)
+        m.set(s)
+        m.color = color
+        m.frame_color = color
+        m.line_width = 1
+        m.dither_pattern = 1           # outline only, like KLayout's hover
+        m.vertex_size = 0
+        out.append(m)
+    return out
 
 
 class EscFilter(pya.QObject):

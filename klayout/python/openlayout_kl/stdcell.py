@@ -146,14 +146,28 @@ def pick(view, p, mode=pya.LayoutView.SelectionMode.Replace):
     return view.has_object_selection()
 
 
+# what lies on top wins: metal over vias over contacts over gate, then anything else drawn
+_STACK = [f"m{k}" for k in range(9, 0, -1)] + [f"v{k}" for k in range(9, -1, -1)] + ["lig", "lisd", "gate"]
+_RANK = {LAYERS[n]: len(_STACK) - i for i, n in enumerate(_STACK)}
+
+
 def pick_non_frame(view, p):
-    """ObjectInstPath of the smallest instance, else the smallest non-frame shape, at p - or None."""
+    """ObjectInstPath of what a click at p should take when the frame is under it: the topmost
+    non-frame shape there (upper layers first, then the smallest), else the smallest non-frame
+    instance - or None."""
     cv = view.active_cellview()
     if not cv.is_valid() or cv.cell is None:
         return None
     cell, layout = cv.cell, cv.layout()
     q = cv.context_dtrans().inverted() * p
     probe = pya.DBox(q, q)
+    oip = pya.ObjectInstPath()
+    oip.top = cell.cell_index()
+    oip.cv_index = cv.index()
+    shape = _top_shape(view, cv, cell, layout, probe)
+    if shape is not None:
+        oip.shape, oip.layer = shape
+        return oip
     best = None
     for inst in cell.each_overlapping_inst(probe):
         if _is_frame(inst):
@@ -161,12 +175,14 @@ def pick_non_frame(view, p):
         area = inst.dbbox().area()
         if best is None or area < best[0]:
             best = (area, inst)
-    oip = pya.ObjectInstPath()
-    oip.top = cell.cell_index()
-    oip.cv_index = cv.index()
-    if best is not None:
-        oip.append_path(pya.InstElement(best[1]))
-        return oip
+    if best is None:
+        return None
+    oip.append_path(pya.InstElement(best[1]))
+    return oip
+
+
+def _top_shape(view, cv, cell, layout, probe):
+    """(shape, layer index) of the topmost visible non-frame shape at probe, or None."""
     visible = set()
     it = view.begin_layers()
     while not it.at_end():
@@ -174,18 +190,16 @@ def pick_non_frame(view, p):
         if lp.cellview() == cv.index() and lp.visible and lp.layer_index() >= 0:
             visible.add(lp.layer_index())
         it.next()
+    best = None
     for li in visible:
+        rank = _RANK.get(layout.get_info(li).layer, 0) if layout.get_info(li).datatype in (0, PIN) else 0
         for s in cell.shapes(li).each_touching(probe.to_itype(layout.dbu)):
             if s.is_text() or s.property(PROP) == FRAME_TAG:
                 continue
-            area = s.dbbox().area()
-            if best is None or area < best[0]:
-                best = (area, s, li)
-    if best is None:
-        return None
-    oip.shape = best[1]
-    oip.layer = best[2]
-    return oip
+            key = (-rank, s.dbbox().area())
+            if best is None or key < best[0]:
+                best = (key, s, li)
+    return None if best is None else (best[1], best[2])
 
 
 def _conn(view):

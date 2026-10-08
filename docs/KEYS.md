@@ -119,8 +119,9 @@ selected and edited): a 7.5-track frame (270 nm high, a whole number of 54 nm ga
 with the boundary, n-well / implant split, VT layer, all ten fin rows, the VDD / VSS rails on M1
 (labelled as pins), LIG rails under them (joined to M1 by V0 at every gate pitch), gate cuts and dummy gates at both cell edges - like the ASAP7 library
 cells. Running it again (another width or VT) redraws the frame's shapes; shapes you added yourself
-are kept. As the frame covers the whole cell, a click picks what lies on top of it - a transistor,
-a wire - and only an empty spot picks a frame shape. A drag that starts on an unselected frame
+are kept. As the frame covers the whole cell, a click picks what lies on top of it - the topmost wire,
+contact or gate first, then a transistor - and only an empty spot picks a frame shape; the hover
+highlight shows the same object a click takes. A drag that starts on an unselected frame
 shape draws a selection box; a selected frame shape drags like any shape (to move the whole frame,
 box-select it).
 
