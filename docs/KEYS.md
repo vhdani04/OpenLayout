@@ -125,7 +125,7 @@ shape draws a selection box; a selected frame shape drags like any shape (to mov
 box-select it).
 
 Transistors go in with *Standard-cell row* on and at y = 0: nMOS sit on the bottom fins, pMOS on
-the top fins, and an nMOS and a pMOS in the same column share one gate. The transistors have no
+the top fins, and an nMOS and a pMOS in the same column share one gate. A free-standing transistor dragged into the frame becomes a row transistor and snaps onto the row, so its fins sit on the frame's whatever its fin count; dropped outside the frame it snaps to the 54 nm gate grid with its fins on the 27 nm fin grid. The transistors have no
 gate contact: put one wherever the routing wants it along the gate - LIG over the gate (and a V0
 to M1), or a LIG-M1 via from `o`. Row devices have at most 3 fins (use fingers for more). The transistor PCells draw no GCUT: where a
 gate is cut depends on the cell, so draw GCUT where yours needs it (the frame already cuts at the

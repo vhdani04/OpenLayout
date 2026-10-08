@@ -317,4 +317,30 @@ res = connectivity.check(gl, gtop, connectivity.load_conn(gds))
 check("connectivity check runs on row-mode devices", not res["missing"] and res["nets"]["VDD"]["terminals"] > 0,
       connectivity.summary(res))
 
+# standalone transistors and the frame: dropped into the frame one becomes a row transistor whose
+# fins sit on the frame's fins (any fin count - a 1-fin pMOS too); dropped outside, its fins land on
+# the 27 nm grid
+fc = ly.create_cell("FINSNAP")
+stdcell.draw_frame(fc, 4)
+fin_li = ly.layer(LAYERS["fin"], 0)
+frame_fins = pya.Region(fc.shapes(fin_li))
+for kind, nfin in (("pmos", 1), ("nmos", 1), ("pmos", 2), ("nmos", 3)):
+    pc = ly.create_cell(kind, LIBRARY, {"nfin": nfin, "nf": 1})
+    inst = fc.insert(pya.DCellInstArray(pc.cell_index(), pya.DTrans(pya.DVector(0.0613, 0.0871))))
+    msgs = chain.update(fc, moved=[inst], conn=None, frame=stdcell.frame_box(fc))
+    inst = [i for i in fc.each_inst()][-1]
+    fins = pya.Region(inst.cell.begin_shapes_rec(fin_li)).transformed(inst.cplx_trans)
+    on_row = inst.pcell_parameters_by_name().get("row") and inst.dcplx_trans.disp.y == 0
+    check(f"standalone {kind} nfin={nfin} dropped in the frame: a row device, fins on the frame's",
+          on_row and (fins - frame_fins).is_empty() and fins.count() == nfin, f"{inst.dcplx_trans} {msgs}")
+    inst.delete()
+pc = ly.create_cell("pmos", LIBRARY, {"nfin": 1, "nf": 1})
+inst = fc.insert(pya.DCellInstArray(pc.cell_index(), pya.DTrans(pya.DVector(0.0613, -0.4013))))
+chain.update(fc, moved=[inst], conn=None, frame=stdcell.frame_box(fc))
+inst = [i for i in fc.each_inst()][-1]
+t = inst.dcplx_trans.disp
+check("standalone pmos dropped outside the frame: gate grid and 27 nm fin grid, still standalone",
+      not inst.pcell_parameters_by_name().get("row") and abs(t.x * 1000 % 54) < 1e-6 and abs(t.y * 1000 % 27) < 1e-6,
+      str(t))
+
 print("PASS stdcell" if not failures else f"FAIL stdcell: {', '.join(failures)}")

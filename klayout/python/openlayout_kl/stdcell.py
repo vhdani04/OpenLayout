@@ -65,6 +65,14 @@ def frame_params(cell):
     return None
 
 
+def frame_box(cell):
+    """The DBox of the cell's standard-cell frame (its boundary), or None."""
+    p = frame_params(cell)
+    if p is None:
+        return None
+    return pya.DBox(0, 0, p["cpp"] * CPP / 1000, CELL_HEIGHT / 1000)
+
+
 def is_frame_object(o):
     """an ObjectInstPath of a frame shape (or an old frame instance)"""
     if o.is_cell_inst():
@@ -207,7 +215,7 @@ def after_move(view):
     moved = [o.inst() for o in view.each_object_selected() if o.is_cell_inst()]
     view.transaction("Chain transistors")
     try:
-        messages = chain.update(cell, moved, _conn(view))
+        messages = chain.update(cell, moved, _conn(view), frame_box(cell))
     finally:
         view.commit()
     return messages

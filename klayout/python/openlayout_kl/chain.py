@@ -5,7 +5,10 @@ outer column of the other (the devices overlap by two gate pitches). Chained sid
 gate and run the diffusion on (PCell parameters abut_left / abut_right).
 
 - update(): after a move, a moved standard-cell-row transistor lands on the 54 nm gate grid and,
-  dropped onto the cell (within half a cell of y = 0), onto the row itself. A moved transistor
+  dropped onto the cell (within half a cell of y = 0), onto the row itself. A standalone transistor
+  dropped into the cell's standard-cell frame becomes a row transistor first (its fins then sit on
+  the frame's nMOS / pMOS fins whatever its fin count); dropped elsewhere it lands on the gate grid
+  with its fins on the 27 nm fin grid. A moved transistor
   dropped next to a compatible one (same type, row, VT
   and fin count; up to two gate pitches apart, or overlapping by up to one) snaps into abutment -
   if the schematic link knows the nets, only when the touching diffusions are on the same net,
@@ -20,7 +23,7 @@ Only unrotated devices take part (R0, or mirrored left-right: M90).
 import pya
 
 from .connectivity import instance_name
-from .pcells import CPP, LIBRARY
+from .pcells import CELL_HEIGHT, CPP, FIN_PITCH, LIBRARY, ROW_MAX_FINS
 
 SNAP_GAP = 2 * CPP     # dropped this far apart (both dummy gates still there) it still chains
 SNAP_OVERLAP = CPP     # or overlapping the neighbour by up to one more gate pitch
@@ -160,6 +163,32 @@ def _set_flags(devs):
             d.params.update(want)
 
 
+def _standalone_snap(dev, frame, messages):
+    """A standalone (non-row) transistor: dropped into the standard-cell frame (frame: its DBox, or
+    None) it becomes a row transistor on the row; elsewhere its origin snaps to the gate grid and
+    the 27 nm fin grid, so its fins line up with any fin grid drawn on the same origin."""
+    if dev.params.get("row"):
+        return
+    centre = dev.inst.dbbox().center()
+    if frame is not None and frame.left <= centre.x <= frame.right and -0.5 * CELL_HEIGHT / 1000 <= centre.y \
+            <= 1.5 * CELL_HEIGHT / 1000:
+        nfin = int(dev.params.get("nfin", 1))
+        dev.inst.change_pcell_parameters({"row": True})
+        dev.params = dev.inst.pcell_parameters_by_name()
+        dy = -dev.y0                                    # row transistors sit on the cell's origin
+        dev.inst.transform(pya.DTrans(0, dy / 1000))
+        dev.y0 = 0.0
+        note = f" (drawn with {ROW_MAX_FINS} fins: a 7.5-track row has no room for {nfin})" if nfin > ROW_MAX_FINS else ""
+        messages.append(f"{dev.name}: now a standard-cell row transistor{note}")
+        return
+    dx = round(dev.x0 / CPP) * CPP - dev.x0
+    dy = round(dev.y0 / FIN_PITCH) * FIN_PITCH - dev.y0
+    if dx or dy:
+        dev.inst.transform(pya.DTrans(dx / 1000, dy / 1000))
+        dev.x0 += dx
+        dev.y0 += dy
+
+
 def _row_snap(dev):
     """A row transistor lands on the gate grid; dropped onto the cell's row (origin within half a
     cell of y = 0) it goes onto the row exactly."""
@@ -173,13 +202,14 @@ def _row_snap(dev):
         dev.y0 += dy
 
 
-def update(cell, moved=(), conn=None):
-    """Snap moved transistors onto their row and into chains, and refresh all abut flags.
-    Returns messages."""
+def update(cell, moved=(), conn=None, frame=None):
+    """Snap moved transistors onto their row and into chains, and refresh all abut flags. frame:
+    the DBox of the cell's standard-cell frame, if it has one. Returns messages."""
     messages = []
     devs = devices(cell, conn)
     moved_devs = [d for d in devs if any(d.inst == m for m in moved)]
     for d in moved_devs:
+        _standalone_snap(d, frame, messages)
         _row_snap(d)
     for d in moved_devs:
         _snap(d, devs, messages)
