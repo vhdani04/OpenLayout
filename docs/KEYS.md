@@ -156,6 +156,13 @@ connect where they overlap, as in the ASAP7 cells - and the rail's V0s take it t
 The same rule means LIG must stay 14 nm clear of LISD wherever they should not connect (the
 connectivity check reports such an overlap as a short).
 
+**Mirror and rotate**: right-click a selection - or any shape, path or instance, which is then
+selected - for *Mirror over X axis* (flip top to bottom), *Mirror over Y axis* (flip left to right)
+and *Mirror over both axes*, about the selection's centre so it stays in place; *About the cell
+origin* mirrors over the cell's own axes instead (the x = 0 / y = 0 lines), and *Rotate 90° left /
+right* turns it. Works on shapes and on PCell / cell instances alike, one undo step each. The two
+mirrors are also in the OpenLayout menu.
+
 **Chaining** (shared diffusion, abutment): drop a transistor next to another of the
 same type and row - touching, or overlapping by up to a gate pitch - and it snaps into the chain:
 the dummy gates between them go and the diffusion runs through. With a schematic link it only

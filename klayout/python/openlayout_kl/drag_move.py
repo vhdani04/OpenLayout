@@ -9,6 +9,8 @@ The behaviour:
   then repeats: click the next object to move (it follows from that click), and so on, until Esc
   or a right click.
 - Stretch (`s`): the edge or corner under the mouse follows it and a click places it.
+- Right-click in Select mode: the mirror / rotate menu (mirror.py) for the selection - or for the
+  object under the mouse, which is selected first.
 
 The move itself is KLayout's interactive move (move-angle constraint, snapping, dx/dy display, one
 undo step). KLayout switches into its Move mode for it, where a plain click would pick objects up;
@@ -32,7 +34,7 @@ KLayout's selection does.
 """
 import pya
 
-from . import drd, stdcell
+from . import drd, mirror, stdcell
 
 NAME = "openlayout_drag_move"
 MODES = ("select", "move")
@@ -361,6 +363,14 @@ class DragMove(pya.Plugin):
         if prio and self.command and buttons & pya.ButtonState.RightButton:
             self.end_command()
             return True
+        if prio and buttons & pya.ButtonState.RightButton and mode == "select" and view.is_editable():
+            # the right-click menu: for the selection, else for what is under the mouse
+            if not view.has_object_selection():
+                stdcell.pick(view, p)
+            if view.has_object_selection():
+                mirror.show_menu(view)
+                return True
+            return False
         left = buttons & pya.ButtonState.LeftButton
         other = buttons & (pya.ButtonState.ControlKey | pya.ButtonState.AltKey)
         if not left or other or view.mode_name() != "select" or not view.is_editable():

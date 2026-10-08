@@ -10,7 +10,7 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from . import align_tool, axes, drc, drd, generate_form, lvs, pex, stdcell, vias
+from . import align_tool, axes, drc, drd, generate_form, lvs, mirror, pex, stdcell, vias
 from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
@@ -338,6 +338,8 @@ class OpenLayoutUI:
             ("move", self.action("Move (object under the mouse)", move_under_mouse)),
             ("stretch", self.action("Stretch (edge under the mouse)", stretch_under_mouse)),
             ("align", self.action("Align (edge to edge)", align_tool.start)),
+            ("mirror_x", self.action("Mirror Selection over X Axis", lambda: self.on_selection("mirror_x"))),
+            ("mirror_y", self.action("Mirror Selection over Y Axis", lambda: self.on_selection("mirror_y"))),
             ("via", self.action("Create Via…", vias.create_via)),
             (None, None),
             ("stdcell_frame", self.action("Standard-Cell Frame…", self.frame_dialog)),
@@ -354,6 +356,12 @@ class OpenLayoutUI:
         a.checkable = True
         a.checked = axes.visible()
         return a
+
+    def on_selection(self, op):
+        view = self.mw.current_view()
+        if view is not None and not mirror.transform(view, op):
+            pya.MessageBox.info("OpenLayout", "Select the shapes or instances to mirror first "
+                                "(or right-click one).", pya.MessageBox.Ok)
 
     def net_names_action(self):
         a = self.action("Show Net Names on Shapes", lambda: net_labels.set_enabled(a.is_checked()), "Shift+N")
