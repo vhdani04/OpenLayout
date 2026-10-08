@@ -14,6 +14,7 @@ from . import align_tool, axes, drc, drd, generate_form, lvs, pex, stdcell, vias
 from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
+from . import net_labels
 from .path_tool import TOOL_NAME, PathToolFactory
 from .pcells import register_library
 
@@ -204,6 +205,7 @@ class OpenLayoutUI:
             print(f"OpenLayout: path tool binding failed: {e}")
         self.lsw = LSW(mw, UI)
         self.nets = NetsPanel(mw, UI, on_update=self.update_layout_file)
+        self.net_labels = net_labels.NetLabels(mw)
         mw.splitDockWidget(self.lsw.dock, self.nets.dock, pya.Qt.Vertical)
         self.build_menu()
         try:
@@ -328,6 +330,7 @@ class OpenLayoutUI:
             (None, None),
             ("lsw", self.action("Show LSW", lambda: (self.lsw.dock.show(), self.lsw.dock.raise_()))),
             ("connectivity", self.action("Show Connectivity", lambda: (self.nets.dock.show(), self.nets.dock.raise_()))),
+            ("net_names", self.net_names_action()),
             ("keys", self.action("Keyboard Shortcuts…", self.show_keys)),
             ("axes", self.axes_action()),
             ("drd", self.drd_action()),
@@ -350,6 +353,13 @@ class OpenLayoutUI:
         a = self.action("Show Axes", lambda: axes.show(a.is_checked()))
         a.checkable = True
         a.checked = axes.visible()
+        return a
+
+    def net_names_action(self):
+        a = self.action("Show Net Names on Shapes", lambda: net_labels.set_enabled(a.is_checked()), "Shift+N")
+        a.checkable = True
+        a.checked = net_labels.enabled()
+        net_labels.on_change(lambda on: setattr(a, "checked", on))
         return a
 
     def drd_action(self):

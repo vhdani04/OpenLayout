@@ -8,7 +8,7 @@ colour); a selected short is outlined. The check re-runs a moment after the layo
 """
 import pya
 
-from . import connectivity
+from . import connectivity, net_labels
 
 POLL_MS = 1000
 USER_ROLE = 256  # Qt::UserRole (the binding wants a plain int for item data roles)
@@ -60,6 +60,11 @@ class NetsPanel:
         self.lines_box.checked = True
         self.lines_box.toggled = lambda _on: self.draw()
         lay.addWidget(self.lines_box)
+        self.names_box = pya.QCheckBox("Show net names on shapes (Shift+N)", body)
+        self.names_box.checked = net_labels.enabled()
+        self.names_box.toggled = lambda on: net_labels.enabled() != on and net_labels.set_enabled(on)
+        net_labels.on_change(lambda on: setattr(self.names_box, "checked", on))
+        lay.addWidget(self.names_box)
         self.tree = pya.QTreeWidget(body)
         self.tree.setHeaderLabels(["Net", "Status"])
         self.tree.rootIsDecorated = True
@@ -92,13 +97,7 @@ class NetsPanel:
 
     @staticmethod
     def fingerprint(layout, top):
-        h = 0
-        for li in layout.layer_indexes():
-            for s in top.shapes(li).each():
-                h = hash((h, li, str(s.bbox())))
-        for inst in top.each_inst():
-            h = hash((h, inst.cell_index, str(inst.dcplx_trans)))
-        return h
+        return connectivity.fingerprint(layout, top)
 
     # ---- checking ---------------------------------------------------------------------------
     def run_check(self, force=False):

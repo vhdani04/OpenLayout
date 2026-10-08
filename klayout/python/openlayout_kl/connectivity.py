@@ -237,6 +237,49 @@ def check(layout, top, conn):
     }
 
 
+LABEL_LAYERS = ["gate", "lig", "lisd"] + METALS     # the layers net names are drawn on
+
+
+def fingerprint(layout, top):
+    """Changes when the top cell's shapes or instances do (cheap: bounding boxes only)."""
+    h = 0
+    for li in layout.layer_indexes():
+        for s in top.shapes(li).each():
+            h = hash((h, li, str(s.bbox())))
+    for inst in top.each_inst():
+        h = hash((h, inst.cell_index, str(inst.dcplx_trans)))
+    return h
+
+
+def net_shapes(layout, top, conn=None):
+    """[(name, short, layer, [DPolygon])]: the gate / LIG / LISD / metal shapes of every named net.
+    Names come from the schematic link's terminals (instances and pins), else from the top cell's
+    pin labels; a piece of the layout that carries several names (a short) gets all of them."""
+    if conn:
+        terms = terminals(layout, top, conn)[0]
+    else:
+        terms = [Terminal(None, name, name, pt, metal)
+                 for name, pts in cell_pin_points(top, recursive=False).items() for pt, metal in pts]
+    l2n, regions = extract(layout, top)
+    names, nets = {}, {}
+    for t in terms:
+        if t.layer not in regions:
+            continue
+        net = l2n.probe_net(regions[t.layer], t.point)
+        if net is None:
+            continue
+        names.setdefault(net.cluster_id, set()).add(t.net)
+        nets.setdefault(net.cluster_id, net)
+    out = []
+    for cluster, ns in names.items():
+        label = " | ".join(sorted(ns))
+        for layer in LABEL_LAYERS:
+            polys = [p.to_dtype(layout.dbu) for p in l2n.shapes_of_net(nets[cluster], regions[layer], True).merged().each()]
+            if polys:
+                out.append((label, len(ns) > 1, layer, polys))
+    return out
+
+
 def summary(result):
     nets = result["nets"]
     opens = sum(1 for n in nets.values() if n["pieces"] > 1)

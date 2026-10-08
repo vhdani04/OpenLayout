@@ -204,6 +204,13 @@ net as one of:
   terminals in the same piece of metal. Click the net to outline the merged shapes in red, which
   shows where the two nets meet. The summary counts each short once (`1 short (VSS - Z)`).
 
+**Net names on shapes** (*OpenLayout > Show Net Names on Shapes*, `Shift+N`, or the checkbox in
+the panel): every piece of gate, LIG, LISD and metal shows the name of its net, the way a schematic-
+driven layout editor does. The names come from the schematic link (else from the cell's pin labels);
+the text scales with the zoom, runs along vertical wires and fits inside its shape, and appears once
+it is big enough to read - zoom in to see the names of small contacts. Hidden layers stay unlabelled.
+A shape that carries two nets (a short) shows both names, in red.
+
 It also lists **pins without a label** (a schematic pin with no text label in the layout), parts
 **not placed**, and parts **not in schematic**. Click a net to make its flight lines bolder;
 double-click it to zoom to it.
