@@ -88,7 +88,13 @@ def build_menu(view, parent=None):
     return menu
 
 
+def cursor_pos():
+    """The mouse position on screen (KLayout's Qt binding exposes QCursor.pos as a property)."""
+    pos = pya.QCursor.pos
+    return pos() if callable(pos) else pos
+
+
 def show_menu(view):
     """Pop the menu up at the mouse."""
     menu = build_menu(view)
-    menu.exec_(pya.QCursor.pos())
+    menu.exec_(cursor_pos())

@@ -114,7 +114,27 @@ nb = inst().dbbox()
 check("instance rotate: turned about its centre",
       abs(nb.width() - ib.height()) < 1e-6 and abs(nb.center().distance(ib.center())) < 0.001, f"{nb} vs {ib}")
 
-# 5. the right click: selects what is under the mouse, then opens the menu
+# 5. the right click: selects what is under the mouse, then opens the menu. The real popup is
+#    exercised through a menu whose exec_ returns at once (a real one waits for the user).
+check("the menu pops up at a screen position", isinstance(mirror.cursor_pos(), pya.QPoint), repr(mirror.cursor_pos()))
+popped = []
+real_build = mirror.build_menu
+
+
+class NoWaitMenu:
+    def __init__(self, menu):
+        self.menu = menu
+
+    def exec_(self, pos):
+        popped.append((pos.x, pos.y))
+
+
+mirror.build_menu = lambda v, parent=None: NoWaitMenu(real_build(v, parent))
+select_shape()
+mirror.show_menu(view)
+check("show_menu runs the popup at the cursor", len(popped) == 1, str(popped))
+mirror.build_menu = real_build
+
 shown = []
 mirror.show_menu = lambda v: shown.append([o.is_cell_inst() for o in v.each_object_selected()])
 view.object_selection = []
