@@ -41,6 +41,9 @@ input-output). The pins are placed one at a time: the first follows the mouse un
 the next one follows (names in the order typed; an expanded bus MSB first). Nothing stays selected
 after a click. `Esc` discards the pin being placed and the ones still waiting; the pins already
 placed stay. A name used before gets a second pin of its own (the old one stays where it is).
+Pin labels stay horizontal however a pin is rotated or flipped: on a pin pointing up or down the
+label sits centred above or below it (OpenLayout's ipin / opin / iopin symbols and an xschem patch,
+`keep_horizontal=true` on a symbol text).
 
 **Buses**: a pin named `WL[1:0]` (xschem's bus syntax; `WL<1:0>` is accepted and written as
 `WL[1:0]`) is one bus pin. Wires labelled `WL[1]` and `WL[0]` connect to its bits by name - the
@@ -104,6 +107,10 @@ under the mouse - follows the mouse from where `m` was pressed (infix); a click 
 command then repeats: click the next object (it follows from that click) and click to place it,
 until `Esc` or a right click. Clicking selects the top-level object - a whole transistor, not a
 shape inside it (descend with `x` to edit inside a cell).
+
+**Pins and their labels**: selecting a pin shape (a metal's pin purpose) selects its label too - the
+text on that metal's pin or label purpose lying on it - so moving, copying, deleting or mirroring
+the pin takes the label along. A label clicked on its own moves by itself.
 
 **Stretch (`s`)**: point at an edge (or a corner) of a shape and press `s` - it follows the mouse and a
 click places it; afterwards the editor is back in select mode. In stretch mode (toolbar *Partial*) a

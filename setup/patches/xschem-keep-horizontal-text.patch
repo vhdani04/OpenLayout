@@ -1,0 +1,172 @@
+diff --git a/src/actions.c b/src/actions.c
+--- a/src/actions.c
++++ b/src/actions.c
+@@ -990,6 +990,8 @@
+     }
+     t->flags |= xctx->tok_size ? TEXT_FLOATER : 0;
+     my_strdup2(_ALLOC_ID_, &t->floater_instname, str);
++    str = get_tok_value(t->prop_ptr, "keep_horizontal", 0);
++    t->flags |= strboolcmp(str, "true") ? 0 : TEXT_KEEP_HORIZONTAL;
+   }
+   return 0;
+ }
+diff --git a/src/draw.c b/src/draw.c
+--- a/src/draw.c
++++ b/src/draw.c
+@@ -582,6 +582,30 @@
+   }
+ }
+ 
++/* Rotation, flip, centring and anchor (*x, *y: the rotated anchor on entry) of symbol text `text`
++ * (string `str`) in an instance with rotation `rot` and flip `flip`. A text with
++ * keep_horizontal=true stays level: where it would run vertically it is drawn horizontally,
++ * centred across the vertical text and starting at its end nearest the anchor. */
++void sym_text_orient(const char *str, xText *text, double xscale, double yscale,
++  short rot, short flip, short *trot, short *tflip, short *hcenter, short *vcenter, double *x, double *y)
++{
++  double x1, y1, x2, y2, dtmp;
++  int tmp;
++  *trot = (text->rot + ( (flip && (text->rot & 1) ) ? rot+2 : rot) ) & 0x3;
++  *tflip = flip ^ text->flip;
++  *hcenter = text->hcenter;
++  *vcenter = text->vcenter;
++  if(!(text->flags & TEXT_KEEP_HORIZONTAL) || !(*trot & 1) || !str) return;
++  text_bbox(str, xscale, yscale, *trot, *tflip, *hcenter, *vcenter, *x, *y, &x1, &y1, &x2, &y2, &tmp, &dtmp);
++  *tflip = 0;
++  *hcenter = 1;
++  *vcenter = 0;
++  /* rot 0: anchor at the top centre, the text below it; rot 2: bottom centre, the text above */
++  if(fabs(*y - y1) <= fabs(*y - y2)) { *trot = 0; *y = y1; }
++  else { *trot = 2; *y = y2; }
++  *x = (x1 + x2) / 2.0;
++}
++
+ void get_sym_text_size(int inst, int text_n, double *xscale, double *yscale)
+ {
+   char attr[50];
+@@ -883,10 +907,12 @@
+         }
+         my_free(_ALLOC_ID_, &res);
+         dbg(1, ("draw_symbol(): after translate3: str=%s\n", txtptr));
+-        draw_string(textlayer, what, txtptr,
+-          (text.rot + ( (flip && (text.rot & 1) ) ? rot+2 : rot) ) & 0x3,
+-          flip^text.flip, text.hcenter, text.vcenter,
+-          x0+x1, y0+y1, xscale, yscale);
++        {
++          short trot, tflip, thc, tvc;
++          double tx = x0+x1, ty = y0+y1;
++          sym_text_orient(txtptr, &text, xscale, yscale, rot, flip, &trot, &tflip, &thc, &tvc, &tx, &ty);
++          draw_string(textlayer, what, txtptr, trot, tflip, thc, tvc, tx, ty, xscale, yscale);
++        }
+         my_free(_ALLOC_ID_, &txtptr);
+         #if HAS_CAIRO!=1
+         drawrect(textlayer, END, 0.0, 0.0, 0.0, 0.0, 0.0, 0, -1, -1);
+@@ -1058,9 +1084,12 @@
+      }
+      my_free(_ALLOC_ID_, &res);
+      dbg(1, ("draw_temp_symbol(): after translate3: str=%s\n", txtptr));
+-     if(txtptr[0]) draw_temp_string(gc, what, txtptr,
+-       (text.rot + ( (flip && (text.rot & 1) ) ? rot+2 : rot) ) & 0x3,
+-       flip^text.flip, text.hcenter, text.vcenter, x0+x1, y0+y1, xscale, yscale);
++     if(txtptr[0]) {
++       short trot, tflip, thc, tvc;
++       double tx = x0+x1, ty = y0+y1;
++       sym_text_orient(txtptr, &text, xscale, yscale, rot, flip, &trot, &tflip, &thc, &tvc, &tx, &ty);
++       draw_temp_string(gc, what, txtptr, trot, tflip, thc, tvc, tx, ty, xscale, yscale);
++     }
+      my_free(_ALLOC_ID_, &txtptr);
+      #if HAS_CAIRO==1
+      if(customfont) {
+diff --git a/src/psprint.c b/src/psprint.c
+--- a/src/psprint.c
++++ b/src/psprint.c
+@@ -1221,16 +1221,12 @@
+           my_snprintf(ps_font_family, S(ps_font_family), "%s-Oblique", ps_font_name);
+         else if( symptr->text[j].flags & TEXT_OBLIQUE)
+           my_snprintf(ps_font_family, S(ps_font_family), "%s-Oblique", ps_font_name);
+-        if(text_ps) {
+-          ps_draw_string(textlayer, txtptr,
+-            (text.rot + ( (flip && (text.rot & 1) ) ? rot+2 : rot) ) & 0x3,
+-            flip^text.flip, text.hcenter, text.vcenter,
+-            x0+x1, y0+y1, xscale, yscale);
+-        } else {
+-          old_ps_draw_string(textlayer, txtptr,
+-            (text.rot + ( (flip && (text.rot & 1) ) ? rot+2 : rot) ) & 0x3,
+-            flip^text.flip, text.hcenter, text.vcenter,
+-            x0+x1, y0+y1, xscale, yscale);
++        {
++          short trot, tflip, thc, tvc;
++          double tx = x0+x1, ty = y0+y1;
++          sym_text_orient(txtptr, &text, xscale, yscale, rot, flip, &trot, &tflip, &thc, &tvc, &tx, &ty);
++          if(text_ps) ps_draw_string(textlayer, txtptr, trot, tflip, thc, tvc, tx, ty, xscale, yscale);
++          else old_ps_draw_string(textlayer, txtptr, trot, tflip, thc, tvc, tx, ty, xscale, yscale);
+         }
+       }
+     }
+diff --git a/src/select.c b/src/select.c
+--- a/src/select.c
++++ b/src/select.c
+@@ -370,10 +370,12 @@
+      customfont=set_text_custom_font(&text);
+      #endif
+      estr = my_expand(tmp_txt, tclgetintvar("tabstop"));
+-     text_bbox(estr, xscale, yscale,
+-       (text.rot + ( (sym_flip && (text.rot & 1) ) ? sym_rot+2 : sym_rot)) &0x3,
+-       sym_flip ^ text.flip, text.hcenter, text.vcenter,
+-       x0+text_x0,y0+text_y0, &xx1,&yy1,&xx2,&yy2, &tmp, &dtmp);
++     {
++       short trot, tflip, thc, tvc;
++       double tx = x0+text_x0, ty = y0+text_y0;
++       sym_text_orient(estr, &text, xscale, yscale, sym_rot, sym_flip, &trot, &tflip, &thc, &tvc, &tx, &ty);
++       text_bbox(estr, xscale, yscale, trot, tflip, thc, tvc, tx, ty, &xx1,&yy1,&xx2,&yy2, &tmp, &dtmp);
++     }
+      dbg(1, ("symbol bbox: text bbox: %s, %g %g %g %g\n", tmp_txt, xx1, yy1, xx2, yy2));
+      dbg(1, ("symbol bbox: text bbox: zoom=%g, lw=%g\n", xctx->zoom, xctx->lw));
+      my_free(_ALLOC_ID_, &estr);
+diff --git a/src/svgdraw.c b/src/svgdraw.c
+--- a/src/svgdraw.c
++++ b/src/svgdraw.c
+@@ -911,16 +911,13 @@
+           my_snprintf(svg_font_style, S(svg_font_style), "italic");
+         if( symptr->text[j].flags & TEXT_OBLIQUE)
+           my_snprintf(svg_font_style, S(svg_font_style), "oblique");
+-        if(text_svg)
+-          svg_draw_string(textlayer, txtptr,
+-            (text.rot + ( (flip && (text.rot & 1) ) ? rot+2 : rot) ) & 0x3,
+-            flip^text.flip, text.hcenter, text.vcenter,
+-            x0+x1, y0+y1, xscale, yscale);
+-        else
+-          old_svg_draw_string(textlayer, txtptr,
+-            (text.rot + ( (flip && (text.rot & 1) ) ? rot+2 : rot) ) & 0x3,
+-            flip^text.flip, text.hcenter, text.vcenter,
+-            x0+x1, y0+y1, xscale, yscale);
++        {
++          short trot, tflip, thc, tvc;
++          double tx = x0+x1, ty = y0+y1;
++          sym_text_orient(txtptr, &text, xscale, yscale, rot, flip, &trot, &tflip, &thc, &tvc, &tx, &ty);
++          if(text_svg) svg_draw_string(textlayer, txtptr, trot, tflip, thc, tvc, tx, ty, xscale, yscale);
++          else old_svg_draw_string(textlayer, txtptr, trot, tflip, thc, tvc, tx, ty, xscale, yscale);
++        }
+       }
+     }
+     if(res) my_free(_ALLOC_ID_, &res);
+diff --git a/src/xschem.h b/src/xschem.h
+--- a/src/xschem.h
++++ b/src/xschem.h
+@@ -320,6 +320,7 @@
+ #define TEXT_BOLD 1
+ #define TEXT_OBLIQUE 2
+ #define TEXT_ITALIC 4
++#define TEXT_KEEP_HORIZONTAL 64 /* keep_horizontal=true: level in any instance orientation */
+ /* flag (.flags field) to hide text in symbols when displaying instances */
+ #define HIDE_TEXT 8
+ #define TEXT_FLOATER 16
+@@ -1290,6 +1291,8 @@
+ extern char *base64_from_file(const char *f, size_t *length);
+ extern int set_rect_flags(xRect *r);
+ extern int set_text_flags(xText *t);
++extern void sym_text_orient(const char *str, xText *text, double xscale, double yscale,
++  short rot, short flip, short *trot, short *tflip, short *hcenter, short *vcenter, double *x, double *y);
+ extern int set_wire_flags(xWire *wire);
+ extern int set_inst_flags(xInstance *inst);
+ extern int set_sym_flags(xSymbol *sym);

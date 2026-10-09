@@ -37,7 +37,7 @@ KLayout's selection does.
 """
 import pya
 
-from . import drd, mirror, stdcell
+from . import drd, mirror, pin_group, stdcell
 
 NAME = "openlayout_drag_move"
 MODES = ("select", "move")
@@ -144,6 +144,7 @@ class DragMove(pya.Plugin):
         self.hover_markers = []    # the outline of what a click takes, where KLayout's hover shows the frame
         self.hover_target = None   # ... and that object (an ObjectInstPath)
         view.on_transient_selection_changed += self._hover_changed
+        self.pin_group = pin_group.PinGroup(view)   # a selected pin brings its label
 
     # ---- hover highlight ------------------------------------------------------------------------
     def _clear_hover(self):

@@ -13,6 +13,9 @@ FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
 The patches in `setup/patches/` modify KLayout and xschem. They are distributed under those
 projects' licenses (KLayout: GPL-3.0-or-later; xschem: GPL-2.0-or-later, used here under
 GPL-3.0-or-later).
+`xschem/symbols/ipin.sym`, `opin.sym` and `iopin.sym` are xschem's device symbols of the same
+name (Copyright (C) Stefan Frederik Schippers, GPL-2.0-or-later, used here under GPL-3.0-or-later)
+with OpenLayout's `keep_horizontal` label.
 
 ## Third-party software and data
 

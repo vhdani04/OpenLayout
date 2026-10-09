@@ -251,6 +251,13 @@ check("Esc while placing keeps the pins already put down", "p_P P" in pin_list()
       pin_list())
 place("SEL<1:0>", (300, 300), (200, 250))
 check("SEL<1:0> is written SEL[1:0]", "{SEL[1:0]}" in pin_list(), pin_list())
+# pin labels stay horizontal however the pin is rotated (keep_horizontal: OpenLayout's pin symbols
+# and xschem patch): the rotated pin's box is wider than tall
+reply = send("xschem instance opin.sym 200 0 1 0 {name=p_kh lab=VERYLONGPINNAME}; "
+             "lrange [xschem instance_bbox p_kh] 1 4")
+x1, y1, x2, y2 = (float(v) for v in reply.split())
+check("a rotated pin's label stays horizontal", x2 - x1 > 2 * (y2 - y1), reply)
+send("xschem unselect_all; xschem select instance p_kh; xschem delete")
 reply = send("after 400 {set ::ol_pin(names) 1bad; .ol_pin.b.ok invoke; "
              "after 200 {set ::err [.ol_pin.f.err cget -text]; .ol_pin.b.cancel invoke}}; "
              "ol_pin_dialog 300 300; set ::err")
