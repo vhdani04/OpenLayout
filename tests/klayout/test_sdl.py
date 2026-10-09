@@ -122,4 +122,34 @@ check("n1 open between NAND2 and INV", res3["nets"]["n1"]["pieces"] == 2)
 check("no false shorts through std cells", not any(v["shorts"] for v in res3["nets"].values()),
       {n: v["shorts"] for n, v in res3["nets"].items() if v["shorts"]})
 
+# 8. LVS on a layout with nothing routed: a mismatch that says so (the empty top circuit used to pass)
+import subprocess  # noqa: E402
+out = subprocess.run([str(HOME / "bin/openlayout"), "lvs", str(lib.path / "inv" / "inv.gds")],
+                     capture_output=True, text=True, cwd=str(lib.path)).stdout
+check("LVS of an unrouted layout is a mismatch", "RESULT LVS inv mismatch" in out and "nothing in the layout" in out,
+      out.strip().splitlines()[-2:] if out.strip() else out)
+
+# 9. bus pins: one layout pin per bit, with the bus pin's direction
+(lib.path / "inv2b").mkdir()
+rows = ["v {xschem version=3.4.8RC file_version=1.3}", "G {}", "K {}", "V {}", "S {}", "E {}",
+        "C {ipin.sym} -300 -100 0 0 {name=p_WL lab=WL[1:0]}", "C {opin.sym} -300 -50 0 0 {name=p_Y lab=Y[1:0]}"]
+for k in (0, 1):
+    x = 200 * k
+    rows += [f"C {{asap7_devices/nmos_rvt/nmos_rvt.sym}} {x} 100 0 0 {{name=MN{k} l=20n nfin=2 nf=1 m=1}}",
+             f"C {{asap7_devices/pmos_rvt/pmos_rvt.sym}} {x} 0 0 0 {{name=MP{k} l=20n nfin=2 nf=1 m=1}}",
+             f"C {{lab_pin.sym}} {x + 20} 70 0 0 {{name=ln{k}d lab=Y[{k}]}}",
+             f"C {{lab_pin.sym}} {x - 20} 100 0 0 {{name=ln{k}g lab=WL[{k}]}}",
+             f"C {{gnd.sym}} {x + 20} 130 0 0 {{name=ln{k}s lab=VSS}}",
+             f"C {{gnd.sym}} {x + 20} 100 0 0 {{name=ln{k}b lab=VSS}}",
+             f"C {{lab_pin.sym}} {x + 20} 30 0 0 {{name=lp{k}d lab=Y[{k}]}}",
+             f"C {{lab_pin.sym}} {x - 20} 0 0 0 {{name=lp{k}g lab=WL[{k}]}}",
+             f"C {{vdd.sym}} {x + 20} -30 0 0 {{name=lp{k}s lab=VDD}}",
+             f"C {{vdd.sym}} {x + 20} 0 0 0 {{name=lp{k}b lab=VDD}}"]
+(lib.path / "inv2b" / "inv2b.sch").write_text("\n".join(rows) + "\n")
+rep = generate.generate(lib.path / "inv2b" / "inv2b.sch")
+link = connectivity.load_conn(lib.path / "inv2b" / "inv2b.gds")
+check("bus pins: one layout pin per bit", sorted(rep["pins_added"]) == ["WL[0]", "WL[1]", "Y[0]", "Y[1]"], rep["pins_added"])
+check("bus pins: the bits keep the bus direction",
+      [link["pins"][p] for p in ("WL[1]", "WL[0]", "Y[1]", "Y[0]")] == ["I", "I", "O", "O"], link["pins"])
+
 print("PASS sdl" if not failures else f"FAIL sdl: {', '.join(failures)}")

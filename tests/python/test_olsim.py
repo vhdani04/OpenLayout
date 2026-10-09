@@ -376,3 +376,35 @@ def test_ac_and_dc_analyses(tmp_path):
     assert f3[0] == pytest.approx(1 / (2 * math.pi * 1e3 * 1e-15), rel=0.02)
     assert f3[1] == pytest.approx(f3[0] / 2, rel=0.02)
     assert h.result(0)["dcgain"]["value"] == pytest.approx(0.5, rel=1e-3)
+
+
+def test_bus_names():
+    """Bus names as xschem expands them: MSB first as written, steps, comma lists, <> accepted."""
+    from openlayout.buses import expand
+    assert expand("WL[1:0]") == ["WL[1]", "WL[0]"]
+    assert expand("D[0:4:2]") == ["D[0]", "D[2]", "D[4]"]
+    assert expand("Q[3:0:2]") == ["Q[3]", "Q[1]"]
+    assert expand("A,B[1:0]") == ["A", "B[1]", "B[0]"]
+    assert expand("SEL<1:0>") == ["SEL[1]", "SEL[0]"]
+    assert expand("CLK") == ["CLK"] and expand("X[5]") == ["X[5]"]
+
+
+def test_testbench_bus_pins(tmp_path):
+    """A cell with bus pins gets one vector column and one output load per bit."""
+    from openlayout.olsim.testbench import make_testbench
+    from openlayout.workarea import Workarea
+    wa = Workarea.create(tmp_path / "wa", "t")
+    c = wa.library("t").path / "inv2b"
+    c.mkdir()
+    (c / "inv2b.sym").write_text(
+        "v {xschem version=3.4.8RC file_version=1.3}\nG {}\nK {type=subcircuit\nformat=\"@name @pinlist @symname\"\n"
+        "template=\"name=x1\"\n}\nV {}\nS {}\nE {}\n"
+        "B 5 -82.5 -2.5 -77.5 2.5 {name=WL[1:0] dir=in}\nB 5 77.5 -2.5 82.5 2.5 {name=Y[1:0] dir=out}\n")
+    tb = make_testbench(wa, wa.library("t"), "inv2b")
+    vec = (tb.path / "tb_inv2b.vec").read_text()
+    assert "vname  WL[1] WL[0] Y[1] Y[0]" in vec and "radix  1 1 1 1" in vec and "io     i i o o" in vec
+    sch = (tb.path / "tb_inv2b.sch").read_text()
+    assert "lab=WL[1:0]" in sch                                     # the bus pin keeps its bus label
+    assert sch.count("capa.sym") == 2 and "lab=Y[1]}" in sch and "lab=Y[0]}" in sch
+    v = vectors.parse(tb.path / "tb_inv2b.vec")
+    assert [b.name for b in v.inputs()] == ["wl[1]", "wl[0]"] or [b.name for b in v.inputs()] == ["WL[1]", "WL[0]"]

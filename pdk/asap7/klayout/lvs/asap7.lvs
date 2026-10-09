@@ -245,6 +245,18 @@ xref.each_circuit_pair do |p|
     puts "  instance #{name.call(sp.first)} / #{name.call(sp.second)}: #{sp.status}"
   end
 end
+# The top cell itself must have been compared: a layout whose devices are not connected to anything
+# extracts no top circuit (KLayout leaves unconnected device cells out of it), and a comparison
+# with nothing to pair would otherwise pass.
+top_pair = nil
+xref.each_circuit_pair do |p|
+  top_pair = p if (p.first && p.first.name.upcase == top_name) || (p.second && p.second.name.upcase == top_name)
+end
+unless top_pair && top_pair.first && top_pair.second
+  ok = false
+  bad += 1
+  puts "LVS circuit #{top_name}: nothing in the layout to compare with the schematic - its devices are not "        "connected (route the cell) or the top cell is missing"
+end
 # Net names: the comparison pairs nets by topology, so a labelled layout net must also carry the
 # schematic net's name (a swapped pair of labels, or pins swapped on a black-box cell, would
 # otherwise pass). Unlabelled layout nets ($...) are not checked.

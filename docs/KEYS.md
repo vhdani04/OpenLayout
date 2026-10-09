@@ -37,7 +37,16 @@ parameters; *Add property* adds a new one and *Text Editor…* opens xschem's ra
 instances selected, only the fields you change are applied to all of them.
 
 `p` asks for the pin name(s) (several separated by spaces) and the direction (input, output,
-input-output); the pins then follow the mouse until you click to place them.
+input-output); the pins then follow the mouse until you click to place them. Nothing stays selected
+after the click, and `Esc` discards the pins instead. A name used before gets a second pin of its
+own (the old one stays where it is).
+
+**Buses**: a pin named `WL[1:0]` (xschem's bus syntax; `WL<1:0>` is accepted and written as
+`WL[1:0]`) is one bus pin. Wires labelled `WL[1]` and `WL[0]` connect to its bits by name - the
+pin itself needs no wire - and the netlist has one port per bit (`.subckt cell WL[1] WL[0] ...`).
+With *Expand buses into one pin per bit* ticked, `WL[1:0]` places two pins, `WL[1]` and `WL[0]`.
+Generated symbols keep the bus pin; Generate Layout makes a layout pin per bit; New Testbench gives
+each bit its own vector column (and each output bit its own load).
 
 To resize a rectangle (such as the symbol's red selection box), point at one of its edges: the edge
 lights up. Press and drag it: a dashed outline shows the new size, and on release the rectangle

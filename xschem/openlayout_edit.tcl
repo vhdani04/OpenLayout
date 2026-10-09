@@ -1,6 +1,6 @@
 # OpenLayout editing for xschem (sourced via tcl_files once the main window exists):
 #   - property form for instances (q / double-click)
-#   - pin dialog on P: names + direction, then the pins follow the mouse
+#   - pin dialog on P: names (buses: WL[1:0]) + direction, then the pins follow the mouse
 #   - context keys: L / R draw line / rectangle in symbols, net label / rotate in schematics
 #   - lines can be drawn at any angle (wires stay orthogonal)
 
@@ -167,10 +167,78 @@ proc ol_props_add {w} {
 }
 
 # ---- pins ------------------------------------------------------------------------------------
+# P opens the pin dialog: one or more names (spaces between them), a direction, and whether buses
+# are expanded. A bus is xschem's WL[1:0] (Cadence-style WL<1:0> is accepted and written as
+# WL[1:0]). Unexpanded, it is one bus pin: wires labelled WL[1] / WL[0] connect to its bits by name,
+# and the netlist has one port per bit. Expanded, it becomes one pin per bit (WL[1], WL[0]).
+# The new pins then follow the mouse; a click places them (nothing stays selected), Esc discards
+# them.
+
+# Cadence bus syntax -> xschem's: WL<1:0> -> WL[1:0], D<3> -> D[3]
+proc ol_bus_syntax {name} {
+  regsub -all {<([^<>]*)>} $name {[\1]} name
+  return $name
+}
+
+# The names typed in the dialog: separated by spaces, or commas outside brackets.
+proc ol_pin_names {text} {
+  set out {}
+  foreach word [regexp -all -inline {\S+} [ol_bus_syntax $text]] {
+    set cur {}
+    set depth 0
+    foreach ch [split $word {}] {
+      if {$ch eq "\["} { incr depth } elseif {$ch eq "\]"} { incr depth -1 }
+      if {$ch eq "," && $depth == 0} {
+        if {$cur ne {}} { lappend out $cur }
+        set cur {}
+      } else {
+        append cur $ch
+      }
+    }
+    if {$cur ne {}} { lappend out $cur }
+  }
+  return $out
+}
+
+# A name's bits, MSB first as written (WL[1:0] -> WL[1] WL[0]); a plain name is itself.
+proc ol_bus_bits {name} {
+  if {![string match {*\[*} $name]} { return [list $name] }
+  lassign [xschem expandlabel $name] bits n
+  return [split $bits ,]
+}
+
+# Why a name can't be a pin, or "" if it can.
+proc ol_pin_name_error {name} {
+  if {![regexp {^[A-Za-z_][A-Za-z0-9_]*(\[[0-9:,]+\])?$} $name]} {
+    return "\"$name\": use letters, digits and _, optionally a bus range like WL\[1:0\]"
+  }
+  if {[string match {*\[*} $name]} {
+    lassign [xschem expandlabel $name] bits n
+    if {$n eq {} || $n < 1} { return "\"$name\": not a valid bus range" }
+  }
+  return {}
+}
+
+# An instance name for a pin labelled `lab`: p_<lab> with anything but letters, digits and _ made
+# _ (brackets in an instance name would make it an instance array), unique in the schematic.
+proc ol_pin_instname {lab} {
+  regsub -all {[^A-Za-z0-9_]} "p_$lab" _ base
+  regsub {_+$} $base {} base
+  set taken {}
+  for {set k 0} {$k < [xschem get instances]} {incr k} {
+    lappend taken [xschem getprop instance $k name]
+  }
+  set name $base
+  set n 1
+  while {$name in $taken} { set name "${base}_[incr n]" }
+  return $name
+}
 
 proc ol_pin_dialog {px py} {
   global ol_pin
+  ol_pin_cancel_placing
   if {![info exists ol_pin(dir)]} { set ol_pin(dir) input }
+  if {![info exists ol_pin(expand)]} { set ol_pin(expand) 0 }
   set ol_pin(names) {}
   set ol_pin(rc) {}
   set w .ol_pin
@@ -181,22 +249,26 @@ proc ol_pin_dialog {px py} {
   frame $w.f
   label $w.f.ln -text "Pin Names" -anchor e
   entry $w.f.n -textvariable ol_pin(names) -width 28
-  label $w.f.hint -text "several names: separate with spaces" -anchor w
+  label $w.f.hint -text "several names: separate with spaces    bus: WL\[1:0\]" -anchor w
   label $w.f.ld -text "Direction" -anchor e
   frame $w.f.d
   foreach {d t} {input Input output Output inout Input-Output} {
     radiobutton $w.f.d.$d -text $t -value $d -variable ol_pin(dir)
     pack $w.f.d.$d -side left -padx {0 8}
   }
+  checkbutton $w.f.x -text "Expand buses into one pin per bit" -variable ol_pin(expand) -anchor w
+  label $w.f.err -text "" -anchor w -foreground #e06c75
   grid $w.f.ln -row 0 -column 0 -sticky e -padx {0 8} -pady 2
   grid $w.f.n -row 0 -column 1 -sticky we -pady 2
   grid $w.f.hint -row 1 -column 1 -sticky w
   grid $w.f.ld -row 2 -column 0 -sticky e -padx {0 8} -pady 6
   grid $w.f.d -row 2 -column 1 -sticky w -pady 6
+  grid $w.f.x -row 3 -column 1 -sticky w
+  grid $w.f.err -row 4 -column 1 -sticky w
   pack $w.f -padx 10 -pady 10 -fill x
   frame $w.b
   button $w.b.cancel -text "Cancel" -width 8 -command {set ol_pin(rc) {}; destroy .ol_pin}
-  button $w.b.ok -text "Place" -width 8 -command {set ol_pin(rc) ok; destroy .ol_pin}
+  button $w.b.ok -text "Place" -width 8 -command ol_pin_ok
   pack $w.b.ok $w.b.cancel -side right -padx 4
   pack $w.b -side top -fill x -padx 10 -pady {0 10}
   bind $w <Return> {.ol_pin.b.ok invoke}
@@ -208,31 +280,53 @@ proc ol_pin_dialog {px py} {
   tkwait visibility $w
   grab set $w
   tkwait window $w
-  set names [regexp -all -inline {[^\s,]+} $ol_pin(names)]
-  if {$ol_pin(rc) ne "ok" || ![llength $names]} { return }
-  ol_place_pins $names $ol_pin(dir) $px $py
+  if {$ol_pin(rc) ne "ok"} { return }
+  set labels {}
+  foreach n [ol_pin_names $ol_pin(names)] {
+    if {$ol_pin(expand)} { lappend labels {*}[ol_bus_bits $n] } else { lappend labels $n }
+  }
+  if {[llength $labels]} { ol_place_pins $labels $ol_pin(dir) $px $py }
+}
+
+# Place: check the names first; the dialog stays open (with the reason) for a bad one.
+proc ol_pin_ok {} {
+  global ol_pin
+  set names [ol_pin_names $ol_pin(names)]
+  if {![llength $names]} { .ol_pin.f.err configure -text "type at least one pin name"; return }
+  foreach n $names {
+    set e [ol_pin_name_error $n]
+    if {$e ne {}} { .ol_pin.f.err configure -text $e; return }
+  }
+  set ol_pin(rc) ok
+  destroy .ol_pin
 }
 
 # Create the pins stacked at the pointer, then let them follow the mouse until the user clicks.
 # px/py: pointer position in drawing-area pixels (from the key event).
-proc ol_place_pins {names dir px py} {
+proc ol_place_pins {labels dir px py} {
+  global ol_placing
   lassign [ol_to_sch $px $py] x y
   xschem unselect_all
   set step 20
+  set made {}
   if {[ol_in_symbol]} {
     set d [dict get {input in output out inout inout} $dir]
-    foreach n $names {
+    foreach n $labels {
       xschem add_symbol_pin $x $y $n $d
-      xschem select rect 5 [expr {[xschem get rects 5] - 1}] fast
+      set i [expr {[xschem get rects 5] - 1}]
+      xschem select rect 5 $i fast
+      lappend made [list rect $i]
       incr y $step
     }
   } else {
     set sym [dict get {input ipin.sym output opin.sym inout iopin.sym} $dir]
     set first 1
-    foreach n $names {
-      set iname "p_$n"
+    foreach n $labels {
+      set iname [ol_pin_instname $n]
       xschem instance $sym $x $y 0 0 "name=$iname lab=$n" [expr {!$first}]
+      # select the one just made (by name: unique - an older pin of the same label is left alone)
       xschem select instance $iname fast
+      lappend made [list instance $iname]
       set first 0
       incr y $step
     }
@@ -244,6 +338,45 @@ proc ol_place_pins {names dir px py} {
   set ::infix_interface 1
   xschem callback .drw 2 $px $py 109 0 0 0
   set ::infix_interface $infix
+  # Watch the move: placed (a click) - unselect them; discarded (Esc) - delete them.
+  set ol_placing(made) $made
+  set ol_placing(esc) 0
+  set ol_placing(active) 1
+  set generic [bind .drw <KeyPress>]
+  bind .drw <KeyPress-Escape> "set ::ol_placing(esc) 1\n$generic"
+  after 40 ol_pin_watch
+}
+
+proc ol_pin_watch {} {
+  global ol_placing
+  if {![info exists ol_placing(active)] || !$ol_placing(active)} { return }
+  if {[xschem get ui_state] & 32} {                 ;# STARTMOVE: still following the mouse
+    after 40 ol_pin_watch
+    return
+  }
+  set ol_placing(active) 0
+  bind .drw <KeyPress-Escape> {}
+  if {$ol_placing(esc)} {
+    xschem unselect_all
+    foreach m $ol_placing(made) {
+      lassign $m kind id
+      if {$kind eq "instance"} { xschem select instance $id fast } else { xschem select rect 5 $id fast }
+    }
+    xschem delete
+  }
+  # placed: the click that dropped them also selected what was under it - nothing stays selected
+  xschem unselect_all
+  xschem redraw
+}
+
+# A new P (or anything that must not run while pins are being placed) ends a placement first.
+proc ol_pin_cancel_placing {} {
+  global ol_placing
+  if {[info exists ol_placing(active)] && $ol_placing(active)} {
+    set ol_placing(esc) 1
+    catch {xschem abort_operation}
+    ol_pin_watch
+  }
 }
 
 # ---- drawing tools vs. persistent commands ----------------------------------------------------

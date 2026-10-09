@@ -34,6 +34,8 @@ schematic - a library standard cell - is compared with its CDL. The hub keeps re
 - **Net names**: the comparison pairs nets by topology, then every labelled layout net must carry
   the schematic net's name. A swapped pair of labels, or a placed cell wired to the wrong pins,
   is a mismatch even though the topology matches.
+- **Nothing to compare**: a layout whose devices are not connected yet (nothing routed) has no top
+  circuit to compare, and is reported as a mismatch, not passed.
 - **Ground**: xschem's ground (`0`, `GND`) is VSS, the ASAP7 ground net.
 - **Bulk**: ASAP7 has no drawn bulk connection (taps are cells), so transistors are compared with
   three terminals. The schematic's bulk must be VSS (nMOS) or VDD (pMOS); anything else is reported

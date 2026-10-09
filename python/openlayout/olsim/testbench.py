@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from ..buses import expand
 from ..workarea import Cell, Library, Workarea, WorkareaError, check_name
 from .setup import Analysis, Setup, Test
 
@@ -88,8 +89,9 @@ def make_testbench(wa: Workarea, lib: Library, cell_name: str, tb_name: str | No
         raise WorkareaError(f"{lib.name}/{tb_name} exists")
     pins = symbol_pins(sym.path)
     supplies = {p for p, *_ in pins if p.upper() in ("VDD", "VSS", "GND", "VCC")}
-    inputs = [p for p, d, *_ in pins if d == "in" and p not in supplies]
-    outputs = [p for p, d, *_ in pins if d in ("out", "inout") and p not in supplies]
+    # a bus pin (WL[1:0]) is its bits, one vector column each
+    inputs = [b for p, d, *_ in pins if d == "in" and p not in supplies for b in expand(p)]
+    outputs = [b for p, d, *_ in pins if d in ("out", "inout") and p not in supplies for b in expand(p)]
 
     lines = [HEADER.rstrip(),
              f"T {{Testbench of {lib.name}/{cell_name} - OLSim sets the analyses and the corner}} -380 -230 0 0 0.3 0.3 {{}}",
@@ -107,11 +109,12 @@ def make_testbench(wa: Workarea, lib: Library, cell_name: str, tb_name: str | No
             lines.append(f"C {{lab_pin.sym}} {x:g} {y:g} 0 {1 if left else 0} {{name=l{k} lab={lab}}}")
             continue
         lines.append(f"C {{lab_pin.sym}} {x:g} {y:g} 0 {1 if left else 0} {{name=l{k} lab={name}}}")
-        if name in outputs:                          # a load on the output
-            cx = x + (-80 if left else 80)
-            lines.append(f"C {{capa.sym}} {cx:g} {y + 30:g} 0 0 {{name=C{k} m=1 value=\\{{cload\\}}}}")
-            lines.append(f"C {{lab_pin.sym}} {cx:g} {y:g} 0 0 {{name=lc{k} lab={name}}}")
-            lines.append(f"C {{gnd.sym}} {cx:g} {y + 60:g} 0 0 {{name=lg{k} lab=VSS}}")
+        if d in ("out", "inout"):                    # a load on every output (bit)
+            for j, bit in enumerate(expand(name)):
+                cx = x + (-80 - 60 * j if left else 80 + 60 * j)
+                lines.append(f"C {{capa.sym}} {cx:g} {y + 30:g} 0 0 {{name=C{k}_{j} m=1 value=\\{{cload\\}}}}")
+                lines.append(f"C {{lab_pin.sym}} {cx:g} {y:g} 0 0 {{name=lc{k}_{j} lab={bit}}}")
+                lines.append(f"C {{gnd.sym}} {cx:g} {y + 60:g} 0 0 {{name=lg{k}_{j} lab=VSS}}")
     tb_dir.mkdir(parents=True, exist_ok=True)
     (tb_dir / f"{tb_name}.sch").write_text("\n".join(lines) + "\n")
 

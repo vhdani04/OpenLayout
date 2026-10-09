@@ -37,10 +37,14 @@ STDCELL_RE = re.compile(r"_ASAP7_75t_(R|L|SL|SRAM)$")
 GATE_PITCH, ROW_GAP = 0.054, 0.108
 
 
-def _workarea():
+def _flow_python():
     flow_python = Path(os.environ.get("OPENLAYOUT_HOME", Path.home() / "openlayout/flow")) / "python"
     if str(flow_python) not in sys.path:
         sys.path.insert(0, str(flow_python))
+
+
+def _workarea():
+    _flow_python()
     from openlayout.workarea import Workarea
     return Workarea
 
@@ -92,9 +96,12 @@ def parse_netlist(text: str, top: str) -> dict:
         if current != top:
             continue
         if head == "*.pininfo":
+            _flow_python()
+            from openlayout.buses import expand
             for item in tok[1:]:
                 name, _, d = item.rpartition(":")
-                result["dirs"][name] = d
+                for bit in expand(name):              # a bus pin's direction is its bits'
+                    result["dirs"][bit] = d
         elif head.startswith("n") and len(tok) >= 6:
             params = dict(t.split("=", 1) for t in tok[6:] if "=" in t)
             result["devices"].append({"name": tok[0][1:], "nets": [ground_to_vss(n) for n in tok[1:5]],

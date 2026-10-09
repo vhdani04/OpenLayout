@@ -185,4 +185,52 @@ reply = send("xschem instance_bbox x1")
 check("selection box still sets the instance area", reply.splitlines()[-1].split()[1:] == ["-60", "-40", "60", "40"],
       reply)
 
+# ---- pins: placing, Esc, labels used twice, buses ------------------------------------------------
+pinsch = WA / f"libraries/{LIB}/pins"
+pinsch.mkdir(exist_ok=True)
+(pinsch / "pins.sch").write_text("v {xschem version=3.4.8RC file_version=1.3}\nG {}\nK {}\nV {}\nS {}\nE {}\n")
+send("xschem set_modify 0")
+send(f"xschem load {{{pinsch / 'pins.sch'}}}; xschem zoom_box -300 -200 300 200; update")
+
+
+def pin_list():
+    return send('set r {}; for {set k 0} {$k < [xschem get instances]} {incr k} {'
+                'if {[xschem getprop instance $k cell::type] in {ipin opin iopin}} {'
+                'lappend r [list [xschem getprop instance $k name] [xschem getprop instance $k lab] '
+                '{*}[lrange [xschem instance_coord $k] 2 3]]}}; set r')
+
+
+def place(names, at, to, expand=0, then=None):
+    """The pin dialog at `at` (pixels) with these names, then the pins dropped by a click at `to`
+    (or `then`: what to do instead of the click)."""
+    send(f"set ::ol_pin(expand) {expand}; after 400 {{set ::ol_pin(names) {{{names}}}; "
+         f"set ::ol_pin(dir) input; .ol_pin.b.ok invoke}}; ol_pin_dialog {at[0]} {at[1]}")
+    send(move(*to))
+    send(then or click(*to))
+    send("after 300; update")
+
+
+place("A", (300, 300), (340, 260))
+check("a placed pin: nothing stays selected or moving", send("list [xschem get lastsel] [xschem get ui_state]") == "0 0",
+      send("list [xschem get lastsel] [xschem get ui_state]"))
+first = pin_list()
+place("A", (300, 300), (420, 340))
+now = pin_list()
+check("the same label twice: two pins with unique names",
+      sorted(p.split()[0] for p in now.strip("{}").split("} {")) == ["p_A", "p_A_2"], now)
+check("the same label twice: the first pin stays put", first.strip("{}") in now, f"{first} -> {now}")
+place("GONE", (300, 300), (360, 360), then="event generate .drw <KeyPress-Escape> -x 360 -y 360; update")
+check("Esc discards the pins being placed", "GONE" not in pin_list(), pin_list())
+place("WL[1:0]", (300, 300), (260, 380))
+check("a bus pin WL[1:0]: one pin, a plain instance name", "p_WL_1_0 {WL[1:0]}" in pin_list(), pin_list())
+place("DATA[1:0]", (300, 300), (500, 380), expand=1)
+check("expanded bus: one pin per bit", "{DATA[1]}" in pin_list() and "{DATA[0]}" in pin_list(), pin_list())
+place("SEL<1:0>", (300, 300), (200, 250))
+check("SEL<1:0> is written SEL[1:0]", "{SEL[1:0]}" in pin_list(), pin_list())
+reply = send("after 400 {set ::ol_pin(names) 1bad; .ol_pin.b.ok invoke; "
+             "after 200 {set ::err [.ol_pin.f.err cget -text]; .ol_pin.b.cancel invoke}}; "
+             "ol_pin_dialog 300 300; set ::err")
+check("a bad pin name keeps the dialog open with the reason", "letters" in reply, reply)
+send("xschem set_modify 0")
+
 print("PASS xschem edit" if not failures else f"FAIL xschem edit: {', '.join(failures)}")
