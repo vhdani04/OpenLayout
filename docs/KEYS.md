@@ -16,7 +16,7 @@ it with `OPENLAYOUT_KEYS=xschem` or `OPENLAYOUT_KEYS=klayout` in the environment
 | `f` | fit | `z` | zoom box |
 | `Ctrl+Z` | zoom in | `Shift+Z` | zoom out |
 | `e` | descend | `Ctrl+E` | return |
-| `x` | check and save | `Ctrl+S` | save |
+| `x` | save | `Ctrl+S` | save (no prompt) |
 
 **Symbol editor** (editing a `.sym`): `l` draws a line (any angle), `r` a rectangle, `p` adds
 symbol pins. The symbol editor snaps to 2.5 (grid 10) so shapes can be placed precisely, while the
@@ -37,9 +37,10 @@ parameters; *Add property* adds a new one and *Text Editor…* opens xschem's ra
 instances selected, only the fields you change are applied to all of them.
 
 `p` asks for the pin name(s) (several separated by spaces) and the direction (input, output,
-input-output); the pins then follow the mouse until you click to place them. Nothing stays selected
-after the click, and `Esc` discards the pins instead. A name used before gets a second pin of its
-own (the old one stays where it is).
+input-output). The pins are placed one at a time: the first follows the mouse until you click, then
+the next one follows (names in the order typed; an expanded bus MSB first). Nothing stays selected
+after a click. `Esc` discards the pin being placed and the ones still waiting; the pins already
+placed stay. A name used before gets a second pin of its own (the old one stays where it is).
 
 **Buses**: a pin named `WL[1:0]` (xschem's bus syntax; `WL<1:0>` is accepted and written as
 `WL[1:0]`) is one bus pin. Wires labelled `WL[1]` and `WL[0]` connect to its bits by name - the

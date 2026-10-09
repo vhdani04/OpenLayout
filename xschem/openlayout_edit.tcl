@@ -171,8 +171,8 @@ proc ol_props_add {w} {
 # are expanded. A bus is xschem's WL[1:0] (Cadence-style WL<1:0> is accepted and written as
 # WL[1:0]). Unexpanded, it is one bus pin: wires labelled WL[1] / WL[0] connect to its bits by name,
 # and the netlist has one port per bit. Expanded, it becomes one pin per bit (WL[1], WL[0]).
-# The new pins then follow the mouse; a click places them (nothing stays selected), Esc discards
-# them.
+# The pins are placed one at a time: each follows the mouse until a click puts it down (nothing
+# stays selected), then the next one follows. Esc discards the pin being placed and the rest.
 
 # Cadence bus syntax -> xschem's: WL<1:0> -> WL[1:0], D<3> -> D[3]
 proc ol_bus_syntax {name} {
@@ -301,52 +301,54 @@ proc ol_pin_ok {} {
   destroy .ol_pin
 }
 
-# Create the pins stacked at the pointer, then let them follow the mouse until the user clicks.
-# px/py: pointer position in drawing-area pixels (from the key event).
+# Place the pins one at a time: the first follows the mouse from the pointer, a click puts it down
+# and the next one follows. px/py: pointer position in drawing-area pixels (from the key event).
 proc ol_place_pins {labels dir px py} {
   global ol_placing
+  set ol_placing(queue) $labels
+  set ol_placing(dir) $dir
+  set ol_placing(esc) 0
+  focus -force .drw                         ;# back from the dialog (ours had focus): Esc must reach .drw
+  set generic [bind .drw <KeyPress>]
+  bind .drw <KeyPress-Escape> "set ::ol_placing(esc) 1\n$generic"
+  ol_place_next $px $py
+}
+
+# Create the next pin in the queue at the pointer and let it follow the mouse until the click.
+proc ol_place_next {px py} {
+  global ol_placing
+  set n [lindex $ol_placing(queue) 0]
+  set ol_placing(queue) [lrange $ol_placing(queue) 1 end]
   lassign [ol_to_sch $px $py] x y
   xschem unselect_all
-  set step 20
-  set made {}
   if {[ol_in_symbol]} {
-    set d [dict get {input in output out inout inout} $dir]
-    foreach n $labels {
-      xschem add_symbol_pin $x $y $n $d
-      set i [expr {[xschem get rects 5] - 1}]
-      xschem select rect 5 $i fast
-      lappend made [list rect $i]
-      incr y $step
-    }
+    xschem add_symbol_pin $x $y $n [dict get {input in output out inout inout} $ol_placing(dir)]
+    set i [expr {[xschem get rects 5] - 1}]
+    xschem select rect 5 $i fast
+    set ol_placing(made) [list rect $i]
   } else {
-    set sym [dict get {input ipin.sym output opin.sym inout iopin.sym} $dir]
-    set first 1
-    foreach n $labels {
-      set iname [ol_pin_instname $n]
-      xschem instance $sym $x $y 0 0 "name=$iname lab=$n" [expr {!$first}]
-      # select the one just made (by name: unique - an older pin of the same label is left alone)
-      xschem select instance $iname fast
-      lappend made [list instance $iname]
-      set first 0
-      incr y $step
-    }
+    set sym [dict get {input ipin.sym output opin.sym inout iopin.sym} $ol_placing(dir)]
+    set iname [ol_pin_instname $n]
+    xschem instance $sym $x $y 0 0 "name=$iname lab=$n"
+    # select the one just made (by name: unique - an older pin of the same label is left alone)
+    xschem select instance $iname fast
+    set ol_placing(made) [list instance $iname]
   }
+  set ol_placing(placed) 0
+  set ol_placing(sch) [xschem get schname]
   # Start a move at the pointer (m with xschem's infix interface, which moves immediately instead of
-  # waiting for a reference click): the new pins follow the mouse until the click.
+  # waiting for a reference click): the new pin follows the mouse until the click.
   set infix 0
   catch {set infix $::infix_interface}
   set ::infix_interface 1
   xschem callback .drw 2 $px $py 109 0 0 0
   set ::infix_interface $infix
-  # Watch the move: placed (a click) - unselect them; discarded (Esc) - delete them.
-  set ol_placing(made) $made
-  set ol_placing(esc) 0
   set ol_placing(active) 1
-  set generic [bind .drw <KeyPress>]
-  bind .drw <KeyPress-Escape> "set ::ol_placing(esc) 1\n$generic"
   after 40 ol_pin_watch
 }
 
+# Watch the move: placed (a click) - unselect it and bring up the next pin; discarded (Esc) - delete
+# the pin being moved and drop the rest (the pins already put down stay).
 proc ol_pin_watch {} {
   global ol_placing
   if {![info exists ol_placing(active)] || !$ol_placing(active)} { return }
@@ -354,18 +356,36 @@ proc ol_pin_watch {} {
     after 40 ol_pin_watch
     return
   }
-  set ol_placing(active) 0
-  bind .drw <KeyPress-Escape> {}
-  if {$ol_placing(esc)} {
-    xschem unselect_all
-    foreach m $ol_placing(made) {
-      lassign $m kind id
-      if {$kind eq "instance"} { xschem select instance $id fast } else { xschem select rect 5 $id fast }
-    }
-    xschem delete
+  if {[xschem get schname] ne $ol_placing(sch)} {   ;# another schematic opened: stop, touch nothing
+    set ol_placing(active) 0
+    bind .drw <KeyPress-Escape> {}
+    return
   }
-  # placed: the click that dropped them also selected what was under it - nothing stays selected
+  if {!$ol_placing(placed)} {
+    set ol_placing(placed) 1
+    if {$ol_placing(esc)} {
+      xschem unselect_all
+      lassign $ol_placing(made) kind id
+      if {$kind eq "instance"} { xschem select instance $id fast } else { xschem select rect 5 $id fast }
+      xschem delete
+    }
+  }
+  if {$ol_placing(esc)} { set ol_placing(queue) {} }
+  # the press put the pin down; the next one waits for the release (a release during its move would
+  # drop it where it starts)
+  if {[llength $ol_placing(queue)] && [info exists ::ol_b1_down] && $::ol_b1_down} {
+    after 20 ol_pin_watch
+    return
+  }
+  set ol_placing(active) 0
+  # placed: the click that dropped it also selected what was under it - nothing stays selected
   xschem unselect_all
+  if {[llength $ol_placing(queue)]} {
+    lassign [winfo pointerxy .drw] rx ry
+    ol_place_next [expr {$rx - [winfo rootx .drw]}] [expr {$ry - [winfo rooty .drw]}]
+    return
+  }
+  bind .drw <KeyPress-Escape> {}
   xschem redraw
 }
 
@@ -460,6 +480,19 @@ proc ol_bind_keys {{w .drw}} {
   bind $w <KeyPress-t> {ol_tool place_text; break}
   bind $w <Shift-KeyPress-C> {ol_tool arc; break}
   bind $w <Control-Shift-KeyPress-C> {ol_tool circle; break}
+  # x and Ctrl+s save at once (xschem's own Ctrl+s asks "save file?" first; an unnamed schematic
+  # still gets Save As)
+  bind $w <KeyPress-x> {xschem save; break}
+  bind $w <Control-KeyPress-s> {xschem save; break}
+  # A binding for a plain key also catches it with Ctrl or Alt held (Tk falls back to it when no
+  # binding names the modifier): Ctrl+s was stretch, Ctrl+x save. Those keep xschem's own meaning.
+  foreach k {p l r w t x s i} {
+    foreach m {Control Alt} {
+      if {[bind $w <$m-KeyPress-$k>] eq {}} {
+        bind $w <$m-KeyPress-$k> {xschem callback %W %T %x %y %N 0 0 %s; break}
+      }
+    }
+  }
 }
 
 if {!([info exists env(OPENLAYOUT_KEYS)] && $env(OPENLAYOUT_KEYS) eq "xschem")} {
@@ -690,6 +723,7 @@ proc ol_hover_leave {w} {
 proc ol_press {w x y b s} {
   global ol_stretch
   focus $w
+  if {$b == 1} { set ::ol_b1_down 1 }
   # plain left press (no Shift/Ctrl/Alt) on a rectangle edge while no command is running
   set hit {}
   if {$b == 1 && ($s & 0x0d) == 0 && ([xschem get ui_state] & ~8) == 0} {
@@ -731,6 +765,7 @@ proc ol_motion {w x y s} {
 
 proc ol_release {w x y b s} {
   global ol_stretch
+  if {$b == 1} { set ::ol_b1_down 0 }
   if {!($ol_stretch(active) && $b == 1)} {
     xschem callback $w 5 $x $y 0 $b 0 $s
     ol_rects_changed

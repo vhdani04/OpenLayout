@@ -23,9 +23,10 @@ set toolbar_horiz 1
 # in openlayout_edit.tcl.
 set replace_key(Key-i)     Shift-I    ;# i        create instance
 set replace_key(Key-s)     Control-m  ;# s        stretch (move with attached wires)
-set replace_key(Key-x)     Control-s  ;# x        check and save
 set replace_key(Control-z) Shift-Z    ;# Ctrl+z   zoom in
 set replace_key(Shift-Z)   Control-z  ;# Shift+z  zoom out
+# x (save) and Ctrl+s are bound in openlayout_edit.tcl: both save without xschem's "save file?"
+# prompt. It also keeps Ctrl/Alt with s, i and the other remapped letters as xschem's own keys.
 
 set ol_keys_help {
 Virtuoso-style keys (xschem)
@@ -39,6 +40,6 @@ Virtuoso-style keys (xschem)
   f          fit                      z        zoom box
   Ctrl+z     zoom in                  Shift+z  zoom out
   e          descend                  Ctrl+e   return
-  x          check and save           Ctrl+s   save
+  x          save                     Ctrl+s   save
   OpenLayout menu: open layout, show in Library Manager, netlist, simulate
 }

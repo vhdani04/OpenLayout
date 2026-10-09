@@ -47,12 +47,20 @@ reply = send("after 700 {.ol_props.b.cancel invoke}; xschem unselect_all; xschem
              "xschem callback .drw 2 300 300 113 0 0 0; xschem getprop instance M1 nfin")
 check("cancel leaves the instance unchanged", reply == "3", reply)
 
-# pin dialog in a schematic: two output pins, placed together and following the mouse
+# pin dialog in a schematic: two output pins, one at a time - the first follows the mouse, Esc
+# discards it and the one still waiting
 reply = send("after 600 {set ::ol_pin(names) {OUT2 OUT3}; set ::ol_pin(dir) output; .ol_pin.b.ok invoke}; "
-             "ol_pin_dialog 200 200; set s [xschem get ui_state]; " + ESC + "; "
-             "list [xschem getprop instance p_OUT2 lab] [xschem getprop instance p_OUT3 cell::type] "
-             "[expr {($s & 32) != 0}]")
-check("pin dialog places output pins that follow the mouse", reply == "OUT2 opin 1", reply)
+             "focus -force .drw; update; set n0 [xschem get instances]; ol_pin_dialog 200 200; set s [xschem get ui_state]; "
+             "set n1 [xschem get instances]; set lab [xschem getprop instance p_OUT2 lab]; "
+             "set t [xschem getprop instance p_OUT2 cell::type]; "
+             "event generate .drw <KeyPress-Escape> -x 200 -y 200; after 200; update; "
+             "list $lab $t [expr {$n1 - $n0}] [expr {($s & 32) != 0}] [expr {[xschem get instances] - $n0}]")
+check("pin dialog: the first of two pins follows the mouse, Esc discards both", reply == "OUT2 opin 1 1 0", reply)
+
+# x and Ctrl+s save at once (xschem's own Ctrl+s asks first); Ctrl+x / Ctrl+i stay xschem's
+check("x and Ctrl+s save, Ctrl+x / Alt+s stay xschem's",
+      "xschem save" in send("bind .drw <KeyPress-x>") and "xschem save" in send("bind .drw <Control-KeyPress-s>")
+      and "%N" in send("bind .drw <Control-KeyPress-x>") and "%N" in send("bind .drw <Alt-KeyPress-s>"))
 
 # symbol editor: border rectangle, symbol pin dialog, line key
 send(f"xschem load {{{sym}}}")
@@ -201,13 +209,14 @@ def pin_list():
 
 
 def place(names, at, to, expand=0, then=None):
-    """The pin dialog at `at` (pixels) with these names, then the pins dropped by a click at `to`
-    (or `then`: what to do instead of the click)."""
+    """The pin dialog at `at` (pixels) with these names, then the pins dropped one at a time by a
+    click at each point of `to` (one point or a list), or `then`: what to do instead of the click."""
     send(f"set ::ol_pin(expand) {expand}; after 400 {{set ::ol_pin(names) {{{names}}}; "
          f"set ::ol_pin(dir) input; .ol_pin.b.ok invoke}}; ol_pin_dialog {at[0]} {at[1]}")
-    send(move(*to))
-    send(then or click(*to))
-    send("after 300; update")
+    for pt in to if isinstance(to, list) else [to]:
+        send(move(*pt))
+        send(then or click(*pt))
+        send("after 300; update")
 
 
 place("A", (300, 300), (340, 260))
@@ -223,8 +232,23 @@ place("GONE", (300, 300), (360, 360), then="event generate .drw <KeyPress-Escape
 check("Esc discards the pins being placed", "GONE" not in pin_list(), pin_list())
 place("WL[1:0]", (300, 300), (260, 380))
 check("a bus pin WL[1:0]: one pin, a plain instance name", "p_WL_1_0 {WL[1:0]}" in pin_list(), pin_list())
-place("DATA[1:0]", (300, 300), (500, 380), expand=1)
-check("expanded bus: one pin per bit", "{DATA[1]}" in pin_list() and "{DATA[0]}" in pin_list(), pin_list())
+place("DATA[1:0]", (300, 300), (500, 380), expand=1, then="update")   # no click: only DATA[1] exists
+reply = send("list [expr {[xschem get ui_state] & 32}] [xschem getprop instance p_DATA_1 lab]")
+check("expanded bus: one pin at a time", "{DATA[0]}" not in pin_list() and reply == "32 {DATA[1]}", (reply, pin_list()))
+send(click(500, 380) + "; after 300; update")                        # DATA[1] down, DATA[0] follows
+send(move(500, 300) + "; " + click(500, 300) + "; after 300; update")
+pins = pin_list()
+check("expanded bus: each bit where it was clicked",
+      "p_DATA_1 {DATA[1]}" in pins and "p_DATA_0 {DATA[0]}" in pins and
+      [p.split()[-1] for p in pins.strip("{}").split("} {") if "DATA" in p][0] !=
+      [p.split()[-1] for p in pins.strip("{}").split("} {") if "DATA" in p][1], pins)
+check("expanded bus: done placing", send("list [xschem get lastsel] [xschem get ui_state]") == "0 0",
+      send("list [xschem get lastsel] [xschem get ui_state]"))
+place("P Q", (300, 300), (240, 200), then="update")
+send(click(240, 200) + "; after 300; update; event generate .drw <KeyPress-Escape> -x 240 -y 200; "
+     "after 200; update")
+check("Esc while placing keeps the pins already put down", "p_P P" in pin_list() and "p_Q" not in pin_list(),
+      pin_list())
 place("SEL<1:0>", (300, 300), (200, 250))
 check("SEL<1:0> is written SEL[1:0]", "{SEL[1:0]}" in pin_list(), pin_list())
 reply = send("after 400 {set ::ol_pin(names) 1bad; .ol_pin.b.ok invoke; "
