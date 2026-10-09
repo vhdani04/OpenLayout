@@ -34,7 +34,8 @@ proc ol_read_libs_def {file} {
 }
 
 proc ol_setup_workarea {root} {
-  global XSCHEM_LIBRARY_PATH netlist_dir
+  global XSCHEM_LIBRARY_PATH netlist_dir ol_workarea_root
+  set ol_workarea_root [file normalize $root]   ;# the Add Instance browser lists its libraries
   set parents {}
   foreach lib [ol_read_libs_def $root/libs.def] {
     lassign $lib name path

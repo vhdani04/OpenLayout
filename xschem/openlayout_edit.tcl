@@ -119,6 +119,7 @@ proc edit_prop {txtlabel} {
   button $w.b.text -text "Text Editor…" -command {set tctx::rcode text; destroy .ol_props}
   button $w.b.cancel -text "Cancel" -width 8 -command {set tctx::rcode {}; destroy .ol_props}
   button $w.b.ok -text "OK" -width 8 -command {set tctx::rcode ok; destroy .ol_props}
+  ol_primary $w.b.ok
   pack $w.b.text -side left
   pack $w.b.ok $w.b.cancel -side right -padx 4
   pack $w.b -side top -fill x -padx 10 -pady {4 10}
@@ -269,6 +270,7 @@ proc ol_pin_dialog {px py} {
   frame $w.b
   button $w.b.cancel -text "Cancel" -width 8 -command {set ol_pin(rc) {}; destroy .ol_pin}
   button $w.b.ok -text "Place" -width 8 -command ol_pin_ok
+  ol_primary $w.b.ok
   pack $w.b.ok $w.b.cancel -side right -padx 4
   pack $w.b -side top -fill x -padx 10 -pady {0 10}
   bind $w <Return> {.ol_pin.b.ok invoke}
@@ -478,6 +480,9 @@ proc ol_bind_keys {{w .drw}} {
   # xschem's own shape keys: end the persistent line/wire first, then let xschem handle the key
   bind $w <KeyPress-w> {ol_end_persistent; xschem callback %W %T %x %y 119 0 0 0; break}
   bind $w <KeyPress-t> {ol_tool place_text; break}
+  # i / Insert: the Add Instance browser (openlayout_browser.tcl) instead of xschem's file chooser
+  bind $w <KeyPress-i> {ol_end_persistent; ol_instance_browser; break}
+  bind $w <KeyPress-Insert> {ol_end_persistent; ol_instance_browser; break}
   bind $w <Shift-KeyPress-C> {ol_tool arc; break}
   bind $w <Control-Shift-KeyPress-C> {ol_tool circle; break}
   # x and Ctrl+s save at once (xschem's own Ctrl+s asks "save file?" first; an unnamed schematic

@@ -264,4 +264,45 @@ reply = send("after 400 {set ::ol_pin(names) 1bad; .ol_pin.b.ok invoke; "
 check("a bad pin name keeps the dialog open with the reason", "letters" in reply, reply)
 send("xschem set_modify 0")
 
+# ---- the theme reaches widgets xschem creates later; menus; status fields; tabs ---------------------
+ui = dict(zip(*[iter(send("set ol_theme(ui)").split())] * 2))
+reply = send("listbox .ol_tl; entry .ol_te; set r [join [list [.ol_tl cget -background] [.ol_te cget -background] "
+             "[option get . background {}]]]; destroy .ol_tl .ol_te; set r")
+check("new widgets come up themed (lists and inputs on the base color)",
+      reply.split() == [ui["base"], ui["base"], ui["panel"]], reply)
+mb = top + ".menubar"
+keys = send(f"list [{mb}.tools entrycget [ol_menu_find {mb}.tools {{Add Instance…}}] -accelerator] "
+            f"[{mb}.file entrycget [ol_menu_find {mb}.file Save] -accelerator] "
+            f"[{mb}.tools entrycget [ol_menu_find {mb}.tools {{Insert polygon}}] -accelerator] "
+            f"[expr {{[ol_menu_find {mb}.sym {{Create Pin…}}] >= 0}}]")
+check("menus show OpenLayout's keys", keys == "{I, Ins} {X, Ctrl+S} {} 1", keys)
+reply = send(f"{top}.statusbar.3 configure -background PaleGreen; set a [{top}.statusbar.3 cget -background]; "
+             f"{top}.statusbar.3 configure -background OrangeRed; set b [{top}.statusbar.3 cget -background]; "
+             f"{top}.statusbar.3 configure -background PaleGreen; join [list $a $b]")
+check("the snap field's PaleGreen / OrangeRed map to the theme",
+      reply.split()[0] == ui["base"] and reply.split()[1].lower() not in ("orangered", "#ff4500"), reply)
+reply = send("set_tab_names; .tabs.x0 cget -background")
+check("the current tab is in the selection color", reply == ui["select"], reply)
+
+# ---- Add Instance: i opens the browser; libraries, filter, preview, placing ------------------------
+send("xschem unselect_all; focus -force .drw; update")
+send(f"event generate .drw <KeyPress-i> -x 400 -y 300; update; after 300; update")
+libs = send("lmap l $ol_inst(libs) {lindex $l 0}")
+check("i opens Add Instance, the workarea's libraries first and Basic last",
+      send("winfo exists .ol_inst") == "1" and libs.split()[0] == LIB and libs.split()[-1] == "Basic"
+      and "asap7_devices" in libs.split(), libs)
+reply = send(".ol_inst.body.lib.l selection clear 0 end; .ol_inst.body.lib.l selection set "
+             "[lsearch -index 0 $ol_inst(libs) asap7_devices]; ol_inst_lib_changed; "
+             "set ol_inst(filter) nmos_rv; update; "
+             "list [llength $ol_inst(shown)] [.ol_inst.body.pv.path cget -text] [.ol_inst.body.pv.pins cget -text]")
+check("the filter narrows the cells; the preview names the symbol and its pins",
+      reply.startswith("1 asap7_devices/nmos_rvt/nmos_rvt.sym") and "d  g  s  b" in reply, reply)
+reply = send("ol_inst_place; update; list [winfo exists .ol_inst] [expr {([xschem get ui_state] & 8192) != 0}]")
+check("Place closes it and puts the symbol on the mouse", reply == "0 1", reply)
+send(ESC + "; update; xschem set_modify 0")
+reply = send("set ol_inst(keep) 1; ol_instance_browser; ol_inst_place; update; "
+             "set r [winfo exists .ol_inst]; ol_inst_close; set ol_inst(keep) 0; set r")
+send(ESC + "; update; xschem set_modify 0")
+check("Keep open leaves it open for the next one", reply == "1", reply)
+
 print("PASS xschem edit" if not failures else f"FAIL xschem edit: {', '.join(failures)}")

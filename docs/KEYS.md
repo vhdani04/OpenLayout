@@ -7,7 +7,7 @@ it with `OPENLAYOUT_KEYS=xschem` or `OPENLAYOUT_KEYS=klayout` in the environment
 
 | Key | Action | Key | Action |
 |---|---|---|---|
-| `i` | create instance | `w` | wire |
+| `i` / `Insert` | add instance (browser) | `w` | wire |
 | `p` | pin: name(s) + direction dialog | `l` | wire name (net label) |
 | `c` | copy | `m` | move |
 | `s` | stretch | `r` | rotate |
@@ -17,6 +17,19 @@ it with `OPENLAYOUT_KEYS=xschem` or `OPENLAYOUT_KEYS=klayout` in the environment
 | `Ctrl+Z` | zoom in | `Shift+Z` | zoom out |
 | `e` | descend | `Ctrl+E` | return |
 | `x` | save | `Ctrl+S` | save (no prompt) |
+
+**Add Instance** (`i`, `Insert`, *Tools ▸ Add Instance…*, the toolbar's symbol button, or *Insert
+symbol* in the right-click menu): a browser laid out like the hub's Library Manager - the
+workarea's libraries (design libraries first, the PDK's dimmed) and a *Basic* library of xschem's
+own devices (pins, labels, supplies, sources); the selected library's cells that have a symbol,
+with a filter (a substring, or a glob with `*` / `?`; the arrow keys step through the matches);
+and a preview of the symbol with its type and pins. Double-click, `Enter` or *Place* puts the
+symbol on the mouse; *Keep open* leaves the browser up for the next one; `Esc` closes it.
+
+The menus show OpenLayout's keys where they differ from xschem's (e.g. *Save* `X, Ctrl+S`, *Zoom In*
+`Ctrl+Z`), and *Symbol ▸ Create Pin…* opens the pin dialog. xschem's dialogs, file chooser,
+right-click menu, tabs and status bar follow the same dark theme as the hub and KLayout
+(`share/theme/openlayout.json`).
 
 **Symbol editor** (editing a `.sym`): `l` draws a line (any angle), `r` a rectangle, `p` adds
 symbol pins. The symbol editor snaps to 2.5 (grid 10) so shapes can be placed precisely, while the
