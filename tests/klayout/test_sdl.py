@@ -56,6 +56,17 @@ check("all nets open after generation", set(pieces) == {"A", "Y", "VDD", "VSS"} 
       pieces)
 check("flight lines per open net", all(len(v["lines"]) == v["pieces"] - 1 for v in res["nets"].values()))
 
+# 3b. a gate cut across the middle of the cell (between the n and p gates): the gates are still found
+#     (they used to be probed next to mid-cell - inside the cut - and reported "nothing drawn")
+cuts = [top.shapes(ly.layer(10, 0)).insert(pya.DBox(i.dbbox().left, i.dcplx_trans.disp.y + 0.113,
+                                                      i.dbbox().right, i.dcplx_trans.disp.y + 0.157))
+        for i in top.each_inst() if connectivity.instance_name(i)]   # each transistor's mid-cell band
+res = connectivity.check(ly, top, conn)
+floating = [u for n in res["nets"].values() for u in n["unconnected"] if "nothing drawn" in u]
+check("a mid-cell gate cut leaves every gate found", not floating and not res["shorts"], (floating, res["shorts"]))
+for c in cuts:
+    top.shapes(ly.layer(10, 0)).erase(c)
+
 # 4. route net A: a LIG trunk left of the transistors with a branch to every gate finger, V0 + M1
 #    over to pin A
 ga = [t for t in connectivity.terminals(ly, top, conn)[0] if t.net == "A"]
@@ -128,6 +139,29 @@ out = subprocess.run([str(HOME / "bin/openlayout"), "lvs", str(lib.path / "inv" 
                      capture_output=True, text=True, cwd=str(lib.path)).stdout
 check("LVS of an unrouted layout is a mismatch", "RESULT LVS inv mismatch" in out and "nothing in the layout" in out,
       out.strip().splitlines()[-2:] if out.strip() else out)
+
+# 8b. LVS of a cell outside any workarea: netlisted with the PDK libraries (it used to netlist to an
+#     empty subcircuit - every symbol "not found" - and fail inside the comparison)
+loose = Path(tempfile.mkdtemp()) / "looselib" / "inv"
+shutil.copytree(lib.path / "inv", loose)
+r = subprocess.run([str(HOME / "bin/openlayout"), "lvs", str(loose / "inv.gds")], capture_output=True, text=True,
+                   cwd=str(loose))
+check("LVS outside a workarea compares the cell", "RESULT LVS inv " in r.stdout, (r.stdout + r.stderr)[-300:])
+
+# 8c. a symbol xschem cannot find: a clear error, not an empty netlist
+(loose / "inv.sch").write_text((loose / "inv.sch").read_text() + "C {nosuch/nosuch.sym} 400 400 0 0 {name=X9}\n")
+r = subprocess.run([str(HOME / "bin/openlayout"), "lvs", str(loose / "inv.gds")], capture_output=True, text=True,
+                   cwd=str(loose))
+check("a missing symbol stops LVS with its name", r.returncode != 0 and "nosuch/nosuch.sym" in r.stderr,
+      (r.returncode, (r.stdout + r.stderr)[-300:]))
+
+# 8d. a schematic netlist with nothing in it: the deck says so (it used to fail inside the comparison)
+empty = loose / "empty.spice"
+empty.write_text(".subckt inv A Y\n.ends\n")
+r = subprocess.run([str(HOME / "bin/openlayout"), "lvs", str(loose / "inv.gds"), "--schematic", str(empty)],
+                   capture_output=True, text=True, cwd=str(loose))
+check("an empty schematic netlist is an error with the reason", r.returncode != 0 and "has no devices" in r.stdout,
+      (r.returncode, (r.stdout + r.stderr)[-300:]))
 
 # 9. bus pins: one layout pin per bit, with the bus pin's direction
 (lib.path / "inv2b").mkdir()

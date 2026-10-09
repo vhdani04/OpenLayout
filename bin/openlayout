@@ -46,11 +46,24 @@ find_workarea() {
   return 1
 }
 
-# Netlist an xschem schematic as a subcircuit (in its workarea); prints the SPICE file.
+# Netlist an xschem schematic as a subcircuit (in its workarea); prints the SPICE file. Outside a
+# workarea it uses a scratch one: the PDK libraries and the schematic's own library (lib/cell/cell.sch).
+# Symbols xschem cannot find fail it - xschem would write an empty subcircuit.
 netlist_sch() {
-  local sch="$1" tmp wa
-  tmp="$(mktemp -d)"; wa="$(cd "$(dirname "$sch")" && find_workarea || dirname "$sch")"
-  (cd "$wa" && xschem -x -q -r -n -s --tcl "set top_is_subckt 1" -o "$tmp" "$sch" > /dev/null 2>&1) || true
+  local sch="$1" tmp wa lib missing
+  tmp="$(mktemp -d)"
+  if ! wa="$(cd "$(dirname "$sch")" && find_workarea)"; then
+    wa="$tmp/workarea"; lib="$(dirname "$(dirname "$sch")")"
+    mkdir -p "$wa"
+    printf 'INCLUDE %s\nDEFINE %s %s\n' "$OPENLAYOUT_HOME/pdk/asap7/libs.def" "$(basename "$lib")" "$lib" > "$wa/libs.def"
+    printf 'source $env(OPENLAYOUT_HOME)/xschem/xschemrc_base.tcl\nol_setup_workarea %s\n' "$wa" > "$wa/xschemrc"
+  fi
+  (cd "$wa" && xschem -x -q -r -n -s --tcl "set top_is_subckt 1" -o "$tmp" "$sch" > "$tmp/xschem.log" 2>&1) || true
+  missing="$(sed -n 's/.*Symbol not found: //p' "$tmp/xschem.log" | sort -u | tr '\n' ' ')"
+  if [ -n "$missing" ]; then
+    echo "openlayout: xschem could not find the symbol(s) ${missing% } - is the schematic's library in the workarea's libs.def?" >&2
+    return 1
+  fi
   [ -f "$tmp/$(basename "${sch%.sch}").spice" ] || return 1
   echo "$tmp/$(basename "${sch%.sch}").spice"
 }

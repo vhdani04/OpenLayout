@@ -194,3 +194,16 @@ def test_new_cell_view_rejects_readonly(win):
     from openlayout.workarea import WorkareaError
     with pytest.raises(WorkareaError):
         win.workarea.new_view(win.workarea.library("asap7_devices"), "x", SCHEMATIC)
+
+
+def test_failure_reason():
+    """A failed DRC / LVS / PEX run reports the tools' first reason, not just the exit code."""
+    from openlayout.hub.main_window import failure_reason
+    out = ("openlayout: xschem could not find the symbol(s) nosuch.sym - is the schematic's library in the "
+           "workarea's libs.def?\nopenlayout lvs: xschem could not netlist /x/inv.sch\n")
+    assert failure_reason(2, out).startswith("xschem could not find the symbol(s) nosuch.sym")
+    out = "LVS inv: ...\nopenlayout lvs: the schematic netlist of INV has no devices\nopenlayout lvs: the LVS run failed\n"
+    assert failure_reason(2, out) == "the schematic netlist of INV has no devices"
+    assert failure_reason(1, "ERROR: In asap7.lvs: something broke\n") == "In asap7.lvs: something broke"
+    assert failure_reason(3, "openlayout drc: the DRC run failed\n") == "run failed (exit 3)"
+    assert failure_reason(1, "") == "run failed (exit 1)"

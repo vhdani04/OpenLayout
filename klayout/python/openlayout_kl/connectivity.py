@@ -39,10 +39,13 @@ def instance_name(inst):
 
 
 class Terminal:
-    __slots__ = ("owner", "term", "net", "point", "layer", "cluster", "floating")
+    __slots__ = ("owner", "term", "net", "point", "layer", "probe", "cluster", "floating")
 
-    def __init__(self, owner, term, net, point, layer):
+    def __init__(self, owner, term, net, point, layer, probe=None):
         self.owner, self.term, self.net, self.point, self.layer = owner, term, net, point, layer
+        # where the conductor is looked up: a gate over its channel (a row transistor's terminal point
+        # is next to the mid-cell, where a gate contact goes - and where a gate cut often is)
+        self.probe = probe if probe is not None else point
         self.cluster = None
         self.floating = False                   # nothing conducting under it
 
@@ -100,7 +103,8 @@ def terminals(layout, top, conn):
                 if term in SKIP_TERMINALS:
                     continue
                 for x, y, layer in geo["terminals"].get(term, []):
-                    out.append(Terminal(name, term, net, trans * pya.DPoint(x / 1000, y / 1000), layer))
+                    probe = trans * pya.DPoint(x / 1000, geo["channel_y"] / 1000) if term == "g" else None
+                    out.append(Terminal(name, term, net, trans * pya.DPoint(x / 1000, y / 1000), layer, probe))
         else:
             ci = inst.cell_index
             if ci not in pin_cache:
@@ -182,7 +186,7 @@ def check(layout, top, conn):
     l2n, regions = extract(layout, top)
     probed = {}
     for i, t in enumerate(terms):
-        net = l2n.probe_net(regions[t.layer], t.point) if t.layer in regions else None
+        net = l2n.probe_net(regions[t.layer], t.probe) if t.layer in regions else None
         t.cluster = net.cluster_id if net is not None else ("isolated", i)
         t.floating = net is None
         if net is not None:
@@ -265,7 +269,7 @@ def net_shapes(layout, top, conn=None):
     for t in terms:
         if t.layer not in regions:
             continue
-        net = l2n.probe_net(regions[t.layer], t.point)
+        net = l2n.probe_net(regions[t.layer], t.probe)
         if net is None:
             continue
         names.setdefault(net.cluster_id, set()).add(t.net)

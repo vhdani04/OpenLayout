@@ -40,6 +40,11 @@ schematic - a library standard cell - is compared with its CDL. The hub keeps re
 - **Bulk**: ASAP7 has no drawn bulk connection (taps are cells), so transistors are compared with
   three terminals. The schematic's bulk must be VSS (nMOS) or VDD (pMOS); anything else is reported
   as a mismatch ("bulk on ...").
+- **The schematic netlist**: `openlayout lvs` netlists the xschem schematic in its workarea; a cell
+  outside any workarea is netlisted with the ASAP7 libraries and its own library. A symbol xschem
+  cannot find stops the run with its name (xschem would write an empty subcircuit), and a schematic
+  netlist with no devices, or without the top cell's subcircuit, is an error with the reason - the
+  hub shows it in the CIW.
 
 ### Placed standard cells
 

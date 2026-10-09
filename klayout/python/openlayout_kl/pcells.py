@@ -91,7 +91,7 @@ def mos_geometry(kind: str, nfin: int, nf: int, vt: str = "rvt", row: bool = Fal
         s["well"] = [implant]
     if VT_LAYER.get(vt):
         s[VT_LAYER[vt]] = [implant]
-    return {"shapes": s, "terminals": terminals, "bbox": bbox}
+    return {"shapes": s, "terminals": terminals, "bbox": bbox, "channel_y": (act_bot + act_top) / 2}
 
 
 MOS_PARAMS = ("nfin", "nf", "vt", "row", "abut_left", "abut_right", "contact_left", "contact_right")

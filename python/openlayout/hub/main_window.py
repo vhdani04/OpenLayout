@@ -25,6 +25,15 @@ SIM_RESULT_RE = re.compile(r"^(PASS|FAIL)\b.*$", re.M)
 DRC_RESULT_RE = re.compile(r"^RESULT DRC \S+ violations=(\d+) rules=(\d+)", re.M)
 LVS_RESULT_RE = re.compile(r"^RESULT LVS \S+ (\w+) circuits=(\d+) bulk=(\d+) names=(\d+)", re.M)
 PEX_RESULT_RE = re.compile(r"^RESULT PEX \S+ devices=(\d+) resistors=(\d+) capacitors=(\d+)(.*)$", re.M)
+# why a batch run failed: the first reason the tools give ("openlayout lvs: ...", KLayout's "ERROR: ...")
+FAIL_RE = re.compile(r"^(?:openlayout(?: \w+)?|ERROR): (.+)$", re.M)
+
+
+def failure_reason(code, text):
+    """The first reason a failed batch run gives (not the wrapper's own "the ... run failed")."""
+    reasons = [m.group(1).strip() for m in FAIL_RE.finditer(text or "")]
+    reasons = [r for r in reasons if not re.match(r"the \w+ run failed$", r)]
+    return reasons[0][:200] if reasons else f"run failed (exit {code})"
 
 
 class HubAPI:
@@ -651,8 +660,9 @@ class MainWindow(QMainWindow):
         def done(code, text):
             m = DRC_RESULT_RE.search(text)
             if code != 0 or not m:
-                self.workarea.set_state(cell, "drc", False, f"run failed (exit {code})")
-                self.ciw.error(f"DRC {cell.key}: the run failed")
+                why = failure_reason(code, text)
+                self.workarea.set_state(cell, "drc", False, why)
+                self.ciw.error(f"DRC {cell.key}: the run failed — {why}")
                 self.lm.refresh()
                 return
             n, rules = int(m.group(1)), int(m.group(2))
@@ -686,8 +696,9 @@ class MainWindow(QMainWindow):
         def done(code, text):
             m = LVS_RESULT_RE.search(text)
             if code != 0 or not m:
-                self.workarea.set_state(cell, "lvs", False, f"run failed (exit {code})")
-                self.ciw.error(f"LVS {cell.key}: the run failed")
+                why = failure_reason(code, text)
+                self.workarea.set_state(cell, "lvs", False, why)
+                self.ciw.error(f"LVS {cell.key}: the run failed — {why}")
                 self.lm.refresh()
                 return
             match = m.group(1) == "match"
@@ -724,8 +735,9 @@ class MainWindow(QMainWindow):
         def done(code, text):
             m = PEX_RESULT_RE.search(text)
             if code != 0 or not m:
-                self.workarea.set_state(cell, "pex", False, f"run failed (exit {code})")
-                self.ciw.error(f"PEX {cell.key}: the run failed")
+                why = failure_reason(code, text)
+                self.workarea.set_state(cell, "pex", False, why)
+                self.ciw.error(f"PEX {cell.key}: the run failed — {why}")
             else:
                 devices, rs, cs = (int(m.group(i)) for i in (1, 2, 3))
                 detail = f"{devices} transistors, {rs} R, {cs} C"

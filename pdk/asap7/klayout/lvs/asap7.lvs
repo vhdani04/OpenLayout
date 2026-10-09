@@ -178,6 +178,21 @@ walk = lambda do |c|
   c.each_subcircuit { |sc| walk.call(sc.circuit_ref) }
 end
 top_ref = ref.circuit_by_name(top_name)
+# A schematic netlist without this circuit, or with nothing in it (xschem writes an empty subcircuit
+# when it cannot find the symbols), would fail inside the comparison: stop with the reason instead.
+if $schematic && !$pex
+  why = if top_ref.nil?
+          "the schematic netlist has no subcircuit #{top_name}"
+        elsif top_ref.each_device.count == 0 && top_ref.each_subcircuit.count == 0
+          "the schematic netlist of #{top_name} has no devices (xschem could not find its symbols, or it is empty)"
+        end
+  if why
+    puts "openlayout lvs: #{why}"
+    $stdout.flush
+    File.delete(ref_file) rescue nil
+    exit(2)
+  end
+end
 if top_ref
   walk.call(top_ref)
   ref.each_circuit.to_a.each { |c| ref.remove(c) unless used[c.name] }
