@@ -311,7 +311,8 @@ check("a row transistor dropped onto the cell snaps onto the row and the 54 nm g
 c4.each_inst().__next__().transform(pya.DTrans(0.01, -0.5))
 chain.update(c4, moved=list(c4.each_inst()))
 d4 = list(c4.each_inst())[0].dcplx_trans.disp
-check("one dropped outside the cell keeps its height (grid only)", (round(d4.x, 4), round(d4.y, 4)) == (0.054, -0.5), str(d4))
+check("one dropped outside the cell lands on the nearest half-row line (fins on the grid)",
+      (round(d4.x, 4), round(d4.y, 4)) == (0.054, -0.54), str(d4))
 
 res = connectivity.check(gl, gtop, connectivity.load_conn(gds))
 check("connectivity check runs on row-mode devices", not res["missing"] and res["nets"]["VDD"]["terminals"] > 0,
@@ -342,5 +343,57 @@ t = inst.dcplx_trans.disp
 check("standalone pmos dropped outside the frame: gate grid and 27 nm fin grid, still standalone",
       not inst.pcell_parameters_by_name().get("row") and abs(t.x * 1000 % 54) < 1e-6 and abs(t.y * 1000 % 27) < 1e-6,
       str(t))
+
+# an N/P/N cell: the frame's boundary stretched over an nMOS row on top (VSS rail at 405 nm)
+npn = ly.create_cell("NPN")
+stdcell.draw_frame(npn, 6)
+bnd = [s for s in stdcell.frame_shapes(npn) if ly.get_info(s.layer) == pya.LayerInfo(LAYERS["boundary"], 0)][0]
+bnd.box = pya.DBox(0, 0, 0.324, 0.405)
+check("a stretched frame covers all its rows", stdcell.frame_box(npn) == pya.DBox(0, 0, 0.324, 0.405),
+      str(stdcell.frame_box(npn)))
+
+
+def fins_on_grid(inst):
+    """every fin of the instance centred on the 27 nm fin grid (13.5 nm + k * 27 nm)"""
+    fins = pya.Region(inst.cell.begin_shapes_rec(fin_li)).transformed(inst.cplx_trans)
+    return fins.count() > 0 and all(abs((p.bbox().center().y * ly.dbu * 1000 - 13.5) % 27) < 1e-6
+                                    for p in fins.each())
+
+
+nm = ly.create_cell("nmos", LIBRARY, {"nfin": 2, "nf": 1})
+inst = npn.insert(pya.DCellInstArray(nm.cell_index(), pya.DTrans(pya.DVector(0.0613, 0.29))))
+msgs = chain.update(npn, moved=[inst], conn=None, frame=stdcell.frame_box(npn))
+inst = list(npn.each_inst())[-1]
+t = inst.dcplx_trans.disp
+check("standalone nmos dropped into the top row: a row device there, not on the bottom row",
+      inst.pcell_parameters_by_name().get("row") and (round(t.x, 4), round(t.y, 4)) == (0.054, 0.27)
+      and fins_on_grid(inst), f"{t} {msgs}")
+inst.transform(pya.DTrans(0.0, 0.036))
+chain.update(npn, moved=[inst], conn=None, frame=stdcell.frame_box(npn))
+t = list(npn.each_inst())[-1].dcplx_trans.disp
+check("a row device moved a little off the top row snaps back onto it", round(t.y, 4) == 0.27, str(t))
+inst = list(npn.each_inst())[-1]
+inst.delete()
+
+# flipped top to bottom (Mirror over X axis): origin on the rail line, chains with flipped neighbours
+rn = ly.create_cell("nmos", LIBRARY, {"row": True, "nfin": 2, "nf": 1})
+a = npn.insert(pya.DCellInstArray(rn.cell_index(), pya.DTrans(pya.DTrans.M0, pya.DVector(0.054, 0.41))))
+chain.update(npn, moved=[a], conn=None, frame=stdcell.frame_box(npn))
+a = list(npn.each_inst())[-1]
+check("a flipped row device takes part, origin on the 405 nm rail line", chain._is_device(a)
+      and round(a.dcplx_trans.disp.y, 4) == 0.405 and fins_on_grid(a), str(a.dcplx_trans))
+b = npn.insert(pya.DCellInstArray(rn.cell_index(), pya.DTrans(pya.DTrans.M0, pya.DVector(0.12, 0.40))))
+chain.update(npn, moved=[b], conn=None, frame=stdcell.frame_box(npn))
+a, b = sorted(npn.each_inst(), key=lambda i: i.dcplx_trans.disp.x)
+check("two flipped devices chain (shared column, abut flags)",
+      round(b.dcplx_trans.disp.x, 4) == 0.108 and b.trans.rot == chain.M0
+      and a.pcell_parameters_by_name()["abut_right"] and b.pcell_parameters_by_name()["abut_left"],
+      f"{a.dcplx_trans} {b.dcplx_trans} {a.pcell_parameters_by_name()['abut_right']}")
+c = npn.insert(pya.DCellInstArray(rn.cell_index(), pya.DTrans(pya.DVector(0.17, 0.27))))
+chain.update(npn, moved=[c], conn=None, frame=stdcell.frame_box(npn))
+c = [i for i in npn.each_inst() if i.trans.rot == chain.R0][0]
+check("an upright device next to them does not chain with the flipped ones",
+      round(c.dcplx_trans.disp.y, 4) == 0.27 and not c.pcell_parameters_by_name()["abut_left"]
+      and round(c.dcplx_trans.disp.x, 4) == 0.162, str(c.dcplx_trans))
 
 print("PASS stdcell" if not failures else f"FAIL stdcell: {', '.join(failures)}")

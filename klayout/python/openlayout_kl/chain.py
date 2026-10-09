@@ -4,11 +4,13 @@ Two transistors chain when they share a source/drain column: the outer column of
 outer column of the other (the devices overlap by two gate pitches). Chained sides drop their dummy
 gate and run the diffusion on (PCell parameters abut_left / abut_right).
 
-- update(): after a move, a moved standard-cell-row transistor lands on the 54 nm gate grid and,
-  dropped onto the cell (within half a cell of y = 0), onto the row itself. A standalone transistor
-  dropped into the cell's standard-cell frame becomes a row transistor first (its fins then sit on
-  the frame's nMOS / pMOS fins whatever its fin count); dropped elsewhere it lands on the gate grid
-  with its fins on the 27 nm fin grid. A moved transistor
+- update(): after a move, a moved standard-cell-row transistor lands on the 54 nm gate grid with its
+  origin on the nearest half-row line (a multiple of 135 nm): the row itself, a row stacked above
+  or below (e.g. the nMOS row on top of an N/P/N cell), or - flipped top to bottom - the rail
+  between two rows. Its fins then sit on the fin grid. A standalone transistor dropped into the
+  cell's standard-cell frame becomes a row transistor first, in the row where it was dropped (its
+  fins then sit on the frame's fins whatever its fin count); dropped elsewhere it lands on the gate
+  grid with its fins on the 27 nm fin grid. A moved transistor
   dropped next to a compatible one (same type, row, VT
   and fin count; up to two gate pitches apart, or overlapping by up to one) snaps into abutment -
   if the schematic link knows the nets, only when the touching diffusions are on the same net,
@@ -18,7 +20,8 @@ gate and run the diffusion on (PCell parameters abut_left / abut_right).
   so that touching diffusions share a net; one whose nets match neither way stays where it is and
   starts the next chain.
 
-Only unrotated devices take part (R0, or mirrored left-right: M90).
+Devices take part unrotated, mirrored left-right, flipped top to bottom, or both (R0, M90, M0, R180);
+only devices of the same vertical orientation chain.
 """
 import pya
 
@@ -27,8 +30,9 @@ from .pcells import CELL_HEIGHT, CPP, FIN_PITCH, LIBRARY, ROW_MAX_FINS
 
 SNAP_GAP = 2 * CPP     # dropped this far apart (both dummy gates still there) it still chains
 SNAP_OVERLAP = CPP     # or overlapping the neighbour by up to one more gate pitch
-ROW_CATCH = 135        # nm: a row transistor dropped this close to y = 0 goes onto the row
-R0, M90 = 0, 6         # Trans rotation codes: none, mirrored left-right
+ROW_LINE = CELL_HEIGHT // 2   # nm: row transistors' origins snap to multiples of this (5 fin pitches)
+R0, R180, M0, M90 = 0, 2, 4, 6  # Trans rotation codes: none, both, flipped top to bottom, left-right
+ROT = {(False, False): R0, (True, False): M90, (False, True): M0, (True, True): R180}  # (lr, tb)
 
 
 class Device:
@@ -38,7 +42,8 @@ class Device:
         self.kind = inst.pcell_declaration().name()
         self.nf = int(self.params.get("nf", 1))
         t = inst.dcplx_trans
-        self.mirrored = inst.trans.rot == M90
+        self.mirrored = inst.trans.rot in (M90, R180)    # left-right: the columns run leftwards
+        self.flipped = inst.trans.rot in (M0, R180)      # top to bottom
         self.x0 = round(t.disp.x * 1000, 3)       # nm
         self.y0 = round(t.disp.y * 1000, 3)
         name = instance_name(inst)
@@ -52,7 +57,7 @@ class Device:
 
     def row_key(self):
         p = self.params
-        return (self.kind, p.get("vt"), int(p.get("nfin", 1)), bool(p.get("row")), self.y0)
+        return (self.kind, p.get("vt"), int(p.get("nfin", 1)), bool(p.get("row")), self.flipped, self.y0)
 
     def column_x(self, j):
         """global x (nm) of source/drain column j"""
@@ -87,16 +92,16 @@ class Device:
             self.x0 += dx
 
     def flip(self):
-        """mirror left-right in place (the same columns, ends swapped)"""
+        """mirror left-right in place (the same columns, ends swapped; top / bottom kept)"""
         span = self.left
-        if self.mirrored:   # -> R0: columns at x0 + 54 (j+1), the leftmost (j = 0) on span
-            x0, rot = span - CPP, R0
-        else:               # -> M90: columns at x0 - 54 (j+1), the leftmost (j = nf) on span
-            x0, rot = span + CPP * (self.nf + 1), M90
+        if self.mirrored:   # columns at x0 + 54 (j+1), the leftmost (j = 0) on span
+            x0 = span - CPP
+        else:               # columns at x0 - 54 (j+1), the leftmost (j = nf) on span
+            x0 = span + CPP * (self.nf + 1)
         dbu = self.inst.cell.layout().dbu
-        base = pya.Trans.M90 if rot == M90 else pya.Trans.R0
-        self.inst.trans = pya.Trans(base, round(x0 / 1000 / dbu), round(self.y0 / 1000 / dbu))
-        self.mirrored = rot == M90
+        self.mirrored = not self.mirrored
+        code = ROT[(self.mirrored, self.flipped)]          # 0-3: rotation, 4-7: mirrored, then rotated
+        self.inst.trans = pya.Trans(code % 4, code >= 4, round(x0 / 1000 / dbu), round(self.y0 / 1000 / dbu))
         self.x0 = x0
 
 
@@ -109,7 +114,7 @@ def _is_device(inst):
     lib = inst.cell.library()
     if lib is not None and lib.name() != LIBRARY:
         return False
-    return inst.trans.rot in (R0, M90) and not inst.is_complex()
+    return inst.trans.rot in (R0, M90, M0, R180) and not inst.is_complex()
 
 
 def devices(cell, conn=None):
@@ -165,19 +170,24 @@ def _set_flags(devs):
 
 def _standalone_snap(dev, frame, messages):
     """A standalone (non-row) transistor: dropped into the standard-cell frame (frame: its DBox, or
-    None) it becomes a row transistor on the row; elsewhere its origin snaps to the gate grid and
-    the 27 nm fin grid, so its fins line up with any fin grid drawn on the same origin."""
+    None) it becomes a row transistor in the row where it was dropped (_row_snap then puts it on
+    the row line); elsewhere its origin snaps to the gate grid and the 27 nm fin grid, so its fins
+    line up with any fin grid drawn on the same origin."""
     if dev.params.get("row"):
         return
     centre = dev.inst.dbbox().center()
-    if frame is not None and frame.left <= centre.x <= frame.right and -0.5 * CELL_HEIGHT / 1000 <= centre.y \
-            <= 1.5 * CELL_HEIGHT / 1000:
+    margin = ROW_LINE / 1000
+    if frame is not None and frame.left <= centre.x <= frame.right and frame.bottom - margin <= centre.y \
+            <= frame.top + margin:
         nfin = int(dev.params.get("nfin", 1))
         dev.inst.change_pcell_parameters({"row": True})
         dev.params = dev.inst.pcell_parameters_by_name()
-        dy = -dev.y0                                    # row transistors sit on the cell's origin
+        if centre.y < frame.bottom + CELL_HEIGHT / 1000:    # the cell's (first) row: onto it
+            dy = round(frame.bottom * 1000, 3) + (CELL_HEIGHT if dev.flipped else 0) - dev.y0  # origin: row edge
+        else:   # a row stacked above (an N/P/N cell's top nMOS row): its diffusion where it was dropped
+            dy = round((centre.y - dev.inst.dbbox().center().y) * 1000, 3)
         dev.inst.transform(pya.DTrans(0, dy / 1000))
-        dev.y0 = 0.0
+        dev.y0 += dy
         note = f" (drawn with {ROW_MAX_FINS} fins: a 7.5-track row has no room for {nfin})" if nfin > ROW_MAX_FINS else ""
         messages.append(f"{dev.name}: now a standard-cell row transistor{note}")
         return
@@ -190,12 +200,13 @@ def _standalone_snap(dev, frame, messages):
 
 
 def _row_snap(dev):
-    """A row transistor lands on the gate grid; dropped onto the cell's row (origin within half a
-    cell of y = 0) it goes onto the row exactly."""
+    """A row transistor lands on the gate grid, its origin on the nearest half-row line: a row's
+    origin (y = 0, 270 nm, ...), the top half of a row (an N/P/N cell's upper nMOS row), or - flipped
+    top to bottom - a rail. All are fin-grid multiples, so the fins line up with the frame's."""
     if not dev.params.get("row"):
         return
     dx = round(dev.x0 / CPP) * CPP - dev.x0      # columns at x0 +/- 54 (j+1): on the grid with x0
-    dy = -dev.y0 if abs(dev.y0) <= ROW_CATCH else 0
+    dy = round(dev.y0 / ROW_LINE) * ROW_LINE - dev.y0
     if dx or dy:
         dev.inst.transform(pya.DTrans(dx / 1000, dy / 1000))
         dev.x0 += dx

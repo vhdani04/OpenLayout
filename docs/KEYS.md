@@ -149,6 +149,15 @@ to M1), or a LIG-M1 via from `o`. Row devices have at most 3 fins (use fingers f
 gate is cut depends on the cell, so draw GCUT where yours needs it (the frame already cuts at the
 rails and at its edge dummy gates).
 
+**More rows (e.g. an N/P/N cell).** Stretch the frame's boundary over the extra rows and the frame
+covers them: a row transistor's origin snaps to the nearest half-row line (a multiple of 135 nm -
+5 fin pitches - so its fins stay on the fin grid), and a free-standing transistor dropped above the
+first row becomes a row transistor where it was dropped (e.g. the nMOS row on top of an N/P/N cell).
+A row flipped top to bottom (*Mirror over X axis*) has its origin on the rail line - an nMOS row
+under a VSS rail at 405 nm sits at y = 405 nm, its fins next to that rail - and chains with
+transistors flipped the same way. Mirroring or rotating transistors refreshes their chains (dummy
+gates) in the same undo step.
+
 **Generating from the schematic** (KLayout only: *OpenLayout ▸ Generate / Update Layout from
 Schematic*, or *Update from Schematic* in the Connectivity panel) first opens the **Generate Layout**
 form: one row per pin (the ports, then the supplies the
@@ -162,7 +171,8 @@ gets the frame (sized for its transistors chained per row) unless it has one alr
 only sub-cells a plain boundary. Generated parts are parked below the cell, never overlapping: the
 pMOS in a row at y = -0.54, the nMOS under them at y = -0.81 (other cells further down), left to
 right; parts added by a later update go after the ones already parked. Drag a transistor into the
-cell and it snaps onto its row (y = 0) and the 54 nm gate grid - and chains to a neighbour. An older
+cell and it snaps onto its row (y = 0, or the nearest half-row line) and the 54 nm gate grid - and
+chains to a neighbour. An older
 layout with free-standing transistors gets the frame on its next update, its transistors converted
 to row devices and parked.
 

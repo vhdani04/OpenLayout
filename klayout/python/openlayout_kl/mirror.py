@@ -13,6 +13,8 @@ would at the top.
 """
 import pya
 
+from . import stdcell
+
 # the operation at the origin; transform() moves it to the chosen centre
 OPS = {
     "mirror_x": ("Mirror over X axis (flip vertically)", pya.DCplxTrans(1, 0, True, 0, 0)),
@@ -63,6 +65,9 @@ def transform(view, op, origin=False):
                 o.inst().transform(local)
             else:
                 o.shape.transform(local)
+        # transistors flipped out of (or into) a chain: their dummy gates follow, in the same undo step
+        if any(o.is_cell_inst() and not list(o.path)[:-1] for o in objs):
+            stdcell.refresh_chains(view)
     finally:
         view.commit()
     return len(objs)

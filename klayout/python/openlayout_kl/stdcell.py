@@ -66,7 +66,12 @@ def frame_params(cell):
 
 
 def frame_box(cell):
-    """The DBox of the cell's standard-cell frame (its boundary), or None."""
+    """The DBox of the cell's standard-cell frame (its boundary, as drawn - stretched to more rows,
+    e.g. an N/P/N cell, it covers them all), or None."""
+    layout = cell.layout()
+    for s in frame_shapes(cell):
+        if layout.get_info(s.layer) == pya.LayerInfo(LAYERS["boundary"], 0):
+            return s.dbbox()
     p = frame_params(cell)
     if p is None:
         return None
@@ -233,3 +238,14 @@ def after_move(view):
     finally:
         view.commit()
     return messages
+
+
+def refresh_chains(view):
+    """Refresh every transistor's abut flags (dummy gates) from its neighbours, moving nothing - after
+    a mirror or rotation. Runs inside the caller's transaction."""
+    cv = view.active_cellview()
+    if not cv.is_valid() or not view.is_editable():
+        return
+    cell = cv.cell
+    if any(chain._is_device(i) for i in cell.each_inst()):
+        chain.update(cell, (), _conn(view), frame_box(cell))

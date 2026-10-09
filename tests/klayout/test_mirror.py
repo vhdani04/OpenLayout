@@ -164,4 +164,30 @@ check("menu: mirrors, the origin submenu, rotations",
       texts[:3] == [mirror.OPS[k][0] for k in mirror.MIRRORS] and "About the cell origin" in texts
       and mirror.OPS["rot_ccw"][0] in texts, str(texts))
 
+# 7. two chained row transistors: flipping one top to bottom unchains both (their dummy gates come
+#    back), in the mirror's own undo step
+from openlayout_kl import chain  # noqa: E402
+
+rn = layout.create_cell("nmos", "OpenLayout_ASAP7", {"row": True, "nfin": 2, "nf": 1})
+pair = [cell.insert(pya.DCellInstArray(rn.cell_index(), pya.DTrans(pya.DVector(x, 2.0)))) for x in (2.0, 2.054)]
+chain.update(cell, moved=[], conn=None)
+
+
+def pair_flags():
+    devs = sorted((i for i in cell.each_inst() if abs(i.dcplx_trans.disp.y - 2.0) < 0.3),
+                  key=lambda i: i.dbbox().left)
+    return [(i.pcell_parameters_by_name()["abut_left"], i.pcell_parameters_by_name()["abut_right"]) for i in devs]
+
+
+check("two row transistors side by side are chained", pair_flags() == [(False, True), (True, False)], str(pair_flags()))
+second = sorted((i for i in cell.each_inst() if abs(i.dcplx_trans.disp.y - 2.0) < 0.01), key=lambda i: i.dbbox().left)[1]
+p = pya.ObjectInstPath()
+p.top = cell.cell_index()
+p.append_path(pya.InstElement.new(second))
+view.object_selection = [p]
+mirror.transform(view, "mirror_x")
+check("flipping one top to bottom unchains both", pair_flags() == [(False, False), (False, False)], str(pair_flags()))
+mw.cm_undo()
+check("one undo restores the flip and the chain", pair_flags() == [(False, True), (True, False)], str(pair_flags()))
+
 print("PASS mirror" if not failures else f"FAIL mirror: {', '.join(failures)}")
