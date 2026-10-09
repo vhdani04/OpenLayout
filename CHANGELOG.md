@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.4.0-alpha.2 - 2026-10-09
+
+Editing improvements in xschem and KLayout, found by designing a custom cell with OpenLayout,
+and an LVS fix.
+
+**Upgrading:** re-run `setup/install.sh`. It rebuilds xschem with a new OpenLayout patch that
+keeps pin labels horizontal. Without the rebuild everything still works; pin labels just rotate
+with their pin as before.
+
+### Layout (KLayout)
+- **Net names on shapes** (Shift+N, or the checkbox in the Connectivity panel): every net's name
+  is drawn on its metal, LIG, LISD and gate shapes, scaled to the zoom and decluttered.
+- **Right-click mirror / rotate:** mirror the selection over the X or Y axis, or rotate it, about
+  its centre or the cell origin. Works on any selection (PCells, shapes, cells).
+- **Pins and their labels move together:** selecting a pin shape selects its label, so drag,
+  `m`, Move, copy, delete and mirror take it along. A label selected on its own still moves alone.
+- **Fin grid:** a standalone transistor dropped into the standard-cell frame becomes a row
+  transistor on the frame's fins; outside the frame, transistors snap to the gate and fin pitch.
+- **Picking:** a click selects what the hover highlight shows. Over the standard-cell frame, the
+  topmost non-frame shape wins.
+
+### Schematic (xschem)
+- **Bus pins:** a pin named `WL[1:0]` (`WL<1:0>` is accepted) is one bus pin; wires labelled
+  `WL[1]` / `WL[0]` connect to its bits by name. *Expand buses into one pin per bit* makes
+  separate pins. Generate Layout gives each bit the bus pin's direction; New Testbench gives each
+  bit a vector column and an output load.
+- **Pin placement:** several names (or an expanded bus) are placed one at a time, each with a
+  click. No more leftover "shadow" pins; `Esc` discards the pin being placed and the rest.
+  Duplicate labels get unique instance names.
+- **Pin labels stay horizontal** however a pin is rotated or flipped.
+- **Ctrl+S and `x` save** without a "save file?" prompt; Ctrl/Alt with the remapped letter keys
+  keep xschem's meaning (Ctrl+X cuts again).
+
+### Verification
+- **LVS:** a layout with nothing connected used to compare as a match (the extracted top circuit
+  was empty). It is now a mismatch with the reason.
+
+### Known issues
+- The Connectivity panel can report "nothing drawn at its gate" for row transistors whose gate is
+  cut near the middle of the cell. The gate is fine; the checker probes it inside the cut. Fixed
+  in the next release.
+
 ## 0.4.0-alpha.1 - 2026-10-05
 
 The first public release of OpenLayout: an open-source custom IC design environment for the ASAP7
