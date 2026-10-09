@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Schematic (xschem)
+- **Add Instance** (`i`, `Insert`, *Tools ▸ Add Instance…*, the toolbar's symbol button, the
+  right-click menu): a symbol browser laid out like the hub's Library Manager - the workarea's
+  libraries and a *Basic* library of xschem's devices, a filter, and a preview with the symbol's
+  type and pins - instead of xschem's file chooser.
+- **The theme reaches every window**: xschem's own grey palette used to win over OpenLayout's, so
+  its dialogs, file chooser and property forms came up light grey. Menus are padded and grouped and
+  show OpenLayout's keys where they differ from xschem's; the right-click menu, tabs, toolbar
+  icons, status fields and Netlist / Simulate buttons follow the theme.
+
+### Layout (KLayout)
+- **More rows**: a frame stretched over more rows (e.g. an N/P/N cell) covers them; row
+  transistors snap to the nearest half-row line (fins on the fin grid), a transistor dropped above
+  the first row stays in that row, and transistors flipped top to bottom take part in chaining.
+  Mirroring or rotating transistors refreshes their dummy gates.
+
+### Verification
+- **Connectivity check**: row transistors' gates are probed over their channel - a gate cut at
+  mid-cell no longer reports "nothing drawn at its gate".
+- **LVS / PEX outside a workarea**: the schematic is netlisted with the ASAP7 libraries; a symbol
+  xschem cannot find, or a schematic netlist with nothing in it, is an error with the reason (it
+  used to fail inside the comparison). The hub shows why a DRC / LVS / PEX run failed.
+
 ## 0.4.0-alpha.2 - 2026-10-09
 
 Editing improvements in xschem and KLayout, found by designing a custom cell with OpenLayout,

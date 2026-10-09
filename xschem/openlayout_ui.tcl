@@ -219,6 +219,15 @@ proc ol_fix_menu_keys {} {
     set i [ol_menu_find $mb.$menu $label]
     if {$i >= 0} { $mb.$menu entryconfigure $i -accelerator $key }
   }
+  # xschem's Tools and Symbol menus are long flat lists: separators between their groups
+  foreach {menu label} {
+    tools {Grab screen area}  tools {Join/Trim wires}
+    sym {Make symbol from schematic}  sym {Place symbol pin}  sym {Change selected inst. texts to floaters}
+    sym {List of nets}
+  } {
+    set i [ol_menu_find $mb.$menu $label]
+    if {$i > 0 && [$mb.$menu type [expr {$i - 1}]] ne "separator"} { $mb.$menu insert $i separator }
+  }
   # P opens the pin dialog: list it first in the Symbol menu
   set m $mb.sym
   if {[winfo exists $m] && [ol_menu_find $m "Create Pin…"] < 0} {
