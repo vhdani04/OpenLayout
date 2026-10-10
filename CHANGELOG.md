@@ -13,6 +13,10 @@
   icons, status fields and Netlist / Simulate buttons follow the theme.
 
 ### Layout (KLayout)
+- **Selecting what lies underneath**: click the same spot again for the next object under the
+  mouse, down to the frame's GCUT, fins and rails (they could not be clicked under a transistor).
+  In the LSW, as in Virtuoso: lock layers (right-click; AS / NS), and *Instances selectable* off
+  lets clicks skip transistors and cells.
 - **More rows**: a frame stretched over more rows (e.g. an N/P/N cell) covers them; row
   transistors snap to the nearest half-row line (fins on the fin grid), a transistor dropped above
   the first row stays in that row, and transistors flipped top to bottom take part in chaining.

@@ -6,7 +6,7 @@ import os, sys, tempfile
 from pathlib import Path
 sys.path.insert(0, os.environ["OPENLAYOUT_HOME"] + "/klayout/python")
 import pya
-from openlayout_kl import gui, stdcell, drag_move
+from openlayout_kl import gui, stdcell, drag_move, picking
 
 failures = []
 
@@ -72,8 +72,9 @@ def hover_click(x, y, clear=True):
 for name, (x, y) in {"M1 over transistor": (0.11, 0.044), "transistor only": (0.081, 0.06)}.items():
     h, c = hover_click(x, y)
     check(f"{name}: the hover shows what the click takes", [e for e in h if e != "(ours)"] == c, f"hover {h}, click {c}")
-    h, c = hover_click(x, y, clear=False)
-    check(f"{name} (clicked again): still the same", [e for e in h if e != "(ours)"] == c, f"hover {h}, click {c}")
+    nxt = desc(picking.candidates(v, v.viewport_trans().inverted() * pya.DPoint(px(x, y).x, v.viewport_height() - px(x, y).y))[1:2])
+    h, c2 = hover_click(x, y, clear=False)
+    check(f"{name} (clicked again): the next object under the mouse", c2 == nxt and c2 != c, f"{c} -> {c2}, next {nxt}")
 for name, (x, y) in {"M1 only": (0.07, 0.089), "M1 over LISD": (0.11, 0.089), "M1 over LIG": (0.145, 0.089),
                      "LIG only": (0.145, 0.105)}.items():
     v.object_selection = []
@@ -92,4 +93,34 @@ for name, (x, y) in {"M1 only": (0.07, 0.089), "M1 over LISD": (0.11, 0.089), "M
 
 h, c = hover_click(0.11, 0.044)
 check("a wire on a transistor: the wire, not the frame fin or the transistor", c == ["19/0"], str(c))
+
+# the frame's GCUT over the bottom rail, under the transistor's gate: clicking again goes down to it
+v.object_selection = []
+GC = (0.081, 0.019)          # above the first fin, inside the rail's GCUT
+seq = []
+for k in range(3):
+    h, c = hover_click(*GC, clear=(k == 0))
+    seq.append(c)
+check("clicking again cycles down to the GCUT under the transistor", seq[0] == ["inst"] and seq[1] == ["10/0(frame)"],
+      str(seq))
+
+# Instances selectable off: the click (and the hover) take the shapes under the transistor
+picking.instances = False
+h, c = hover_click(0.081, 0.06)
+check("instances off: a click takes the shape under the transistor, not the transistor", c and c != ["inst"], f"{h} {c}")
+check("instances off: the hover shows the same", [e for e in h if e != "(ours)"] == c, f"hover {h}, click {c}")
+h, c = hover_click(*GC)
+check("instances off: the GCUT under the gate in one click", c == ["10/0(frame)"], str(c))
+
+# only GCUT selectable (NS with GCUT current) - a click elsewhere takes nothing
+picking.locked.update((info.layer, info.datatype) for info in ly.layer_infos() if (info.layer, info.datatype) != (10, 0))
+h, c = hover_click(*GC)
+check("only GCUT selectable: a click there takes the GCUT", c == ["10/0(frame)"], str(c))
+h, c = hover_click(0.07, 0.089)
+check("only GCUT selectable: a click on a wire takes nothing", c == [], str(c))
+picking.locked.clear()
+picking.instances = True
+h, c = hover_click(0.07, 0.089)
+check("all selectable again: the wire", c == ["19/0"], str(c))
+
 print("PASS pick" if not failures else f"FAIL pick: {', '.join(failures)}")

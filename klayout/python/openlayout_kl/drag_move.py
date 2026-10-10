@@ -10,8 +10,11 @@ The behaviour:
   or a right click.
 - Stretch (`s`): the edge or corner under the mouse follows it and a click places it.
 - Hover: where KLayout's hover highlight would show a frame shape although a click takes something
-  else (stdcell.pick_non_frame - a wire, a contact, a transistor on top of the frame), that object is
-  outlined instead, so the highlight always shows what a click selects.
+  else (stdcell.pick_non_frame - a wire, a contact, a transistor on top of the frame), or something a
+  click cannot take (a locked layer, an instance with instances off - picking.py), the object a click
+  does take is outlined instead, so the highlight always shows what a click selects.
+- Click again on the same spot: the next object under the mouse, down through the stack to the
+  frame's shapes (picking.candidates) - a GCUT under a transistor, a fin under a contact.
 - Right-click in Select mode: the mirror / rotate menu (mirror.py) for the selection - or for the
   object under the mouse, which is selected first.
 
@@ -37,7 +40,7 @@ KLayout's selection does.
 """
 import pya
 
-from . import drd, mirror, pin_group, stdcell
+from . import drd, mirror, picking, pin_group, stdcell
 
 NAME = "openlayout_drag_move"
 MODES = ("select", "move")
@@ -143,6 +146,7 @@ class DragMove(pya.Plugin):
         self.inst_shown = False
         self.hover_markers = []    # the outline of what a click takes, where KLayout's hover shows the frame
         self.hover_target = None   # ... and that object (an ObjectInstPath)
+        self.last_pick = None      # (point, ObjectInstPath) of the last click's pick: clicked again, the next one
         view.on_transient_selection_changed += self._hover_changed
         self.pin_group = pin_group.PinGroup(view)   # a selected pin brings its label
 
@@ -155,16 +159,24 @@ class DragMove(pya.Plugin):
 
     def _hover_changed(self):
         """KLayout's hover highlight changed: if it shows only frame shapes while a click would
-        take something else, show that instead."""
+        take something else, or something a click cannot take, show what a click takes instead."""
         view = self._view
         objs = list(view.each_object_selected_transient())
         if not objs or self.last_p is None or view.mode_name() != "select":
             return
-        if not all(stdcell.is_frame_object(o) for o in objs):
+        frame_only = all(stdcell.is_frame_object(o) for o in objs)
+        blocked = not all(picking.allowed(view, o) for o in objs)
+        if not frame_only and not blocked:
             self._clear_hover()
             return
         better = stdcell.pick_non_frame(view, self.last_p)
+        if better is None and blocked:
+            cands = picking.candidates(view, self.last_p)
+            better = cands[0] if cands else None
         if better is None:
+            if blocked:
+                view.clear_transient_selection()
+                self._clear_hover()
             return
         view.clear_transient_selection()
         self._clear_hover()
@@ -419,15 +431,37 @@ class DragMove(pya.Plugin):
         if prio:
             self.before_click = list(view.each_object_selected())
             return False
-        # after KLayout's selection: a click that only picked a frame shape where something else lies
-        # (e.g. the transistor) takes that instead - for a plain click and for Shift (add)
+        # after KLayout's selection (picking.py):
         before = getattr(self, "before_click", [])
-        added = [o for o in view.each_object_selected() if not any(o == b for b in before)]
-        if added and all(stdcell.is_frame_object(o) for o in added):
-            better = stdcell.pick_non_frame(view, p)
-            if better is not None:
-                keep = before if buttons & pya.ButtonState.ShiftKey else []
-                view.object_selection = keep + [better]
+        shift = bool(buttons & pya.ButtonState.ShiftKey)
+        keep = before if shift else []
+        now = list(view.each_object_selected())
+        added = [o for o in now if not any(o == b for b in before)]
+        # - the same spot clicked again (a plain click, the object picked there still selected): the
+        #   next object under the mouse, down through the stack
+        last = self.last_pick
+        if not shift and last is not None and self.pixel(p).distance(self.pixel(last[0])) <= CATCH_PIXELS \
+                and any(picking.same(last[1], b) for b in before):
+            cands = picking.candidates(view, p)
+            if len(cands) > 1:
+                i = (next((k for k, c in enumerate(cands) if picking.same(c, last[1])), -1) + 1) % len(cands)
+                view.object_selection = [cands[i]]
+                self.last_pick = (p, cands[i])
+                _status(f"{i + 1} of {len(cands)} under the mouse: {picking.describe(view, cands[i])}"
+                        " - click again for the next")
+                return False
+        # - only frame shapes where something else lies (the transistor), something a click cannot take
+        #   (a locked layer, an instance with instances off), or nothing although something is there:
+        #   the top object a click can take
+        frame_only = added and all(stdcell.is_frame_object(o) for o in added)
+        blocked = added and not all(picking.allowed(view, o) for o in added)
+        if frame_only or blocked or (not now and not shift):
+            cands = picking.candidates(view, p)
+            choice = next((c for c in cands if not picking.is_frame(c)), cands[0] if cands else None)
+            if choice is not None or blocked:
+                view.object_selection = keep + ([choice] if choice is not None else [])
+        picked = [o for o in view.each_object_selected() if not any(o == b for b in before)]
+        self.last_pick = (p, picked[0]) if len(picked) == 1 else None
         return False
 
     def mouse_double_click_event(self, p, buttons, prio):

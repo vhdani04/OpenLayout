@@ -48,6 +48,20 @@ check("NV keeps only the current layer visible", visible == ["M1 drawing"], visi
 lsw.all_visible()
 check("AV shows all layers", all(it.current().visible for it in lsw._all_leaves()))
 
+# selectability: NS locks every layer except the current one, AS unlocks all; Instances selectable
+from openlayout_kl import picking  # noqa: E402
+lsw.none_selectable()
+unlocked = [it.current().name for it in lsw._all_leaves() if lsw.lock_key(it) not in picking.locked]
+check("NS leaves only the current layer selectable", unlocked == ["M1 drawing"], unlocked)
+locked_rows = [lsw.items[r] for r, it in enumerate(lsw.rows) if it is not None and lsw.lock_key(it) in picking.locked]
+check("locked layers are shown dimmed", locked_rows and all(i.font.italic for i in locked_rows))
+lsw.all_selectable()
+check("AS makes every layer selectable", not picking.locked)
+lsw.inst.checked = False
+check("Instances selectable off", picking.instances is False)
+lsw.inst.checked = True
+check("... and on again", picking.instances is True)
+
 lsw.tabs.setCurrentIndex(USED)
 lsw.refresh()
 shown = [lsw.items[r].text for r, it in enumerate(lsw.rows) if it is not None]

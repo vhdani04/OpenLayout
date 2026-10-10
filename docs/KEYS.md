@@ -151,7 +151,11 @@ with the boundary, n-well / implant split, VT layer, all ten fin rows, the VDD /
 cells. Running it again (another width or VT) redraws the frame's shapes; shapes you added yourself
 are kept. As the frame covers the whole cell, a click picks what lies on top of it - the topmost wire,
 contact or gate first, then a transistor - and only an empty spot picks a frame shape; the hover
-highlight shows the same object a click takes. A drag that starts on an unselected frame
+highlight shows the same object a click takes. **Click the same spot again** for the next object
+underneath, down through the stack to the frame's own shapes (its GCUT, fins, rails): the status bar
+says which one ("2 of 4 under the mouse: GCUT shape (frame)"). To pick shapes under transistors
+directly, untick *Instances selectable* in the LSW, or lock the layers you don't want (see the LSW
+below). A drag that starts on an unselected frame
 shape draws a selection box; a selected frame shape drags like any shape (to move the whole frame,
 box-select it).
 
@@ -215,7 +219,11 @@ stack (as in the library's NAND2).
 
 The **LSW** (right side) is the only layer panel. *All layers* / *Used layers* tabs (used = has
 shapes in the current cell). Click a layer to make it the current drawing layer, untick to hide it.
-**AV** shows every layer; **NV** hides every layer except the current one.
+**AV** shows every layer; **NV** hides every layer except the current one. Selectability, as in
+Virtuoso: right-click a layer to **lock** it (clicks in the layout skip it; locked layers are dimmed),
+**AS** makes every layer selectable, **NS** only the current one, and *Instances selectable* off
+lets clicks skip transistors and other cells - e.g. NS on GCUT with instances off: a click takes
+only gate cuts. Hidden layers can't be clicked either.
 
 **DRD spacing hints** (design-rule-driven editing, notify only): in every editing tool - path, box,
 polygon, stretch (`s` or the Partial tool), move (drag, `m`, KLayout's Move), copy (`c`), instance

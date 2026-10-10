@@ -15,13 +15,13 @@ import math
 
 import pya
 
-from . import chain
+from . import chain, picking
 from .asap7 import LAYERS, PIN
 from .connectivity import PROP, load_conn
 from .pcells import CELL_HEIGHT, CPP, LIBRARY, stdcell_geometry
+from .picking import FRAME_TAG     # property 1 of the frame's shapes
 
 FRAME = "stdcell"          # the earlier frame PCell (still converted when found)
-FRAME_TAG = "ol:frame"     # property 1 of the frame's shapes
 
 
 def _is_frame(inst):
@@ -140,71 +140,25 @@ def insert_frame(view, cpp=None, vt=None):
 
 
 def pick(view, p, mode=pya.LayoutView.SelectionMode.Replace):
-    """Select what is at p (view coordinates), preferring anything over the frame. Returns True if
+    """Select what is at p (micrometers), preferring anything over the frame and skipping what
+    cannot be clicked (locked layers, instances when switched off - picking.py). Returns True if
     something is selected."""
     view.select_from(p, mode)
-    if mode != pya.LayoutView.SelectionMode.Replace or not frame_only(view):
+    if mode != pya.LayoutView.SelectionMode.Replace:
         return view.has_object_selection()
-    better = pick_non_frame(view, p)
-    if better is not None:
-        view.object_selection = [better]
+    sel = list(view.each_object_selected())
+    if sel and all(picking.allowed(view, o) for o in sel) and not frame_only(view):
+        return True
+    cands = picking.candidates(view, p)
+    view.object_selection = cands[:1]
     return view.has_object_selection()
-
-
-# what lies on top wins: metal over vias over contacts over gate, then anything else drawn
-_STACK = [f"m{k}" for k in range(9, 0, -1)] + [f"v{k}" for k in range(9, -1, -1)] + ["lig", "lisd", "gate"]
-_RANK = {LAYERS[n]: len(_STACK) - i for i, n in enumerate(_STACK)}
 
 
 def pick_non_frame(view, p):
     """ObjectInstPath of what a click at p should take when the frame is under it: the topmost
-    non-frame shape there (upper layers first, then the smallest), else the smallest non-frame
-    instance - or None."""
-    cv = view.active_cellview()
-    if not cv.is_valid() or cv.cell is None:
-        return None
-    cell, layout = cv.cell, cv.layout()
-    q = cv.context_dtrans().inverted() * p
-    probe = pya.DBox(q, q)
-    oip = pya.ObjectInstPath()
-    oip.top = cell.cell_index()
-    oip.cv_index = cv.index()
-    shape = _top_shape(view, cv, cell, layout, probe)
-    if shape is not None:
-        oip.shape, oip.layer = shape
-        return oip
-    best = None
-    for inst in cell.each_overlapping_inst(probe):
-        if _is_frame(inst):
-            continue
-        area = inst.dbbox().area()
-        if best is None or area < best[0]:
-            best = (area, inst)
-    if best is None:
-        return None
-    oip.append_path(pya.InstElement(best[1]))
-    return oip
-
-
-def _top_shape(view, cv, cell, layout, probe):
-    """(shape, layer index) of the topmost visible non-frame shape at probe, or None."""
-    visible = set()
-    it = view.begin_layers()
-    while not it.at_end():
-        lp = it.current()
-        if lp.cellview() == cv.index() and lp.visible and lp.layer_index() >= 0:
-            visible.add(lp.layer_index())
-        it.next()
-    best = None
-    for li in visible:
-        rank = _RANK.get(layout.get_info(li).layer, 0) if layout.get_info(li).datatype in (0, PIN) else 0
-        for s in cell.shapes(li).each_touching(probe.to_itype(layout.dbu)):
-            if s.is_text() or s.property(PROP) == FRAME_TAG:
-                continue
-            key = (-rank, s.dbbox().area())
-            if best is None or key < best[0]:
-                best = (key, s, li)
-    return None if best is None else (best[1], best[2])
+    selectable non-frame object there (picking.candidates) - or None."""
+    cands = picking.candidates(view, p, frame=False)
+    return cands[0] if cands else None
 
 
 def _conn(view):
