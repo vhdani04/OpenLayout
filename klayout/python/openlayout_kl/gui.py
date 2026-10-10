@@ -14,6 +14,7 @@ from . import align_tool, axes, drc, drd, generate_form, lvs, mirror, pex, stdce
 from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
+from .select_panel import SelectPanel
 from . import net_labels
 from .path_tool import TOOL_NAME, PathToolFactory
 from .pcells import register_library
@@ -206,7 +207,9 @@ class OpenLayoutUI:
         self.lsw = LSW(mw, UI)
         self.nets = NetsPanel(mw, UI, on_update=self.update_layout_file)
         self.net_labels = net_labels.NetLabels(mw)
+        self.select = SelectPanel(mw, UI)
         mw.splitDockWidget(self.lsw.dock, self.nets.dock, pya.Qt.Vertical)
+        mw.splitDockWidget(self.lsw.dock, self.select.dock, pya.Qt.Vertical)   # LSW, Select, Connectivity
         self.build_menu()
         try:
             apply_keys(mw)    # again: the OpenLayout menu entries (m) exist now
@@ -330,6 +333,7 @@ class OpenLayoutUI:
             (None, None),
             ("lsw", self.action("Show LSW", lambda: (self.lsw.dock.show(), self.lsw.dock.raise_()))),
             ("connectivity", self.action("Show Connectivity", lambda: (self.nets.dock.show(), self.nets.dock.raise_()))),
+            ("select", self.action("Show Select", lambda: (self.select.dock.show(), self.select.dock.raise_()))),
             ("net_names", self.net_names_action()),
             ("keys", self.action("Keyboard Shortcuts…", self.show_keys)),
             ("axes", self.axes_action()),

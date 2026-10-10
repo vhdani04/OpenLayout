@@ -3,9 +3,9 @@
 Two tabs: All layers / Used layers (layers with shapes in the current cell). Click a layer to make
 it the current drawing layer, tick/untick to show/hide it. AV shows all layers, NV hides all
 layers except the current one. Selectability, as in Virtuoso: right-click a layer to lock it
-(clicks in the layout skip it; shown dimmed), AS makes every layer selectable, NS locks every layer
-except the current one, and *Instances selectable* lets clicks take instances (transistors, cells)
-or not - so the shapes under them can be clicked (picking.py).
+(clicks and box selections in the layout skip it; shown dimmed), AS makes everything selectable, NS
+only the current layer (instances and vias too are left out - picking.py). Object types are set in
+the Select window (select_panel.py).
 """
 import pya
 
@@ -48,20 +48,14 @@ class LSW:
         row = pya.QHBoxLayout()
         for label, tip, slot in (("AV", "All layers visible", self.all_visible),
                                  ("NV", "Hide every layer except the current one", self.none_visible),
-                                 ("AS", "All layers selectable", self.all_selectable),
-                                 ("NS", "Only the current layer selectable (clicks skip the others)",
+                                 ("AS", "Everything selectable", self.all_selectable),
+                                 ("NS", "Only the current layer selectable (not instances or vias either)",
                                   self.none_selectable)):
             b = pya.QPushButton(label, body)
             b.toolTip = tip
             b.clicked = slot
             row.addWidget(b)
         lay.addLayout(row)
-
-        self.inst = pya.QCheckBox("Instances selectable", body)
-        self.inst.checked = picking.instances
-        self.inst.toolTip = "Off: clicks skip transistors and other cells, so the shapes under them can be selected"
-        self.inst.toggled = self.set_instances
-        lay.addWidget(self.inst)
 
         self.list = pya.QListWidget(body)
         self.list.iconSize = pya.QSize(30, 14)
@@ -74,6 +68,7 @@ class LSW:
         mw.addDockWidget(pya.Qt.RightDockWidgetArea, self.dock)
 
         mw.on_current_view_changed += self.refresh
+        picking.listeners.append(self.refresh)   # locks changed in the Select window
         # Poll: follows current-layer changes made elsewhere and keeps the Used tab up to date.
         self.timer = pya.QTimer(self.dock)
         self.timer.interval = 1000
@@ -264,20 +259,28 @@ class LSW:
         (picking.locked.add if lock else picking.locked.discard)(self.lock_key(it))
 
     def all_selectable(self):
-        picking.locked.clear()
-        self.refresh()
+        """AS: every layer and every object type selectable"""
+        picking.select_all_types()
+        picking.changed()
+
+    def only_selectable(self, keep):
+        """lock every layer but `keep` (an iterator); instances and vias - no layer - off too"""
+        for it in self._all_leaves():
+            self.set_locked(it, self.key(it) != self.key(keep))
+        picking.types["instance"] = picking.types["via"] = False
+        view = self.view()
+        if view is not None:
+            sel = list(view.each_object_selected())
+            if any(not picking.allowed(view, o) for o in sel):
+                view.object_selection = [o for o in sel if picking.allowed(view, o)]
+        picking.changed()
 
     def none_selectable(self):
-        """Lock every layer except the current one."""
-        if self.view() is None:
+        """NS: only the current layer selectable"""
+        view = self.view()
+        if view is None or view.current_layer.is_null() or view.current_layer.at_end():
             return
-        cur = self.current_key()
-        for it in self._all_leaves():
-            self.set_locked(it, self.key(it) != cur)
-        self.refresh()
-
-    def set_instances(self, on):
-        picking.instances = bool(on)
+        self.only_selectable(view.current_layer)
 
     def context_menu(self, pos):
         item = self.list.itemAt(pos)
@@ -288,10 +291,9 @@ class LSW:
         locked = self.lock_key(it) in picking.locked
         menu = pya.QMenu(self.list)
         a = menu.addAction("Unlock (selectable)" if locked else "Lock (not selectable)")
-        a.triggered = lambda *_a: (self.set_locked(it, not locked), self.refresh())
+        a.triggered = lambda *_a: (self.set_locked(it, not locked), picking.changed())
         b = menu.addAction("Only this layer selectable")
-        b.triggered = lambda *_a: (picking.locked.update(self.lock_key(x) for x in self._all_leaves()),
-                                   self.set_locked(it, False), self.refresh())
-        c = menu.addAction("All layers selectable")
+        b.triggered = lambda *_a: self.only_selectable(it)
+        c = menu.addAction("Everything selectable")
         c.triggered = lambda *_a: self.all_selectable()
         menu.exec_(self.list.viewport().mapToGlobal(pos))

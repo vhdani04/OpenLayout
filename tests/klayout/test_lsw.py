@@ -55,12 +55,22 @@ unlocked = [it.current().name for it in lsw._all_leaves() if lsw.lock_key(it) no
 check("NS leaves only the current layer selectable", unlocked == ["M1 drawing"], unlocked)
 locked_rows = [lsw.items[r] for r, it in enumerate(lsw.rows) if it is not None and lsw.lock_key(it) in picking.locked]
 check("locked layers are shown dimmed", locked_rows and all(i.font.italic for i in locked_rows))
+check("NS leaves out instances and vias too", not picking.types["instance"] and not picking.types["via"])
+sel = ui.select
+check("the Select window follows NS", not sel.boxes["instance"].checked and "Locked layers" in sel.locked.text,
+      (sel.boxes["instance"].checked, sel.locked.text))
 lsw.all_selectable()
-check("AS makes every layer selectable", not picking.locked)
-lsw.inst.checked = False
-check("Instances selectable off", picking.instances is False)
-lsw.inst.checked = True
-check("... and on again", picking.instances is True)
+check("AS makes everything selectable", not picking.locked and all(picking.types.values()))
+check("... and the Select window follows", all(b.checked for b in sel.boxes.values())
+      and not sel.unlock.enabled)
+sel.boxes["via"].checked = False
+check("a Select window switch sets the type", picking.types["via"] is False)
+sel.shapes_only()
+check("Shapes only: shapes, pins, labels", [k for k, on in picking.types.items() if on] == ["shape", "pin", "label"],
+      picking.types)
+sel.all_types()
+check("All: every type", all(picking.types.values()))
+check("Show Select in the OpenLayout menu", mw.menu().is_valid("openlayout_menu.select"))
 
 lsw.tabs.setCurrentIndex(USED)
 lsw.refresh()

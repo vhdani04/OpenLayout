@@ -105,7 +105,7 @@ check("clicking again cycles down to the GCUT under the transistor", seq[0] == [
       str(seq))
 
 # Instances selectable off: the click (and the hover) take the shapes under the transistor
-picking.instances = False
+picking.types["instance"] = False
 h, c = hover_click(0.081, 0.06)
 check("instances off: a click takes the shape under the transistor, not the transistor", c and c != ["inst"], f"{h} {c}")
 check("instances off: the hover shows the same", [e for e in h if e != "(ours)"] == c, f"hover {h}, click {c}")
@@ -119,8 +119,32 @@ check("only GCUT selectable: a click there takes the GCUT", c == ["10/0(frame)"]
 h, c = hover_click(0.07, 0.089)
 check("only GCUT selectable: a click on a wire takes nothing", c == [], str(c))
 picking.locked.clear()
-picking.instances = True
+picking.types["instance"] = True
 h, c = hover_click(0.07, 0.089)
 check("all selectable again: the wire", c == ["19/0"], str(c))
+
+
+# a box selection leaves out what cannot be selected (a locked layer, a type switched off)
+def box_select(a, b):
+    v.object_selection = []
+    pa, pb = px(*a), px(*b)
+    v.send_mouse_move_event(pa, 0)
+    v.send_mouse_press_event(pa, L)
+    for i in range(1, 7):
+        v.send_mouse_move_event(pa + (pb - pa) * (i / 6), L)
+    v.send_mouse_release_event(pb, L)
+    for _ in range(5):
+        pya.Application.instance().process_events()
+    return desc(v.each_object_selected())
+
+
+everything = box_select((-0.02, -0.03), (0.24, 0.3))
+picking.locked.add((19, 0))
+picking.types["frame"] = picking.types["boundary"] = False
+boxed = box_select((-0.02, -0.03), (0.24, 0.3))
+check("a box selection skips locked layers and switched-off types",
+      "19/0" in everything and boxed and not any(d.startswith("19/0") or "(frame)" in d for d in boxed),
+      f"{sorted(set(everything))} -> {sorted(set(boxed))}")
+picking.select_all_types()
 
 print("PASS pick" if not failures else f"FAIL pick: {', '.join(failures)}")

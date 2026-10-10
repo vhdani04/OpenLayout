@@ -154,8 +154,8 @@ contact or gate first, then a transistor - and only an empty spot picks a frame 
 highlight shows the same object a click takes. **Click the same spot again** for the next object
 underneath, down through the stack to the frame's own shapes (its GCUT, fins, rails): the status bar
 says which one ("2 of 4 under the mouse: GCUT shape (frame)"). To pick shapes under transistors
-directly, untick *Instances selectable* in the LSW, or lock the layers you don't want (see the LSW
-below). A drag that starts on an unselected frame
+directly, switch instances off in the **Select** window, or lock the layers you don't want (see the
+LSW below). A drag that starts on an unselected frame
 shape draws a selection box; a selected frame shape drags like any shape (to move the whole frame,
 box-select it).
 
@@ -221,9 +221,15 @@ The **LSW** (right side) is the only layer panel. *All layers* / *Used layers* t
 shapes in the current cell). Click a layer to make it the current drawing layer, untick to hide it.
 **AV** shows every layer; **NV** hides every layer except the current one. Selectability, as in
 Virtuoso: right-click a layer to **lock** it (clicks in the layout skip it; locked layers are dimmed),
-**AS** makes every layer selectable, **NS** only the current one, and *Instances selectable* off
-lets clicks skip transistors and other cells - e.g. NS on GCUT with instances off: a click takes
-only gate cuts. Hidden layers can't be clicked either.
+**AS** makes everything selectable, **NS** only the current layer (instances and vias, which are no
+layer, are left out too) - e.g. NS on GCUT: clicks and box selections take only gate cuts. Hidden
+layers can't be selected either.
+
+The **Select** window (*OpenLayout ▸ Show Select*, under the LSW) sets which object types can be
+selected: instances (transistors, cells), vias, shapes, pins, labels, the boundary and the
+standard-cell frame (rails, fins, GCUT, implants), with *All* / *Shapes only* presets, the number of
+locked layers and *Unlock all layers*. Clicks, box selections and the hover highlight all follow it;
+turning a type off unselects it.
 
 **DRD spacing hints** (design-rule-driven editing, notify only): in every editing tool - path, box,
 polygon, stretch (`s` or the Partial tool), move (drag, `m`, KLayout's Move), copy (`c`), instance

@@ -149,6 +149,7 @@ class DragMove(pya.Plugin):
         self.last_pick = None      # (point, ObjectInstPath) of the last click's pick: clicked again, the next one
         view.on_transient_selection_changed += self._hover_changed
         self.pin_group = pin_group.PinGroup(view)   # a selected pin brings its label
+        self.select_filter = picking.SelectionFilter(view)   # box selections too skip what can't be selected
 
     # ---- hover highlight ------------------------------------------------------------------------
     def _clear_hover(self):

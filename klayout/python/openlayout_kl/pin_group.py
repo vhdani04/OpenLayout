@@ -8,6 +8,7 @@ selected on its own (clicked) still moves by itself.
 """
 import pya
 
+from . import picking
 from .asap7 import LABEL, PIN
 
 
@@ -54,7 +55,8 @@ class PinGroup:
                     p = o.dup()
                     p.layer = li
                     p.shape = s
-                    if not any(p == q for q in sel) and not any(p == q for q in add):
+                    # a label that cannot be selected (labels off, its layer locked) stays put
+                    if picking.allowed(view, p) and not any(p == q for q in sel) and not any(p == q for q in add):
                         add.append(p)
             if add:
                 self.busy = True
