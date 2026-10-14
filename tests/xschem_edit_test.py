@@ -59,7 +59,7 @@ check("pin dialog: the first of two pins follows the mouse, Esc discards both", 
 
 # x and Ctrl+s save at once (xschem's own Ctrl+s asks first); Ctrl+x / Ctrl+i stay xschem's
 check("x and Ctrl+s save, Ctrl+x / Alt+s stay xschem's",
-      "xschem save" in send("bind .drw <KeyPress-x>") and "xschem save" in send("bind .drw <Control-KeyPress-s>")
+      "ol_save" in send("bind .drw <KeyPress-x>") and "ol_save" in send("bind .drw <Control-KeyPress-s>")
       and "%N" in send("bind .drw <Control-KeyPress-x>") and "%N" in send("bind .drw <Alt-KeyPress-s>"))
 
 # symbol editor: border rectangle, symbol pin dialog, line key
@@ -304,5 +304,74 @@ reply = send("set ol_inst(keep) 1; ol_instance_browser; ol_inst_place; update; "
              "set r [winfo exists .ol_inst]; ol_inst_close; set ol_inst(keep) 0; set r")
 send(ESC + "; update; xschem set_modify 0")
 check("Keep open leaves it open for the next one", reply == "1", reply)
+
+# ---- copy: the reference click may land on the selection ------------------------------------------
+# cadence_compat trims a selection to the object clicked - not when the click is a command's
+# reference point (needs setup/patches/xschem-command-click-keeps-selection.patch)
+cpdir = WA / f"libraries/{LIB}/cp"
+cpdir.mkdir(exist_ok=True)
+(cpdir / "cp.sch").write_text("v {xschem version=3.4.8RC file_version=1.3}\nG {}\nK {}\nV {}\nS {}\nE {}\n"
+                              + "".join(f"C {{asap7_devices/nmos_sram/nmos_sram.sym}} {x} 0 0 0 {{name=M{i} l=20n nfin=2 nf=1 m=1}}\n"
+                                        for i, x in enumerate((0, 100, 200), 1)))
+def click1(x, y):
+    # as the mouse does it: the release carries Button1Mask
+    return (f"event generate .drw <Motion> -x {x} -y {y} -warp 1; update; after 50; "
+            f"event generate .drw <ButtonPress-1> -x {x} -y {y}; update; "
+            f"event generate .drw <ButtonRelease-1> -x {x} -y {y} -state 256; update; after 50")
+
+
+send(f"xschem load {{{cpdir / 'cp.sch'}}}; xschem zoom_box -150 -150 350 150; update; focus -force .drw; update")
+send("xschem unselect_all; xschem select instance M1; xschem select instance M2; xschem select instance M3")
+px, py = to_px(100, 0)
+send(f"event generate .drw <Motion> -x {px} -y {py} -warp 1; update; xschem callback .drw 2 {px} {py} 99 0 0 0; update")
+send(click1(px, py))
+reply = send("list [expr {([xschem get ui_state] & 64) != 0}] [llength [xschem selected_set]]")
+check("c, then a click on one of the selected: the copy takes all of them", reply == "1 3", reply)
+qx, qy = to_px(100, 100)
+send(move(qx, qy) + "; " + click1(qx, qy))
+check("the copies are placed", send("xschem get instances") == "6", send("xschem get instances"))
+send("xschem undo; update")
+send("xschem unselect_all; xschem select instance M1; xschem select instance M2")
+px, py = to_px(0, 0)
+send(click1(px, py))
+check("a plain click on one of the selected still selects just that one",
+      send("xschem selected_set") == "{M1}", send("xschem selected_set"))
+send("xschem unselect_all; xschem set_modify 0")
+
+# ---- symbol pins stay on the 10 grid ---------------------------------------------------------------
+# A pin off it can't be reached by schematic wires. Saving snaps it, its stub moves along and stays
+# straight; a selected pin moves on the 10 grid.
+offdir = WA / f"libraries/{LIB}/offgrid"
+offdir.mkdir(exist_ok=True)
+offsym = offdir / "offgrid.sym"
+original = ("v {xschem version=3.4.8RC file_version=1.3}\nG {}\n"
+            'K {type=subcircuit\nformat="@name @pinlist @symname"\ntemplate="name=x1"\n}\n'
+            "V {}\nS {}\nE {}\n"
+            "L 4 -80 15 -60 15 {}\nL 4 47.5 -77.5 47.5 77.5 {}\n"
+            "B 5 -82.5 12.5 -77.5 17.5 {name=A dir=in}\nB 5 45 -80 50 -75 {name=B dir=inout}\n"
+            "B 5 45 75 50 80 {name=C dir=inout}\nB 7 -80 -80 80 80 {fill=false hide=instance}\n")
+offsym.write_text(original)
+send(f"xschem load {{{offsym}}}; xschem zoom_full; update; focus -force .drw; update")
+send("xschem set_modify 1; xschem save")  # xschem's own save: the file as xschem writes it, pins still off the grid
+original = offsym.read_text()
+time.sleep(0.8)
+send("xschem select rect 5 0 fast")
+time.sleep(0.8)
+snap_pin = send("set cadsnap")
+send("xschem unselect_all")
+time.sleep(0.8)
+check("a selected pin snaps at 10, other shapes at 2.5", (snap_pin, send("set cadsnap")) == ("10", "2.5"),
+      (snap_pin, send("set cadsnap")))
+send("event generate .drw <KeyPress-x> -x 300 -y 300; update")
+saved = offsym.read_text()
+check("saving a symbol puts its pins on the 10 grid",
+      all(b in saved for b in ("B 5 -82.5 17.5 -77.5 22.5", "B 5 47.5 -82.5 52.5 -77.5", "B 5 47.5 77.5 52.5 82.5")),
+      [l for l in saved.splitlines() if l.startswith("B 5")])
+check("stubs move along and stay straight", "L 4 -80 20 -60 20 {}" in saved and "L 4 50 -80 50 80 {}" in saved,
+      [l for l in saved.splitlines() if l.startswith("L 4")])
+send("xschem undo; update; xschem save")
+check("the snap is one undo step", offsym.read_text() == original,
+      [l for l in offsym.read_text().splitlines() if l not in original.splitlines()])
+send("xschem set_modify 0")
 
 print("PASS xschem edit" if not failures else f"FAIL xschem edit: {', '.join(failures)}")

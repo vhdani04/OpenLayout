@@ -1,0 +1,48 @@
+diff --git a/src/scheduler.c b/src/scheduler.c
+index ebb9a7cb..7d5465ba 100644
+--- a/src/scheduler.c
++++ b/src/scheduler.c
+@@ -3598,6 +3598,9 @@ int xschem(ClientData clientdata, Tcl_Interp *interp, int argc, const char * arg
+       if(stretch) select_attached_nets();
+       if(kissing) xctx->connect_by_kissing = 2;
+       if(argc > 3 + nparam) {
++        /* OpenLayout: a move by a given amount is no mouse drag - a drag flag left over from an
++         * earlier click would make move_objects(END) drop the shift */
++        xctx->drag_elements = 0;
+         move_objects(START,0,0,0);
+         move_objects( END,0,atof(argv[2]), atof(argv[3]));
+       }
+@@ -5483,6 +5486,7 @@ int xschem(ClientData clientdata, Tcl_Interp *interp, int argc, const char * arg
+      *   Return a list of selected instance names
+      *   If what is not given or set to 'inst' return list of selected instance names
+      *   If what set to 'rect' return list of selected rectangles with their coordinates
++     *   If what set to 'line' return list of selected lines with their coordinates
+      *   If what set to 'text' return list of selected texts with their coordinates */
+     else if(!strcmp(argv[1], "selected_set"))
+     {
+@@ -5492,6 +5496,7 @@ int xschem(ClientData clientdata, Tcl_Interp *interp, int argc, const char * arg
+ 
+       if(argc > 2) {
+         if(!strcmp(argv[2], "rect")) what = xRECT;
++        else if(!strcmp(argv[2], "line")) what = LINE;
+         else if(!strcmp(argv[2], "text")) what = xTEXT;
+       }
+       rebuild_selected_array();
+@@ -5507,6 +5512,17 @@ int xschem(ClientData clientdata, Tcl_Interp *interp, int argc, const char * arg
+           if(first == 0) Tcl_AppendResult(interp, "\n", NULL);
+           first = 0;
+           Tcl_AppendResult(interp,col, " ", num, " ", coord , NULL);
++        } else if(what == LINE &&  xctx->sel_array[n].type == LINE) {
++          char col[30], num[30], coord[200];
++          int c = xctx->sel_array[n].col;
++          i = xctx->sel_array[n].n;
++          my_strncpy(col, my_itoa(c), S(col));
++          my_strncpy(num, my_itoa(i), S(num));
++          my_snprintf(coord, S(coord), "%g %g %g %g",
++            xctx->line[c][i].x1, xctx->line[c][i].y1, xctx->line[c][i].x2, xctx->line[c][i].y2);
++          if(first == 0) Tcl_AppendResult(interp, "\n", NULL);
++          first = 0;
++          Tcl_AppendResult(interp,col, " ", num, " ", coord , NULL);
+         } else if(what == xTEXT &&  xctx->sel_array[n].type == xTEXT) {
+           char num[30], coord[200];
+           i = xctx->sel_array[n].n;

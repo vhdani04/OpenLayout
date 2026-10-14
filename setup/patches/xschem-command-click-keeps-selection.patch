@@ -1,0 +1,51 @@
+diff --git a/src/callback.c b/src/callback.c
+index e2bf406d..7d7a3d22 100644
+--- a/src/callback.c
++++ b/src/callback.c
+@@ -4139,6 +4139,11 @@ static void handle_key_press(int event, KeySym key, int state, int rstate, int m
+   return;
+ }
+ 
++/* OpenLayout: set when a Button1 press went to a command (the reference or end point of a
++ * move / copy, a persistent wire or line, ...). Its release must not trim the selection
++ * (cadence_compat: a click on one of several selected objects selects just that one). */
++static int b1_command_press = 0;
++
+ static void handle_button_press(int event, int state, int rstate, KeySym key, int button, int mx, int my,
+                                 double c_snap, int draw_xhair, int crosshair_size, int enable_stretch,
+                                 int tabbed_interface, const char *win_path, int aux)
+@@ -4248,6 +4253,7 @@ static void handle_button_press(int event, int state, int rstate, KeySym key, in
+      xctx->onetime = 0;
+      xctx->mouse_moved = 0;
+      xctx->drag_elements = 0;
++     b1_command_press = 0;
+ 
+      /* start another wire or line in persistent mode */
+      if(tclgetboolvar("persistent_command") && xctx->last_command) {
+@@ -4264,13 +4270,14 @@ static void handle_button_press(int event, int state, int rstate, KeySym key, in
+         else
+           start_wire(xctx->mousex_snap, xctx->mousey_snap);
+       }
++        b1_command_press = 1;
+         return;
+      }
+      /* handle all object insertions started from Tools/Edit menu */
+-     if(check_menu_start_commands(state, c_snap, mx, my)) return;
++     if(check_menu_start_commands(state, c_snap, mx, my)) { b1_command_press = 1; return; }
+ 
+      /* complete the pending STARTWIRE, STARTRECT, STARTZOOM, STARTCOPY ... operations */
+-     if(end_place_move_copy_zoom()) return;
++     if(end_place_move_copy_zoom()) { b1_command_press = 1; return; }
+ 
+      /* Button1Press to select objects */
+      if(!excl && !(xctx->ui_state & STARTSELECT)) {
+@@ -4445,7 +4452,8 @@ static void handle_button_release(int event, KeySym key, int state, int button,
+ 
+    /* in cadence_compat mode a button release on a selected item will unselect everything
+     * but the item under the mouse. */
+-   else if(cadence_compat && xctx->lastsel != 1 && state == Button1Mask && !xctx->mouse_moved) {
++   else if(cadence_compat && xctx->lastsel != 1 && state == Button1Mask && !xctx->mouse_moved &&
++           !b1_command_press) {
+      Selected sel;
+      int already_selected = 0;
+ 

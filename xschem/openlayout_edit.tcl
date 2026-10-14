@@ -441,6 +441,24 @@ proc ol_wrap_tool_commands {} {
     }
   }
   ol_wrap_menu $top.menubar $re
+  # Save (toolbar, File menu) goes through ol_save, which keeps symbol pins on the grid
+  set re {^\s*xschem\s+save\s*$}
+  if {[winfo exists $top.toolbar]} {
+    foreach b [winfo children $top.toolbar] {
+      if {![catch {$b cget -command} c] && [regexp $re $c]} { $b configure -command ol_save }
+    }
+  }
+  ol_wrap_save_menu $top.menubar $re
+}
+
+proc ol_wrap_save_menu {m re} {
+  if {![winfo exists $m] || [catch {$m index end} last] || $last eq "none"} { return }
+  for {set i 0} {$i <= $last} {incr i} {
+    switch -- [$m type $i] {
+      cascade { ol_wrap_save_menu [$m entrycget $i -menu] $re }
+      command { if {[regexp $re [$m entrycget $i -command]]} { $m entryconfigure $i -command ol_save } }
+    }
+  }
 }
 
 # ---- context keys ------------------------------------------------------------------------------
@@ -487,8 +505,8 @@ proc ol_bind_keys {{w .drw}} {
   bind $w <Control-Shift-KeyPress-C> {ol_tool circle; break}
   # x and Ctrl+s save at once (xschem's own Ctrl+s asks "save file?" first; an unnamed schematic
   # still gets Save As)
-  bind $w <KeyPress-x> {xschem save; break}
-  bind $w <Control-KeyPress-s> {xschem save; break}
+  bind $w <KeyPress-x> {ol_save; break}
+  bind $w <Control-KeyPress-s> {ol_save; break}
   # A binding for a plain key also catches it with Ctrl or Alt held (Tk falls back to it when no
   # binding names the modifier): Ctrl+s was stretch, Ctrl+x save. Those keep xschem's own meaning.
   foreach k {p l r w t x s i} {
@@ -568,12 +586,8 @@ proc ol_edge_hit {x y} {
   set mx [expr {$x * $z - [xschem get xorigin]}]
   set my [expr {$y * $z - [xschem get yorigin]}]
   set tol [expr {$ol_stretch(pixels) * $z}]
+  if {[ol_pin_hit $x $y]} { return {} }
   set rects [ol_rect_list]
-  foreach r $rects {
-    lassign $r c i x1 y1 x2 y2
-    if {$c == 5 && $mx >= $x1 - $tol / 2 && $mx <= $x2 + $tol / 2 &&
-        $my >= $y1 - $tol / 2 && $my <= $y2 + $tol / 2} { return {} }
-  }
   set best {}
   set bestd $tol
   foreach r $rects {
@@ -596,6 +610,21 @@ proc ol_edge_hit {x y} {
     }
   }
   return $best
+}
+
+# Is drawing-area pixel (x, y) on a pin (a layer 5 rectangle)?
+proc ol_pin_hit {x y} {
+  set z [xschem get zoom]
+  set mx [expr {$x * $z - [xschem get xorigin]}]
+  set my [expr {$y * $z - [xschem get yorigin]}]
+  set tol [expr {$::ol_stretch(pixels) * $z / 2}]
+  foreach r [ol_rect_list] {
+    lassign $r c i x1 y1 x2 y2
+    if {$c == 5 && $mx >= $x1 - $tol && $mx <= $x2 + $tol && $my >= $y1 - $tol && $my <= $y2 + $tol} {
+      return 1
+    }
+  }
+  return 0
 }
 
 # -- overlay: straight screen-space segments drawn on thin canvases over the drawing area
@@ -735,6 +764,11 @@ proc ol_press {w x y b s} {
     set hit [ol_edge_hit $x $y]
   }
   if {$hit eq {}} {
+    # a plain press on a pin in the symbol editor may drag it: on the pin grid from the start
+    if {$b == 1 && ($s & 0x0d) == 0 && ([xschem get ui_state] & ~8) == 0 && [ol_in_symbol] &&
+        [ol_pin_hit $x $y]} {
+      ol_apply_grid symbol_pin
+    }
     xschem callback $w 4 $x $y 0 $b 0 $s
     return
   }
@@ -844,25 +878,162 @@ ol_bind_stretch
 
 # ---- grid per editor -------------------------------------------------------------------------
 # Schematics: snap 10 / grid 20 (pins connect on the 10 grid). Symbol editor: snap 2.5 / grid 10, so
-# shapes can be placed precisely (e.g. a circle centered on a triangle tip) while pins - placed by
-# the pin dialog - stay on the 10 grid. Re-applied whenever the edited file changes kind.
-proc ol_editor_grid {} {
+# shapes can be placed precisely (e.g. a circle centered on a triangle tip), but pins stay on the 10
+# grid: while a pin is selected (or a press lands on one) moves snap at 10, and saving a symbol
+# snaps any pin still off the grid (ol_snap_pins). Re-applied when the edited file changes kind or a
+# selection with pins comes and goes - never while a command (move, copy, ...) is running.
+proc ol_apply_grid {kind} {
   global ol_grid_kind
-  set kind [expr {[ol_in_symbol] ? "symbol" : "schematic"}]
-  if {![info exists ol_grid_kind] || $ol_grid_kind ne $kind} {
-    set ol_grid_kind $kind
-    lassign [expr {$kind eq "symbol" ? {2.5 10} : {10 20}}] snap grid
-    catch {xschem set cadsnap $snap; xschem set cadgrid $grid}
-    set ::cadsnap $snap
-    set ::cadgrid $grid
-    # The status bar SNAP/GRID entries are re-applied by xschem when the mouse leaves them, so they
-    # must show the current values (a stale "10" would silently undo the fine snap).
-    set top [xschem get top_path]
-    foreach {e v} [list $top.statusbar.3 $snap $top.statusbar.5 $grid] {
-      if {[winfo exists $e]} { $e delete 0 end; $e insert 0 $v }
+  if {[info exists ol_grid_kind] && $ol_grid_kind eq $kind} return
+  set ol_grid_kind $kind
+  lassign [dict get {symbol {2.5 10} symbol_pin {10 10} schematic {10 20}} $kind] snap grid
+  catch {xschem set cadsnap $snap; xschem set cadgrid $grid}
+  set ::cadsnap $snap
+  set ::cadgrid $grid
+  # The status bar SNAP/GRID entries are re-applied by xschem when the mouse leaves them, so they
+  # must show the current values (a stale "10" would silently undo the fine snap).
+  set top [xschem get top_path]
+  foreach {e v} [list $top.statusbar.3 $snap $top.statusbar.5 $grid] {
+    if {[winfo exists $e]} { $e delete 0 end; $e insert 0 $v }
+  }
+}
+
+proc ol_pin_selected {} {
+  foreach r [split [xschem selected_set rect] \n] {
+    if {[llength $r] == 6 && [lindex $r 0] == 5} { return 1 }
+  }
+  return 0
+}
+
+proc ol_editor_grid {} {
+  if {[catch {
+    if {![ol_in_symbol]} {
+      ol_apply_grid schematic
+    } elseif {([xschem get ui_state] & ~8) == 0 && !$::ol_stretch(active) &&
+              !([info exists ::ol_b1_down] && $::ol_b1_down)} {
+      ol_apply_grid [expr {[ol_pin_selected] ? "symbol_pin" : "symbol"}]
     }
+  }]} {
+    set ::errorInfo ""
   }
   after 300 ol_editor_grid
+}
+ol_editor_grid
+
+# ---- symbol pins on the connection grid -----------------------------------------------------------
+# Wires and instances in a schematic snap to 10, so a pin is only reachable when its center is on
+# the 10 grid. ol_snap_pins moves each pin off it to the nearest grid point. The line ends inside
+# a moved pin (its stub) go with it, and a horizontal or vertical line stays straight: its other
+# end follows the shift across the line (a stub shifted sideways moves whole, one shifted along
+# its length just gets longer or shorter). One undo step. Returns the number of pins moved.
+
+# {c i x1 y1 x2 y2} of every line - selected one at a time, as in ol_rect_list.
+proc ol_line_list {} {
+  set lines {}
+  for {set c 0} {$c < $::cadlayers} {incr c} {
+    for {set i 0} {$i < [xschem get lines $c]} {incr i} {
+      xschem unselect_all 0
+      xschem select line $c $i fast nodraw
+      foreach r [split [xschem selected_set line] \n] {
+        if {[llength $r] == 6} { lappend lines $r }
+      }
+    }
+  }
+  xschem unselect_all 0
+  return $lines
+}
+
+# the shift {dx dy} of the moved pin whose box holds point (x, y), or {}
+proc ol_pin_shift {pins x y} {
+  foreach p $pins {
+    lassign $p i x1 y1 x2 y2 dx dy
+    if {$x >= $x1 - 1e-6 && $x <= $x2 + 1e-6 && $y >= $y1 - 1e-6 && $y <= $y2 + 1e-6} {
+      return [list $dx $dy]
+    }
+  }
+  return {}
+}
+
+proc ol_snap_pins {} {
+  set pins {}
+  foreach r [ol_rect_list] {
+    lassign $r c i x1 y1 x2 y2
+    if {$c != 5} continue
+    set cx [expr {($x1 + $x2) / 2.0}]
+    set cy [expr {($y1 + $y2) / 2.0}]
+    set dx [expr {round($cx / 10.0) * 10 - $cx}]
+    set dy [expr {round($cy / 10.0) * 10 - $cy}]
+    if {abs($dx) > 1e-6 || abs($dy) > 1e-6} { lappend pins [list $i $x1 $y1 $x2 $y2 $dx $dy] }
+  }
+  if {$pins eq {}} { return 0 }
+  # how far each end of the affected lines goes
+  set moves {}
+  foreach l [ol_line_list] {
+    lassign $l c i x1 y1 x2 y2
+    set d1 [ol_pin_shift $pins $x1 $y1]
+    set d2 [ol_pin_shift $pins $x2 $y2]
+    if {$d1 eq {} && $d2 eq {}} continue
+    foreach {a b} {d1 d2 d2 d1} {
+      if {[set $a] eq {}} {
+        lassign [set $b] dx dy
+        set $a [expr {$y1 == $y2 ? [list 0 $dy] : ($x1 == $x2 ? [list $dx 0] : {0 0})}]
+      }
+    }
+    lappend moves [list $c $i {*}$d1 {*}$d2 $x2 $y2]
+  }
+  set stretch [expr {[info exists ::enable_stretch] ? $::enable_stretch : 0}]
+  set e 1e-3
+  xschem push_undo
+  xschem set no_undo 1
+  foreach m $moves {
+    lassign $m c i ax ay bx by x2 y2
+    # the whole line by the shift of its first end ...
+    xschem unselect_all 0
+    xschem select line $c $i fast
+    if {$ax != 0 || $ay != 0} { xschem move_objects $ax $ay }
+    if {$bx == $ax && $by == $ay} continue
+    # ... then its second end alone (stretched) by the rest; nothing else that ends there
+    set ex [expr {$x2 + $ax}]
+    set ey [expr {$y2 + $ay}]
+    xschem unselect_all 0
+    set ::enable_stretch 1
+    xschem select_inside [expr {$ex - $e}] [expr {$ey - $e}] [expr {$ex + $e}] [expr {$ey + $e}]
+    set ::enable_stretch $stretch
+    foreach kind {line rect} {
+      foreach r [split [xschem selected_set $kind] \n] {
+        if {[llength $r] == 6 && !($kind eq "line" && [lrange $r 0 1] eq [list $c $i])} {
+          xschem select $kind {*}[lrange $r 0 1] clear fast
+        }
+      }
+    }
+    if {[xschem get lastsel] == 1} {
+      xschem move_objects [expr {$bx - $ax}] [expr {$by - $ay}]
+    }
+  }
+  foreach p $pins {
+    lassign $p i x1 y1 x2 y2 dx dy
+    xschem unselect_all 0
+    xschem select rect 5 $i fast
+    xschem move_objects $dx $dy
+  }
+  xschem set no_undo 0
+  xschem unselect_all
+  ol_rects_changed
+  return [llength $pins]
+}
+
+# Save (x, Ctrl+s, toolbar, File menu). A symbol is saved with its pins on the grid.
+proc ol_save {} {
+  set n 0
+  if {[ol_in_symbol] && ([xschem get ui_state] & ~8) == 0} { set n [ol_snap_pins] }
+  xschem save
+  if {$n} {
+    set top [xschem get top_path]
+    set msg "$n pin[expr {$n == 1 ? {} : {s}}] moved onto the 10 grid (schematic wires connect there)"
+    if {[winfo exists $top.statusbar.1]} { $top.statusbar.1 configure -text $msg }
+    puts "OpenLayout: $msg"
+  }
+}
 }
 ol_editor_grid
 

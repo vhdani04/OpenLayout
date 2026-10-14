@@ -11,6 +11,16 @@
   its dialogs, file chooser and property forms came up light grey. Menus are padded and grouped and
   show OpenLayout's keys where they differ from xschem's; the right-click menu, tabs, toolbar
   icons, status fields and Netlist / Simulate buttons follow the theme.
+- **Symbol pins stay on the wire grid**: the symbol editor's fine 2.5 snap let pins be moved off
+  the 10 grid that schematic wires and instances snap to, so wires could not reach them. Moves of
+  selected pins (or a pin dragged directly) now snap at 10, and saving a symbol moves any pin still
+  off the grid onto it - its stub moves along and stays straight, one undo step.
+- **Copy / move several objects**: with a selection of several, `c` or `m` followed by a click on
+  one of the selected objects (the reference point) dropped the others - xschem's Virtuoso-style
+  "click selects just this one" also ran for a command's clicks. A plain click on one of the
+  selected still selects just that one (setup/patches/xschem-command-click-keeps-selection.patch;
+  setup/patches/xschem-tcl-api.patch: line coordinates for scripts, and scripted moves no longer
+  dropped after such a click). Rerun `setup/install.sh` to rebuild xschem.
 
 ### Layout (KLayout)
 - **Selecting what lies underneath**: click the same spot again for the next object under the
