@@ -310,6 +310,9 @@ proc ol_place_pins {labels dir px py} {
   set ol_placing(queue) $labels
   set ol_placing(dir) $dir
   set ol_placing(esc) 0
+  # a wire just drawn stays the persistent command: the click that puts a pin down would start
+  # another wire instead (and the pin would stay on the mouse)
+  ol_end_persistent
   focus -force .drw                         ;# back from the dialog (ours had focus): Esc must reach .drw
   set generic [bind .drw <KeyPress>]
   bind .drw <KeyPress-Escape> "set ::ol_placing(esc) 1\n$generic"
@@ -323,19 +326,25 @@ proc ol_place_next {px py} {
   set ol_placing(queue) [lrange $ol_placing(queue) 1 end]
   lassign [ol_to_sch $px $py] x y
   xschem unselect_all
+  # The pin is made without drawing it: xschem leaves what it moves drawn where it was until the
+  # move ends, so a pin drawn here stayed behind as a second copy (on top of the pin just put down).
   if {[ol_in_symbol]} {
-    xschem add_symbol_pin $x $y $n [dict get {input in output out inout inout} $ol_placing(dir)]
-    set i [expr {[xschem get rects 5] - 1}]
-    xschem select rect 5 $i fast
-    set ol_placing(made) [list rect $i]
+    ol_apply_grid symbol_pin               ;# the move snaps at 10: the pin stays on the wire grid
+    set d [dict get {input in output out inout inout} $ol_placing(dir)]
+    xschem add_symbol_pin $x $y $n $d 0
+    # the pin square, its stub and its name move together (each the last of its kind)
+    regexp {texts=([0-9]+)} [xschem globals] -> nt
+    set col [expr {$d eq "inout" ? 7 : 4}]
+    set ol_placing(made) [list [list rect 5 [expr {[xschem get rects 5] - 1}]]]
+    lappend ol_placing(made) [list line $col [expr {[xschem get lines $col] - 1}]] [list text [expr {$nt - 1}]]
   } else {
     set sym [dict get {input ipin.sym output opin.sym inout iopin.sym} $ol_placing(dir)]
     set iname [ol_pin_instname $n]
-    xschem instance $sym $x $y 0 0 "name=$iname lab=$n"
-    # select the one just made (by name: unique - an older pin of the same label is left alone)
-    xschem select instance $iname fast
-    set ol_placing(made) [list instance $iname]
+    xschem instance $sym $x $y 0 0 "name=$iname lab=$n" 0
+    # the one just made (by name: unique - an older pin of the same label is left alone)
+    set ol_placing(made) [list [list instance $iname]]
   }
+  foreach o $ol_placing(made) { xschem select {*}$o fast }
   set ol_placing(placed) 0
   set ol_placing(sch) [xschem get schname]
   # Start a move at the pointer (m with xschem's infix interface, which moves immediately instead of
@@ -367,8 +376,7 @@ proc ol_pin_watch {} {
     set ol_placing(placed) 1
     if {$ol_placing(esc)} {
       xschem unselect_all
-      lassign $ol_placing(made) kind id
-      if {$kind eq "instance"} { xschem select instance $id fast } else { xschem select rect 5 $id fast }
+      foreach o $ol_placing(made) { xschem select {*}$o fast }
       xschem delete
     }
   }

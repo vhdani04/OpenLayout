@@ -1,0 +1,71 @@
+diff --git a/src/callback.c b/src/callback.c
+--- a/src/callback.c
++++ b/src/callback.c
+@@ -112,6 +112,48 @@
+   return is_inside;
+ }
+ 
++/* OpenLayout: what a wire end at (x, y) would join: 0 nothing, 1 only wires or pins that also touch
++ * (sx, sy) - where the wire being drawn starts, so already its net - 2 another net. */
++static int corner_joins(double x, double y, double sx, double sy)
++{
++  Iterator_ctx ctx;
++  Wireentry *wptr;
++  Instentry *iptr;
++  int res = 0;
++  hash_wires();
++  for(init_wire_iterator(&ctx, x, y, x, y); (wptr = wire_iterator_next(&ctx)) ;) {
++    xWire *w = &xctx->wire[wptr->n];
++    if(!touch(w->x1, w->y1, w->x2, w->y2, x, y)) continue;
++    if(!touch(w->x1, w->y1, w->x2, w->y2, sx, sy)) return 2;
++    res = 1;
++  }
++  hash_instances();
++  for(init_inst_iterator(&ctx, x, y, x, y); (iptr = inst_iterator_next(&ctx)) ;) {
++    int i = iptr->n, j;
++    double px, py;
++    if(xctx->inst[i].ptr < 0) continue;
++    for(j = 0; j < (xctx->inst[i].ptr + xctx->sym)->rects[PINLAYER]; j++) {
++      get_inst_pin_coord(i, j, &px, &py);
++      if(px == x && py == y) return 2;
++    }
++  }
++  return res;
++}
++
++/* OpenLayout: with orthogonal wiring the corner of the L is a wire end. If it would join another
++ * net (a junction nobody clicked, shorting two nets) and the other corner would not, or would sit
++ * on a wire where the other corner is free, the L turns the other way (the rubber shows it, so
++ * what is drawn is what is placed). */
++static void wire_corner_off_nets(double x1, double y1, double x2, double y2)
++{
++  int h, v;
++  if(x1 == x2 || y1 == y2) return;
++  h = corner_joins(x2, y1, x1, y1); /* corner of horizontal-first */
++  v = corner_joins(x1, y2, x1, y1); /* corner of vertical-first */
++  if(xctx->manhattan_lines == 1 && h > v) xctx->manhattan_lines = 2;
++  else if(xctx->manhattan_lines == 2 && v > h) xctx->manhattan_lines = 1;
++}
++
+ /* do nothing if coordinates not changed unless force is given */
+ void redraw_w_a_l_r_p_z_rubbers(int force)
+ {
+@@ -127,6 +169,7 @@
+     if(tclgetboolvar("orthogonal_wiring")) {
+       new_wire(RUBBER|CLEAR, xctx->mousex_snap, xctx->mousey_snap);
+       recompute_orthogonal_manhattanline(xctx->nl_x1, xctx->nl_y1, xctx->nl_x2, xctx->nl_y2);
++      wire_corner_off_nets(xctx->nl_x1, xctx->nl_y1, xctx->nl_x2, xctx->nl_y2);
+     }
+     new_wire(RUBBER, mx, my);
+   }
+@@ -246,7 +289,9 @@
+   xctx->last_command = STARTWIRE;
+   if(xctx->ui_state & STARTWIRE) {
+     if(tclgetboolvar("orthogonal_wiring") && !tclgetboolvar("constr_mv")){
+-      xctx->constr_mv = xctx->manhattan_lines;
++      /* OpenLayout: a click puts down the whole L shown, up to the click (xschem put down only its
++       * first leg, ending at the corner: a wire end where nobody clicked, joining any net there) */
++      xctx->constr_mv = 0;
+       new_wire(CLEAR, mx, my);
+       redraw_w_a_l_r_p_z_rubbers(1);
+     }

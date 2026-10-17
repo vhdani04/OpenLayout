@@ -3,6 +3,7 @@ running xschem. Usage: python3 tests/xschem_edit_test.py <port> <workarea>
 (xschem must run in <workarea> with the OpenLayout xschemrc and listen on <port>.)
 """
 import os
+import re
 import socket
 import sys
 import time
@@ -372,6 +373,145 @@ check("stubs move along and stay straight", "L 4 -80 20 -60 20 {}" in saved and 
 send("xschem undo; update; xschem save")
 check("the snap is one undo step", offsym.read_text() == original,
       [l for l in offsym.read_text().splitlines() if l not in original.splitlines()])
+send("xschem set_modify 0")
+
+# ---- pins: only the pin on the mouse is drawn; symbol pins move whole; after a wire --------------
+# xschem leaves what it moves drawn where the move started: a pin drawn when it was made stayed
+# there as a second copy - for the next bit of a bus, on top of the one just put down.
+def drw_region(cx, cy, w=130, h=30):
+    """The drawing area's pixels around (cx, cy) as xwd sees them, or None without xwd."""
+    import shutil
+    import struct
+    import subprocess
+    if not shutil.which("xwd"):
+        return None
+    data = subprocess.run(["xwd", "-silent", "-id", send("winfo id .drw")], capture_output=True).stdout
+    if len(data) < 100:
+        return None
+    v = struct.unpack(">25I", data[:100])
+    hs, width, height, bpp, bpl, ncolors = v[0], v[4], v[5], v[11], v[12], v[19]
+    px, b = data[hs + ncolors * 12:], bpp // 8
+    return b"".join(px[y * bpl + max(0, cx - w) * b:y * bpl + min(width, cx + w) * b]
+                    for y in range(max(0, cy - h), min(height, cy + h)))
+
+
+(pinsch / "ghost.sch").write_text("v {xschem version=3.4.8RC file_version=1.3}\nG {}\nK {}\nV {}\nS {}\nE {}\n")
+send("xschem set_modify 0")
+send(f"xschem load {{{pinsch / 'ghost.sch'}}}; xschem zoom_box -300 -200 300 200; update; focus -force .drw; update")
+time.sleep(0.8)  # grid follows the editor (polled)
+send(move(400, 150) + "; xschem redraw; update")
+before = drw_region(400, 150)
+place("GH[1:0]", (400, 150), (400, 260), expand=1, then="update")    # GH[1] follows the mouse
+send(move(400, 255) + "; " + move(400, 260) + "; update")              # (the rubber follows motions)
+mid1 = drw_region(400, 150)
+send(click1(400, 260) + "; after 300; update")                         # GH[1] down, GH[0] follows
+send(move(400, 365) + "; " + move(400, 370) + "; update")
+mid2 = drw_region(400, 260)
+send(click1(400, 370) + "; after 300; update; xschem redraw; update")
+after2 = drw_region(400, 260)
+if before is None:
+    print("SKIP a pin on the mouse is not also drawn where it was made (no xwd)")
+else:
+    check("a pin on the mouse is not also drawn where it was made", mid1 == before)
+    check("the next bit of a bus is not drawn over the pin just put down", mid2 == after2)
+check("both bits placed", "p_GH_1 {GH[1]}" in pin_list() and "p_GH_0 {GH[0]}" in pin_list(), pin_list())
+
+# a wire ended with a double click stays xschem's persistent command: the click that puts a pin
+# down started another wire, and the pin stayed on the mouse
+send("xschem set_modify 0")
+send(f"xschem load {{{pinsch / 'ghost.sch'}}}; xschem zoom_box -300 -200 300 200; update; focus -force .drw; update")
+nw = int(send("xschem get wires"))
+send("event generate .drw <KeyPress-w> -x 200 -y 500; update; " + click1(200, 500) + "; " + move(300, 500) + "; "
+     + click1(300, 500) + "; event generate .drw <ButtonPress-1> -x 300 -y 500; update; "
+     "event generate .drw <ButtonRelease-1> -x 300 -y 500 -state 256; update; after 100")
+reply = send("list [xschem get wires] [xschem get ui_state]")
+place("AW", (500, 500), (560, 500), then=click1(560, 500))
+check("a pin right after a wire: placed with one click, no wire started",
+      "p_AW AW" in pin_list() and send("list [xschem get wires] [xschem get ui_state]") == f"{nw + 1} 0",
+      (reply, send("list [xschem get wires] [xschem get ui_state]"), pin_list()))
+send("xschem set_modify 0")
+
+# symbol editor: the pin's name and stub follow it, and it lands on the 10 grid (the pointer is not)
+psdir = WA / f"libraries/{LIB}/pinsym"
+psdir.mkdir(exist_ok=True)
+(psdir / "pinsym.sym").write_text("v {xschem version=3.4.8RC file_version=1.3}\nG {}\n"
+                                  'K {type=subcircuit\nformat="@name @pinlist @symname"\ntemplate="name=x1"\n}\n'
+                                  "V {}\nS {}\nE {}\nB 7 -80 -50 80 50 {fill=false hide=instance}\n")
+send(f"xschem load {{{psdir / 'pinsym.sym'}}}; xschem zoom_box -200 -150 200 150; update; focus -force .drw; update")
+place("S[1:0]", (300, 300), [(343, 262), (461, 337)], expand=1)
+send("xschem select_all")
+rects = [r.split() for r in send("xschem selected_set rect").splitlines() if r.split()[0] == "5"]
+lines = [tuple(float(v) for v in r.split()[2:]) for r in send("xschem selected_set line").splitlines() if r.strip()]
+texts = send("xschem selected_set text")
+send("xschem unselect_all")
+ok, detail = len(rects) == 2, []
+for r in rects:
+    cx, cy = (float(r[2]) + float(r[4])) / 2, (float(r[3]) + float(r[5])) / 2
+    detail.append((cx, cy))
+    ok = ok and cx % 10 == 0 and cy % 10 == 0 and (cx, cy, cx + 20, cy) in lines
+check("symbol pins: on the 10 grid, each with its stub", ok, (detail, lines))
+tpos = [tuple(float(v) for v in t.split()[1:3]) for t in texts.splitlines() if t.strip()]
+check("symbol pins: each name next to its pin", all((cx + 25, cy - 5) in tpos for cx, cy in detail),
+      (detail, texts))
+send("xschem set_modify 0")
+
+# ---- wires: a junction only where the user clicked -----------------------------------------------
+# With orthogonal wiring a click put down only the first leg of the L, ending at its corner: when
+# that corner lay on another wire (or the user clicked on one at the other end of the L), the wires
+# joined there - a solder dot nobody clicked, shorting two nets (needs
+# setup/patches/xschem-wire-corner-off-nets.patch). Now a click puts down the whole L up to the
+# click, and the corner keeps off other wires and pins.
+jdir = WA / f"libraries/{LIB}/jn"
+jdir.mkdir(exist_ok=True)
+jsch = jdir / "jn.sch"
+EXIST = [(100.0, -150.0, 100.0, 150.0), (-200.0, 0.0, 200.0, 0.0)]
+
+
+def wire_run(clicks, end="esc"):
+    """A fresh schematic with a vertical wire V (x=100) and a horizontal wire H (y=0); draw a wire
+    with w and a click at each point (schematic coordinates); end it with Esc or a double click.
+    Returns the new wires."""
+    jsch.write_text("v {xschem version=3.4.8RC file_version=1.3}\nG {}\nK {}\nV {}\nS {}\nE {}\n"
+                    "N 100 -150 100 150 {lab=V}\nN -200 0 200 0 {lab=H}\n")
+    send("xschem set_modify 0")
+    send(f"xschem load {{{jsch}}}; xschem zoom_box -250 -200 250 200; update; focus -force .drw; update")
+    pts = [to_px(*c) for c in clicks]
+    cmd = [f"event generate .drw <KeyPress-w> -x {pts[0][0]} -y {pts[0][1]}; update"]
+    prev = pts[0]
+    for x, y in pts:
+        cmd.append(move((prev[0] + x) // 2, (prev[1] + y) // 2))
+        cmd.append(click1(x, y))
+        prev = (x, y)
+    if end == "double":
+        cmd.append(f"event generate .drw <ButtonPress-1> -x {prev[0]} -y {prev[1]}; update; "
+                   f"event generate .drw <ButtonRelease-1> -x {prev[0]} -y {prev[1]} -state 256; update")
+    cmd.append(f"event generate .drw <KeyPress-Escape> -x {prev[0]} -y {prev[1]}; update; after 100")
+    send("; ".join(cmd))
+    send("xschem save")
+    found = re.findall(r"^N (\S+) (\S+) (\S+) (\S+)", jsch.read_text(), re.M)
+    return [w for w in (tuple(float(v) for v in f) for f in found) if w not in EXIST]
+
+
+def ends_on_existing(new):
+    on = lambda p, w: ((w[1] == w[3] == p[1] and min(w[0], w[2]) <= p[0] <= max(w[0], w[2])) or
+                       (w[0] == w[2] == p[0] and min(w[1], w[3]) <= p[1] <= max(w[1], w[3])))
+    return sorted({p for w in new for p in (w[:2], w[2:]) if any(on(p, e) for e in EXIST)})
+
+
+new = wire_run([(-40, 100), (100, 170)])
+check("an L whose corner would sit on another wire turns the other way (no junction)",
+      ends_on_existing(new) == [] and new, new)
+new = wire_run([(40, -120), (40, 120)])
+check("a wire crossing another one does not join it", ends_on_existing(new) == [] and new, new)
+new = wire_run([(-150, 60), (100, -100)])
+check("a click on a wire ends the wire there (the junction the user clicked)",
+      ends_on_existing(new) == [(100.0, -100.0)], new)
+new = wire_run([(-150, -60), (170, 110)])
+check("a click puts down the whole L up to the click",
+      [p for w in new for p in (w[:2], w[2:])].count((170.0, 110.0)) == 1 and ends_on_existing(new) == [], new)
+new = wire_run([(-150, -60), (170, 110)], end="double")
+check("a double click ends the wire at the click", len(new) == 2 and
+      [p for w in new for p in (w[:2], w[2:])].count((170.0, 110.0)) == 1, new)
 send("xschem set_modify 0")
 
 print("PASS xschem edit" if not failures else f"FAIL xschem edit: {', '.join(failures)}")

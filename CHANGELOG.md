@@ -21,6 +21,19 @@
   selected still selects just that one (setup/patches/xschem-command-click-keeps-selection.patch;
   setup/patches/xschem-tcl-api.patch: line coordinates for scripts, and scripted moves no longer
   dropped after such a click). Rerun `setup/install.sh` to rebuild xschem.
+- **Pins from the pin dialog** (`p`): a pin on the mouse also stayed drawn where it was made until
+  it was put down - with a bus expanded into one pin per bit, the next bit showed up on top of the
+  pin just placed, as if two pins were being placed at once. Only the pin on the mouse is drawn
+  now. In the symbol editor a pin's name and stub stayed behind where it was made (only the pin
+  square followed the mouse); they move with it now, and the pin lands on the 10 grid. Right after
+  drawing a wire, the click meant to put a pin down started another wire instead.
+- **No junctions where nobody clicked**: with orthogonal wiring a click put down only the first leg
+  of the L, ending at its corner - when that corner lay on another wire, or the click was on a
+  wire at the other end of the L, the wires were joined there by a solder dot, shorting two nets.
+  A click now puts down the whole L up to the click, and the corner keeps off other nets (the L
+  turns the other way; the rubber shows the route that will be placed). Wires that only cross stay
+  apart; a wire joins another where it ends on it by a click
+  (setup/patches/xschem-wire-corner-off-nets.patch; rerun `setup/install.sh`).
 
 ### Layout (KLayout)
 - **Selecting what lies underneath**: click the same spot again for the next object under the
