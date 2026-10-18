@@ -62,6 +62,12 @@
   xschem cannot find, or a schematic netlist with nothing in it, is an error with the reason (it
   used to fail inside the comparison). The hub shows why a DRC / LVS / PEX run failed.
 
+### Simulation (OLSim)
+- **Post-layout simulation of cells with bus pins**: PEX writes a bus pin such as `A[1]` as `A_1_`
+  in the extracted netlist, and the config view matched the PEX pins to the schematic's by their
+  raw names - so an extracted cell with any bus pin stopped the run with "the layout has pin(s)
+  A_1_ ... that its schematic does not". Pins now match the way PEX names them.
+
 ## 0.4.0-alpha.2 - 2026-10-09
 
 Editing improvements in xschem and KLayout, found by designing a custom cell with OpenLayout,

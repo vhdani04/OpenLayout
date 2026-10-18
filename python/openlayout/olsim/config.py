@@ -205,6 +205,11 @@ class Netlist:
         return nodes
 
 
+def _pin_key(name):
+    """A pin name as PEX writes it (pex.spice_name: A[1] -> A_1_), lower case, for matching."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", name).lower()
+
+
 def extracted_block(pex_text: str, cell: str, name: str, ports, globals_, source: str):
     """(text, notes): the cell's PEX subcircuit as `name`, its pins in the order `ports` (the
     schematic's; None keeps the PEX's own). Layout pins that the schematic lacks must be global
@@ -216,19 +221,19 @@ def extracted_block(pex_text: str, cell: str, name: str, ports, globals_, source
     notes = []
     header = sub.ports
     if ports is not None:
-        have = {p.lower(): p for p in sub.ports}
-        wanted = {p.lower() for p in ports}
-        extra = [p for p in sub.ports if p.lower() not in wanted]
+        have = {_pin_key(p): p for p in sub.ports}
+        wanted = {_pin_key(p) for p in ports}
+        extra = [p for p in sub.ports if _pin_key(p) not in wanted]
         bad = [p for p in extra if p.lower() not in globals_]
         if bad:
             raise ConfigError(f"{cell}: the layout has pin(s) {' '.join(bad)} that its schematic does not "
                               f"(schematic pins: {' '.join(ports)}) - fix the pin labels, or make those nets global")
-        missing = [p for p in ports if p.lower() not in have]
+        missing = [p for p in ports if _pin_key(p) not in have]
         if extra:
             notes.append(f"layout pin(s) {' '.join(extra)} connect to the global net(s)")
         if missing:
             notes.append(f"pin(s) {' '.join(missing)} are not in the layout (left open)")
-        header = [have.get(p.lower(), p) for p in ports]
+        header = [have.get(_pin_key(p), p) for p in ports]
     return sub.render(name, ports=header), notes
 
 

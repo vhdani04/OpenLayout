@@ -361,6 +361,16 @@ def test_extracted_with_global_supplies(tmp_path):
     assert c.y[0] > 0.65 and c.y[-1] < 0.05                    # three inverting stages: c follows not a
 
 
+def test_extracted_bus_pins():
+    """PEX writes bus pins as A_1_ (pex.spice_name); they still match the schematic's A[1]."""
+    from openlayout.olsim.config import extracted_block
+    pex = ".subckt dec A_1_ A_0_ X_1_ X_0_ VDD VSS\nR1 A_1_ X_1_ 10\nR2 A_0_ X_0_ 10\n.ends\n"
+    text, notes = extracted_block(pex, "dec", "dec", ["X[0]", "X[1]", "A[0]", "A[1]"], {"vdd", "vss"}, "dec.pex.spice")
+    assert text.splitlines()[0].split() == [".subckt", "dec", "X_0_", "X_1_", "A_0_", "A_1_"]
+    assert "R1 A_1_ X_1_ 10" in text
+    assert notes == ["layout pin(s) VDD VSS connect to the global net(s)"]
+
+
 def test_ac_and_dc_analyses(tmp_path):
     (tmp_path / "rc.sp").write_text("* RC\nV1 in 0 dc {vin} ac 1\nR1 in out {r}\nC1 out 0 1f\n")
     s = Setup(tests=[MTest("ac", {"netlist": "rc.sp"}, [Analysis("ac", True, {"start": "1meg", "stop": "1T"}),
