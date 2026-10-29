@@ -209,20 +209,25 @@ def _fastercap(argv, workdir, stop_on=None):
     return "".join(lines), proc.wait() == 0
 
 
-def capacitance_matrix(conductors, dbu, k, workdir, interfaces=(), window=None, max_edge=0.03, accuracy=0.05):
-    """Maxwell capacitance matrix (F) between the conductors, by FasterCap: (names, matrix, panels)."""
+def capacitance_matrix(conductors, dbu, k, workdir, interfaces=(), window=None, max_edge=0.03, accuracy=0.05,
+                       precond="-ap"):
+    """Maxwell capacitance matrix (F) between the conductors, by FasterCap: (names, matrix, panels).
+    precond: FasterCap's preconditioner, -ap (automatic two-level) or -pj (Jacobi); if its GMRES solve
+    does not converge, the solve is run again with the other one."""
     lst, names, npanels = write_fastcap(conductors, dbu, workdir, k, interfaces, window, max_edge)
-    out, ok = _fastercap(["FasterCap", "-b", f"-a{accuracy}", "-d0.5", "-m0.5", "-f2", "-ap", lst.name], workdir,
+    other = "-pj" if precond == "-ap" else "-ap"
+    out, ok = _fastercap(["FasterCap", "-b", f"-a{accuracy}", "-d0.5", "-m0.5", "-f2", precond, lst.name], workdir,
                          stop_on=GMRES_FAILED)
     if not ok:
-        print(f"    FasterCap ({Path(workdir).name}): GMRES did not converge with -ap; solving again with -pj", flush=True)
+        print(f"    FasterCap ({Path(workdir).name}): GMRES did not converge with {precond}; solving again with {other}",
+              flush=True)
         # With the automatic two-level preconditioner (-ap), FasterCap's iterative (GMRES) solve can stop
         # converging on large conductors (a window of the 4 x 8 2-bit SRAM array: residual 0.3-2.7 after
         # 1000 iterations), and its refinement loop then runs for hours. The same solve with the Jacobi
         # preconditioner converges (there: 6 min, totals within 0.9 % of -ps2048).
-        out, ok = _fastercap(["FasterCap", "-b", f"-a{accuracy}", "-d0.5", "-m0.5", "-f2", "-pj", lst.name], workdir,
+        out, ok = _fastercap(["FasterCap", "-b", f"-a{accuracy}", "-d0.5", "-m0.5", "-f2", other, lst.name], workdir,
                              stop_on=GMRES_FAILED)
-        out = "OpenLayout: GMRES did not converge with -ap; solved again with -pj\n" + out
+        out = f"OpenLayout: GMRES did not converge with {precond}; solved again with {other}\n" + out
     (Path(workdir) / "fastercap.log").write_text(out)
     if not ok or "Capacitance matrix is:" not in out:
         raise RuntimeError(f"FasterCap failed:\n{out[-1200:]}")

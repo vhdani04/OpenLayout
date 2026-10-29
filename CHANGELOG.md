@@ -91,9 +91,11 @@
 - **PEX no longer hangs on large windows**: with its automatic two-level preconditioner (`-ap`),
   FasterCap's GMRES solve stopped converging on the large conductors of some windows (6 of the 12
   kinds in a 4 x 8 array of 2-bit SRAM cells: residual 0.3-2.7 after 1000 iterations), and its
-  refinement loop then ran for 16 h without an answer. A solve whose GMRES fails is now stopped and
-  run again with the Jacobi preconditioner (`-pj`): about 6 min there, totals within 0.9 % of a
-  larger two-level preconditioner; on a window where `-ap` works, `-pj` agrees within 0.7 %.
+  refinement loop then ran for 16 h without an answer. Windowed solves now use the Jacobi
+  preconditioner (`-pj`) first - about 6 min there, totals within 0.9 % of a larger two-level
+  preconditioner; on a window where `-ap` works, `-pj` agrees within 0.7 % - and a solve whose GMRES
+  fails is stopped and run again with the other preconditioner instead of looping. Flat solves keep
+  `-ap`, as calibrated.
 - **Run PEX shows its progress**: OpenLayout > Run PEX runs in the background with a log window -
   each step and each window as its solve finishes, timed - with *Stop* (ends FasterCap too) and
   *Close*. KLayout no longer freezes for the whole run, and large blocks are solved up to 6 windows

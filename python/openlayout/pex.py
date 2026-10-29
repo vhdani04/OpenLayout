@@ -395,8 +395,10 @@ def windowed_capacitance(conds, plate, window, dbu, tech, work, substrate_net, g
     def solve(item):                     # one kind of window: its rows of the matrix, per net
         k, (key, (moved, box)) = item
         t = time.time()
+        # Jacobi first: with -ap, GMRES failed on most windows of a 2-bit SRAM array (each failure costs
+        # 10-30 min before the -pj solve); where both converge they agree within 0.7 %
         names, mat, _ = fieldsolver.capacitance_matrix(moved, dbu, diel["k"], work / "fastercap" / f"w{k}", ifaces,
-                                                       box, MAX_EDGE, ACCURACY)
+                                                       box, MAX_EDGE, ACCURACY, precond="-pj")
         res = {}
         for a, na in enumerate(names):
             if na[0] != "c":
