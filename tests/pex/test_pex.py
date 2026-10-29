@@ -1,6 +1,7 @@
 # Parasitic extraction (openlayout pex): library cells against the library's own reference extraction
 # (reference extraction netlists in $ASAP7_STDCELLS/CDL/xAct3D_extracted), the resistor networks, a
-# hierarchical layout, the capacitance-only mode and a post-layout simulation. Run with the venv:
+# hierarchical layout, the capacitance-only mode, a large block window by window and a post-layout
+# simulation. Run with the venv:
 #   PYTHONPATH=$OPENLAYOUT_HOME/python $OPENLAYOUT_ROOT/venv/bin/python tests/pex/test_pex.py
 import os
 import re
@@ -141,6 +142,46 @@ s = pex.extract(gds, "myinv", TMP / "myinv_c.spice", mode="c")
 lines, _ = netlist(TMP / "myinv_c.spice")
 check("--mode c: capacitances only", s["resistors"] == 0 and s["capacitors"] > 0
       and not any(l.startswith("R") for l in lines))
+
+# ---- a large block window by window: a 2 x 4 array of INVx1, odd row mirrored about the shared rail --
+# each window (one cell) is solved with 0.1-0.15 um of context; the 6 kinds of window (left / middle /
+# right, bottom / top row) once each - the totals within a few % of one solve of the whole array
+os.environ["XDG_CACHE_HOME"] = str(TMP / "cache")
+arr = kdb.Layout()
+arr.dbu = lib.dbu
+inv = arr.create_cell("INVx1_ASAP7_75t_R")
+for li in lib.layer_indexes():
+    inv.shapes(arr.layer(lib.get_info(li))).insert(src.shapes(li))
+top = arr.create_cell("invarray")
+w, hgt = src.dbbox().width(), 0.27
+for r in range(2):
+    for c in range(4):
+        t = kdb.DTrans(c * w, 0.0) if r == 0 else kdb.DTrans(kdb.DTrans.M0, kdb.DVector(c * w, 2 * hgt))
+        top.insert(kdb.DCellInstArray(inv.cell_index(), t))
+        for li in arr.layer_indexes():          # the inputs and outputs as A<r><c> / Y<r><c>, the rails of row 0
+            for sh in inv.shapes(li).each():
+                if sh.is_text() and (sh.text_string in ("A", "Y") or (r == 0 and c == 0)):
+                    tx = sh.dtext.transformed(t)
+                    tx.string = sh.text_string + (f"{r}{c}" if sh.text_string in ("A", "Y") else "")
+                    top.shapes(li).insert(tx)
+gds = TMP / "invarray.gds"
+arr.write(str(gds))
+check("windows: the array's pitch is the grid", pex.array_grid(gds, "invarray") is not None
+      and abs(pex.array_grid(gds, "invarray")[3] - hgt) < 1e-6, pex.array_grid(gds, "invarray"))
+flat = pex.extract(gds, "invarray", TMP / "invarray_flat.spice", mode="c", cap="flat")
+win = pex.extract(gds, "invarray", TMP / "invarray_win.spice", mode="c", cap="window")
+ws = win["windows"] or {}
+check("windows: 8 windows, 6 kinds solved once each", ws.get("windows") == 8 and ws.get("solved") == 6
+      and ws.get("alike") == 2, ws)
+errs = {p: win["total_fF"][p] / flat["total_fF"][p] - 1 for p in flat["total_fF"] if p[0] in "AY"}
+worst = max(errs, key=lambda p: abs(errs[p]))
+check(f"windows: totals as one solve's ({len(errs)} pins, worst {worst} {errs[worst] * 100:+.1f} %)",
+      len(errs) == 16 and all(abs(e) < 0.05 for e in errs.values()))
+again = pex.extract(gds, "invarray", TMP / "invarray_win2.spice", mode="c", cap="window")
+check("windows: a second run takes every window from the cache", (again["windows"] or {}).get("solved") == 0
+      and (again["windows"] or {}).get("cached") == 6
+      and all(abs(again["total_fF"][p] - v) < 1e-6 for p, v in win["total_fF"].items()), again["windows"])
+del os.environ["XDG_CACHE_HOME"]
 
 # ---- post-layout simulation: FO2 inverter, schematic vs extracted -------------------------------
 (TMP / "pre.spice").write_text(".subckt INVT A VDD VSS Y\nN1 Y A VSS VSS nmos_rvt l=20n nfin=3\n"

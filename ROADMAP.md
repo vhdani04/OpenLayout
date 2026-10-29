@@ -59,7 +59,8 @@ for ASAP7, then a full-custom 8-bit CPU.
 - [ ] Net-level cross-probing schematic <-> layout from the LVS cross-reference
 - [x] Parasitic extraction -> post-layout ngspice simulation: FasterCap 3D capacitances, R networks (docs/PEX.md)
 - [x] PEX calibrated against the library's reference extraction netlists (54 cells, delays within ~2 %)
-- [ ] PEX of large blocks (hierarchical: cells, then routing)
+- [x] PEX of large blocks: window by window, alike windows solved once and cached (docs/PEX.md)
+- [ ] PEX of large peripheries / routing: windows solved in parallel (--jobs), a subcircuit per kind of window
 
 ## Phase 6b — Simulation environment
 - [x] OLSim: tests, design variables / sweeps, corners, outputs + specs, parallel ngspice runs, histories (docs/OLSIM.md)

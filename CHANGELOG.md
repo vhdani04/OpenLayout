@@ -82,6 +82,21 @@
   drawn metal (OL.PIN), are reported. Batch: `pin_place.place_pins_file(gds, ["BL", "WL"], ...)`.
 
 ### Verification
+- **PEX of large blocks, window by window**: a single FasterCap solve takes time roughly
+  proportional to the square of the net count, so arrays of more than a few cells could not be
+  extracted. Above 48 nets, `openlayout pex` now solves the capacitances window by window. Each
+  window is the size of the array's cell and is solved with 0.1-0.15 µm of context. Alike windows
+  are solved once (`--jobs N` at a time) and cached in `~/.cache/openlayout/pex`: an array of any
+  size with mirrored rows needs 12 solves. On a 10T SRAM bit cell, single-threaded, a row of 8
+  takes 37 s instead of 5.4 min, and two rows 2.8 min instead of 16 min (54 s with `--jobs 6`).
+  Total capacitances per signal net are within 2 % of the flat solve. A 64 × 80 array (51 200
+  transistors) is extracted in about 15 min. Each window's capacitors go on the R-network nodes
+  inside it, and couplings under 0.5 % of the nets' totals go to ground, so large netlists stay
+  sparse. New options: `--cap auto|flat|window`, `--window`, `--halo`, `--jobs`, `--no-cache`;
+  see docs/PEX.md and `tests/pex/bench/windows.py`.
+- **PEX of large layouts no longer slows down quadratically**: device terminals and source /
+  drain diffusions are no longer looked up across the whole layout for every device. Before the
+  field solve, a 512-cell array took 4 min and now takes well under a minute.
 - **LVS of mixed-case nets**: KLayout upper-cases a `.subckt`'s pins, but the ASAP7 reader passed
   the schematic's transistor nets as written, so a net such as `X_bar` or `BL_Bar` became two nets
   and `purge` dropped the pin. The reader now upper-cases the transistors' nets too.

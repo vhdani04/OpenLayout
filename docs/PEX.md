@@ -8,6 +8,7 @@ simulation in ngspice.
 ```
 openlayout pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--rmodel reference|openroad]
                [--schematic cell.sch|cell.spice] [--keep]
+               [--cap auto|flat|window] [--window WX,WY] [--halo UM] [--jobs N] [--no-cache]
 ```
 
 - **From KLayout**: OpenLayout > Run PEX extracts the cell as edited, saved or not. It writes
@@ -20,6 +21,7 @@ openlayout pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--rmodel r
   - `--rmodel openroad` uses OpenROAD's metal resistances instead of the library's (see
     *Resistance*).
   - `--keep` keeps the working files (FasterCap input, LVSDB).
+  - `--cap`, `--window`, `--halo`, `--jobs`, `--no-cache`: large blocks (see *Large blocks*).
 
 The netlist is a `.subckt` with the cell's pins. When the cell has a schematic (`<cell>.sch` next
 to the layout, or `--schematic`), the pins follow its order. Library cells follow the CDL order.
@@ -36,9 +38,8 @@ X1 a vdd vss y INVx1_pex
 ```
 
 A standard cell takes about 3-6 s. About 2-3 s of that is the LVS extraction and the
-capacitance solve under 1-3 s. The field solver treats the whole cell as one 3D problem, so large
-blocks scale worse. A whole CPU needs a hierarchical approach (cells, then routing), which is
-future work.
+capacitance solve under 1-3 s. Up to 48 nets, the field solver treats the whole cell as one 3D
+problem. Larger blocks are solved window by window (see *Large blocks*).
 
 ## How it works
 
@@ -183,6 +184,83 @@ Examples (total capacitance per pin, fF):
     nets (`noxref_*`): not one capacitor in its netlists touches one. So there the difference is
     the reference leaving out real wiring (for AOI21's PMOS stack node, 0.14 fF of M1 / LISD).
 
+## Large blocks: window by window
+
+One FasterCap solve of a whole block takes time roughly proportional to the square of its net count.
+A 10T bit cell (16 nets) takes 3 s, a row of 8 (107 nets) 5 min, two rows (197 nets) 16 min, and an
+array of thousands of cells would not finish. Above 48 nets, `openlayout pex` therefore solves the
+capacitances window by window. `--cap window` forces this mode and `--cap flat` turns it off.
+
+1. **Windows.** The block is cut into a grid of windows the size of the cell placed most often (an
+   array's bit cell), or `--window WX,WY` µm. The grid is shifted so that its edges cut across
+   wires rather than along them. This matters for mirrored rows, which put the shared rail exactly
+   on the cell edge: a rail cut along its length cost VDD 5 % of accuracy. The outer windows reach
+   to the block's edges.
+2. **One solve per window, with its context.** Each window is solved with at least `--halo`
+   (0.1 µm) of context around it. Each axis's halo is widened by up to 50 nm, so that the context's
+   outer edges also cross wires. A shape cut along its length there leaves a sliver that shields
+   too little: on the narrow INVx1, a plain 0.1 µm halo came out 5.7 % low. The conductors are:
+   - the pieces of the nets inside the window;
+   - the same nets' pieces in the context, 5 nm apart from the window's;
+   - the substrate under both.
+
+   The window's rows of the capacitance matrix, with each net's pieces summed, are its share: its
+   ground capacitance and its coupling to every net, inside or outside the window. These rows are
+   exact for the window's conductors, because the context is at 0 V whenever one of them is
+   driven. A coupling between nets of two windows is the mean of what the two windows see.
+3. **Alike windows are solved once.** A window's key is its shapes and its context's, moved to the
+   origin, with the nets numbered by their shapes. In an array most windows are alike:
+   - a row of cells has 3 kinds of window (the two ends and the middle);
+   - any larger array with mirrored rows has 12.
+
+   The solve count stays the same as the array grows. `--jobs N` runs N solves at a time. Results
+   are kept in `~/.cache/openlayout/pex` (`--no-cache` solves everything again), so a block
+   extracted again solves only the windows that changed.
+4. **Capacitors where they are.** Each window's share goes onto the nodes of the R networks inside
+   the window, by wire area, rather than being spread along the whole net (a word line no longer
+   carries every cell's coupling at every node). Couplings under 0.5 % of both nets' totals become
+   ground capacitance, which keeps the totals and keeps large netlists sparse.
+
+Measured on a 10T compute-in-memory bit cell (SRAMCIMsbc, 0.54 × 0.27 µm), tiled with odd rows
+mirrored. The flat times are FasterCap on 4 threads. "Windowed" is the whole `openlayout pex`,
+single-threaded with one solve at a time (FasterCap on one thread is some 1.8 times slower than on
+four). The percentages compare each net's total capacitance against flat: the mean and the largest
+error over the signal nets, labelled and unlabelled, VDD included.
+
+| array | nets | flat: FasterCap | windows / solved | windowed | `--jobs 6` | vs flat | capacitors flat → windowed |
+|---|---|---|---|---|---|---|---|
+| 1 × 8 | 107 | 322 s | 8 / 3 | 37 s | | mean 0.4 %, max 1.5 % | 3684 → 1814 |
+| 2 × 8 | 197 | 971 s | 16 / 6 | 166 s | 54 s | mean 0.5 %, max 1.7 % | 17662 → 4974 |
+| 4 × 8 | 377 | stopped after 66 h ‡ | 32 / 12 | 539 s | 205 s | — | — → 13362 |
+| 64 × 80 | 56609 | — | 5120 / 12 | | 9-15 min † | | 2.4 M capacitors |
+
+‡ The flat 4 × 8 solve (FasterCap -a0.05) was stopped unfinished after 66 h and more than 70
+CPU-hours: 1.9 times the nets of 2 × 8 had cost more than 9 times the CPU time.
+
+† 0.1-0.15 µm halo, FasterCap on 2 threads, run beside other jobs. The 64 × 80 array is 51 200
+transistors: the whole RC extraction, 288 000 resistors, peaked at 2.9 GB. Its LVS extraction took
+40 s and its R networks 70-100 s.
+
+- **VSS is left out.** Its total depends most on the substrate around the block, and it is ground
+  in a simulation. VSS comes out some 7-9 % under flat, because the flat solve's substrate plate
+  reaches 0.3 µm past the block on every side.
+- **The windowed netlist simulates faster.** The 1 × 8 netlist took ngspice 8 s against 15 s for
+  the flat one (6 ns transient).
+- **A flat netlist of 50 000 transistors is too much for ngspice.** On the 64 × 80 netlist,
+  ngspice had not started its transient after 31 min at 4.8 GB. Simulating at this size needs a
+  subcircuit per kind of window, fewer coupling capacitors, or a faster simulator.
+
+### What is left
+
+- **Netlists for simulation at scale.** One subcircuit per kind of window, instanced per window
+  (the R networks cross windows, so they would be cut at the window edges), and a coarser coupling
+  threshold for large blocks.
+- **Periphery and routing.** Windows away from the array (adders, drivers, top-level routing) are
+  rarely alike, so each costs a solve. That is fine for some tens of them. For a large periphery:
+  windows the size of the periphery's cells (or a fixed `--window`) and `--jobs`.
+- **Delays flat vs windowed.** A post-layout simulation that switches the cells: the 1 × 8
+  testbench used so far never switches its output.
+
 ## Speed
 
 This is the capacitance solve alone (FasterCap on 4 cores). The whole `openlayout pex` adds about
@@ -216,9 +294,13 @@ This is the capacitance solve alone (FasterCap on 4 cores). The whole `openlayou
   - the output network against the reference's, and `--rmodel openroad` below it;
   - a hierarchical layout (placed cell, its own labels), giving the same capacitances as the cell;
   - `--mode c`;
+  - a 2 × 4 array of INVx1 window by window: 6 kinds of window solved once each, totals within
+    5 % of a flat solve, and a second run taking every window from the cache;
   - a post-layout ngspice simulation in which the parasitics slow the inverter down.
 - `tests/pex/bench/`: the benchmark and calibration scripts above (minutes to hours, not in
   doctor).
+- `tests/pex/bench/windows.py`: a cell tiled into an array, extracted window by window and
+  (`--flat`) in one solve, with the totals compared.
 - `tests/klayout/test_lvs_gui.py`: OpenLayout > Run PEX on a workarea cell.
 - `tests/python/test_hub.py`: the hub's PEX button.
 
