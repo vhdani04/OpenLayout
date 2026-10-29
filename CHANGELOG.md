@@ -39,6 +39,12 @@
   (setup/patches/xschem-wire-corner-off-nets.patch; rerun `setup/install.sh`).
 
 ### Layout (KLayout)
+- **Generate Layout: Instances and Pins tabs**: the form now lists the instances too, one row per
+  kind with its count (*b2SRAMsbc x32*); untick a kind to leave it out, or double-click it to pick
+  single instances. Left-out instances are not placed. Both tabs have *Select All* / *Deselect All*,
+  so a 96-pin array no longer means unticking pins one by one.
+- **The LSW is on the left**: the layer panel docks on the left side; Select and Connectivity stay on
+  the right.
 - **Layer grid** (*OpenLayout ▸ Show Layer Grid…*, also on the toolbar): tick layers in a window
   and their legal tracks are drawn over the layout - fins (27 nm), gates (54 nm), the M1-M3 router
   tracks, the M4-M7 DRC track grid - as light lines, one colour per layer, that follow zoom and pan

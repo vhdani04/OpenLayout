@@ -212,8 +212,8 @@ class OpenLayoutUI:
         self.nets = NetsPanel(mw, UI, on_update=self.update_layout_file)
         self.net_labels = net_labels.NetLabels(mw)
         self.select = SelectPanel(mw, UI)
-        mw.splitDockWidget(self.lsw.dock, self.nets.dock, pya.Qt.Vertical)
-        mw.splitDockWidget(self.lsw.dock, self.select.dock, pya.Qt.Vertical)   # LSW, Select, Connectivity
+        mw.addDockWidget(pya.Qt.LeftDockWidgetArea, self.lsw.dock)              # layers on the left
+        mw.splitDockWidget(self.select.dock, self.nets.dock, pya.Qt.Vertical)   # right: Select, Connectivity
         self.build_menu()
         try:
             apply_keys(mw)    # again: the OpenLayout menu entries (m) exist now
@@ -245,7 +245,8 @@ class OpenLayoutUI:
             choice = generate_form.ask_generate(self.mw, info["cell"].name, table)
             if choice is None:
                 return None
-            options = {"pins": choice["pins"], "frame": choice["frame"], "info": info}
+            options = {"pins": choice["pins"], "frame": choice["frame"], "info": info,
+                       "instances": choice.get("instances")}
         if opened is not None:
             index, cv = opened
             self.mw.select_view(index)
@@ -274,6 +275,8 @@ class OpenLayoutUI:
         parts = [f"{len(report['added'])} added", f"{len(report['updated'])} updated"]
         if report["pins_added"]:
             parts.append(f"{len(report['pins_added'])} pins")
+        if report.get("left_out"):
+            parts.append(f"{len(report['left_out'])} left out")
         if report["extra"]:
             parts.append(f"not in schematic: {', '.join(report['extra'])}")
         if report["skipped"]:

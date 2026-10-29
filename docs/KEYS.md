@@ -192,10 +192,16 @@ gates) in the same undo step.
 
 **Generating from the schematic** (KLayout only: *OpenLayout ▸ Generate / Update Layout from
 Schematic*, or *Update from Schematic* in the Connectivity panel) first opens the **Generate Layout**
-form: one row per pin (the ports, then the supplies the
+form, with two tabs. **Instances**: one row per kind of instance - a sub-cell, or a transistor model
+with its fins and fingers - and its count (an array of 32 bit cells is one row, *b2SRAMsbc x32*).
+Untick a row to leave all of those out; double-click it for a window listing them one by one, to
+place only some (the row then shows a partial tick). Every instance starts ticked; left-out
+instances are not placed, and ones already in the layout are left as they are. **Pins**: one row
+per pin (the ports, then the supplies the
 cell uses) with *Create*, direction, metal layer and size; *Layer for the checked pins* + *Apply*
 sets them all at once. Pins the layout has already start unchecked, and so do VDD / VSS when the
-standard-cell frame's rails provide them. A pin is a square of its layer's minimum width (18 nm on
+standard-cell frame's rails provide them. Both tabs (and the instance window) have *Select All* /
+*Deselect All*. A pin is a square of its layer's minimum width (18 nm on
 M1-M3, 24 on M4/M5, 32 on M6/M7, 40 on M8/M9) on the pin purpose, with the label - no drawing shape
 under it. The form also offers the standard-cell frame / boundary when the cell has none.
 It puts the cell's boundary corner at (0, 0): a transistor-level cell
@@ -269,7 +275,7 @@ Transistors* packs the selection into chains left to right. In a transistor's pr
 *Contact on the shared left/right diffusion* can be switched off for the inner node of a series
 stack (as in the library's NAND2).
 
-The **LSW** (right side) is the only layer panel. *All layers* / *Used layers* tabs (used = has
+The **LSW** (left side) is the only layer panel. *All layers* / *Used layers* tabs (used = has
 shapes in the current cell). Click a layer to make it the current drawing layer, untick to hide it.
 **AV** shows every layer; **NV** hides every layer except the current one. Selectability, as in
 Virtuoso: right-click a layer to **lock** it (clicks in the layout skip it; locked layers are dimmed),
@@ -277,7 +283,7 @@ Virtuoso: right-click a layer to **lock** it (clicks in the layout skip it; lock
 layer, are left out too) - e.g. NS on GCUT: clicks and box selections take only gate cuts. Hidden
 layers can't be selected either.
 
-The **Select** window (*OpenLayout ▸ Show Select*, under the LSW) sets which object types can be
+The **Select** window (*OpenLayout ▸ Show Select*, right side, above Connectivity) sets which object types can be
 selected: instances (transistors, cells), vias, shapes, pins, labels, the boundary and the
 standard-cell frame (rails, fins, GCUT, implants), with *All* / *Shapes only* presets, the number of
 locked layers and *Unlock all layers*. Clicks, box selections and the hover highlight all follow it;

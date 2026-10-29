@@ -287,16 +287,41 @@ def pin_table(info: dict, layout: pya.Layout | None = None) -> dict:
     net = info["net"]
     pins = [{"name": p, "dir": net["dirs"].get(p, "B"), "supply": p in net["supplies"], "exists": p in have}
             for p in net["ports"] + net["supplies"]]
-    return {"pins": pins, "frame": top is not None and has_frame(top), "has_mos": info["has_mos"]}
+    placed = set()
+    if top is not None:
+        placed = {instance_name(i) for i in top.each_inst()}
+    instances = [dict(i, exists=i["name"] in placed) for i in schematic_instances(net)]
+    return {"pins": pins, "instances": instances, "frame": top is not None and has_frame(top),
+            "has_mos": info["has_mos"]}
+
+
+def schematic_instances(net: dict) -> list:
+    """The layout instances the schematic asks for, in the order generate() places them:
+    [{"name", "type"}] - type is what the Generate form groups by (the sub-cell's name, or a
+    transistor's model with its fins and fingers). A transistor with m > 1 is m instances."""
+    out = []
+    for dev in sorted(net["devices"], key=lambda d: _natural(d["name"])):
+        if dev["model"].partition("_")[0] not in ("nmos", "pmos"):
+            continue
+        nfin = int(float(dev["params"].get("nfin", 1)))
+        nf = int(float(dev["params"].get("nf", 1)))
+        m = int(float(dev["params"].get("m", 1)))
+        kind = f"{dev['model']} nfin={nfin} nf={nf}"
+        out += [{"name": dev["name"] if m == 1 else f"{dev['name']}.{k + 1}", "type": kind} for k in range(m)]
+    for x in sorted(net["cells"], key=lambda c: _natural(c["name"])):
+        out.append({"name": x["name"], "type": x["cell"]})
+    return out
 
 
 def generate(schematic, layout: pya.Layout | None = None, pins: dict | None = None, frame: bool = True,
-             info: dict | None = None) -> dict:
+             info: dict | None = None, instances: set | None = None) -> dict:
     """Create or update the layout view of the schematic's cell. If `layout` is given (a layout
     open in the GUI) it is edited in place and not saved; otherwise the .gds file is written.
     pins: {pin name: metal} - the pins to create and their layer (as chosen in the Generate form);
     None creates every missing pin on M1. frame: create the standard-cell frame / boundary at the
-    origin if the cell has none."""
+    origin if the cell has none. instances: the names of the instances to place or update (as
+    chosen in the form); None means all. The others are left as they are (missing ones are not
+    placed), and the schematic link still lists every instance."""
     info = info or read_schematic(schematic)
     sch, wa, cell, gds, net, has_mos = (info[k] for k in ("sch", "wa", "cell", "gds", "net", "has_mos"))
 
@@ -310,7 +335,13 @@ def generate(schematic, layout: pya.Layout | None = None, pins: dict | None = No
     else:
         row = has_frame(top)
     report = {"added": [], "updated": [], "unchanged": [], "extra": [], "skipped": [], "pins_added": [],
-              "warnings": []}
+              "warnings": [], "left_out": []}
+
+    def wanted(name):
+        if instances is None or name in instances:
+            return True
+        report["left_out"].append(name)
+        return False
     conn = {"version": 1, "schematic": sch.name, "generated": time.strftime("%Y-%m-%d %H:%M:%S"),
             "ports": net["ports"], "pins": {p: net["dirs"].get(p, "B") for p in net["ports"] + net["supplies"]},
             "instances": {}}
@@ -335,6 +366,8 @@ def generate(schematic, layout: pya.Layout | None = None, pins: dict | None = No
             seen.add(name)
             conn["instances"][name] = {"kind": "mos", "type": kind, "model": dev["model"], "params": params,
                                        "terminals": terms}
+            if not wanted(name):
+                continue
             inst = existing.get(name)
             if inst is not None:
                 cur = inst.pcell_parameters_by_name()
@@ -374,6 +407,8 @@ def generate(schematic, layout: pya.Layout | None = None, pins: dict | None = No
             spec = {"kind": "cell", "lib": "", "cell": cname}
         spec["terminals"] = dict(zip(ports, x["nets"]))
         conn["instances"][name] = spec
+        if not wanted(name):
+            continue
         inst = existing.get(name)
         if inst is not None:
             if inst.cell_index != target.cell_index():
