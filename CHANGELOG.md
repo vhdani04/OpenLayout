@@ -88,6 +88,22 @@
   drawn metal (OL.PIN), are reported. Batch: `pin_place.place_pins_file(gds, ["BL", "WL"], ...)`.
 
 ### Verification
+- **PEX no longer hangs on large windows**: with its automatic two-level preconditioner (`-ap`),
+  FasterCap's GMRES solve stopped converging on the large conductors of some windows (6 of the 12
+  kinds in a 4 x 8 array of 2-bit SRAM cells: residual 0.3-2.7 after 1000 iterations), and its
+  refinement loop then ran for 16 h without an answer. A solve whose GMRES fails is now stopped and
+  run again with the Jacobi preconditioner (`-pj`): about 6 min there, totals within 0.9 % of a
+  larger two-level preconditioner; on a window where `-ap` works, `-pj` agrees within 0.7 %.
+- **Run PEX shows its progress**: OpenLayout > Run PEX runs in the background with a log window -
+  each step and each window as its solve finishes, timed - with *Stop* (ends FasterCap too) and
+  *Close*. KLayout no longer freezes for the whole run, and large blocks are solved up to 6 windows
+  at a time.
+- **Windows the size of the array's cell, not of its vias**: the window grid followed the cell placed
+  most often, so an array with a via per cell (INT8_ARRAY: 64 V3 cells, 32 bit cells) was cut into
+  via-sized windows - 1 564 windows of 1 560 kinds instead of 32 of 12. It now follows the cell that
+  covers the most area.
+- **`openlayout pex` passes `--cap`, `--window`, `--halo`, `--jobs` and `--no-cache` on**: the command
+  rejected them ("unknown option"); only `python -m openlayout.pex` took them.
 - **PEX of large blocks, window by window**: a single FasterCap solve takes time roughly
   proportional to the square of the net count, so arrays of more than a few cells could not be
   extracted. Above 48 nets, `openlayout pex` now solves the capacitances window by window. Each

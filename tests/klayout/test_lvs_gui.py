@@ -99,12 +99,15 @@ check("a library cell without a schematic is checked against the CDL", "RESULT L
 # OpenLayout > Run PEX on the same cell (as edited): <cell>.pex.spice next to the layout
 check("Run PEX is in the OpenLayout menu", mw.menu().is_valid("openlayout_menu.run_pex"))
 mw.select_view(0)
-res = pex.run_current(mw)
+res = pex.run_current(mw, wait=True)
 net = cell_dir / "inv.pex.spice"
 check("Run PEX: a post-layout netlist next to the layout, capacitance per pin",
       res is not None and res["devices"] == 2 and net.is_file() and res["total_fF"].get("A", 0) > 0.1
       and ".subckt inv " in net.read_text(), res)
 state = wa.cell_state(inv_cell).get("pex", {})
+text = pex._last.log.toPlainText() if pex._last else ""
+check("Run PEX shows its log: the command and each step, timed", "openlayout pex" in text and "[00:" in text
+      and "capacitance: FasterCap" in text and "RESULT PEX inv" in text, text[-400:])
 check("Run PEX records its result too", state.get("ok") is True and "2 transistors" in state.get("detail", ""), state)
 
 print("PASS lvs_gui" if not failures else f"FAIL lvs_gui: {', '.join(failures)}")

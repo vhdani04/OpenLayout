@@ -182,8 +182,9 @@ def capacitance(lvsdb, cell, work, tech, substrate_net, cap="auto", grid=None, h
 
 # ---- 2b. windowed capacitance (large blocks) ------------------------------------------------------
 def array_grid(gds, cell):
-    """(x0, y0, px, py) um: origin and pitch of the cell placed most often in `cell` (an array's bit
-    cell) - the windows of windowed_capacitance - or None when no cell is placed twice. The pitch is
+    """(x0, y0, px, py) um: origin and pitch of the cell that covers the most of `cell` (an array's bit
+    cell: placed often and large - not the vias on top of it, placed more often but tiny) - the windows
+    of windowed_capacitance - or None when no cell is placed twice. The pitch is
     that of the placed cells' boxes, the origin that of their placements (rows mirrored about a
     shared rail have it on the rail)."""
     layout = kdb.Layout()
@@ -197,7 +198,8 @@ def array_grid(gds, cell):
         for t in inst.cell_inst.each_cplx_trans():
             boxes[inst.cell_index].append(bbox.transformed(t))
             origins[inst.cell_index].append(t.disp)
-    ci = max(boxes, key=lambda c: len(boxes[c]), default=None)
+    placed = [c for c in boxes if len(boxes[c]) >= 2]
+    ci = max(placed, key=lambda c: sum(b.area() for b in boxes[c]), default=None)
     best = boxes[ci] if ci is not None else []
     if len(best) < 2:
         return None
@@ -392,6 +394,7 @@ def windowed_capacitance(conds, plate, window, dbu, tech, work, substrate_net, g
 
     def solve(item):                     # one kind of window: its rows of the matrix, per net
         k, (key, (moved, box)) = item
+        t = time.time()
         names, mat, _ = fieldsolver.capacitance_matrix(moved, dbu, diel["k"], work / "fastercap" / f"w{k}", ifaces,
                                                        box, MAX_EDGE, ACCURACY)
         res = {}
@@ -405,16 +408,20 @@ def windowed_capacitance(conds, plate, window, dbu, tech, work, substrate_net, g
             res[int(na[1:])] = {"ground": sum(mat[a]), "to": {kk: -v for kk, v in to.items()}}
         if cache:
             (cdir / f"{key}.json").write_text(json.dumps(res))
-        return key, res, len(names)
+        return key, res, len(names), time.time() - t
 
     nsolve = len(pending)
     if pending:
         log(f"    {nsolve} kinds of window to solve, {max(1, jobs)} at a time")
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    ts = time.time()
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:     # FasterCap runs as its own process
-        for key, res, nc in pool.map(solve, enumerate(pending.items())):
+        futures = [pool.submit(solve, item) for item in enumerate(pending.items())]
+        for done, f in enumerate(as_completed(futures), 1):
+            key, res, nc, dt = f.result()
             solved[key] = res
             biggest = max(biggest, nc)
+            log(f"    window {done}/{nsolve} solved: {nc} conductors in {dt:.0f} s ({time.time() - ts:.0f} s so far)")
 
     # sum the windows' shares: self capacitance and directed couplings per net
     self_c, directed, has_core = defaultdict(float), defaultdict(float), set()

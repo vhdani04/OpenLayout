@@ -168,6 +168,21 @@ gds = TMP / "invarray.gds"
 arr.write(str(gds))
 check("windows: the array's pitch is the grid", pex.array_grid(gds, "invarray") is not None
       and abs(pex.array_grid(gds, "invarray")[3] - hgt) < 1e-6, pex.array_grid(gds, "invarray"))
+
+# vias placed on an array outnumber its cells: the grid is still the cells' (the vias are tiny)
+_ly = kdb.Layout()
+_top, _big, _via = _ly.create_cell("arr"), _ly.create_cell("bit"), _ly.create_cell("via")
+_big.shapes(_ly.layer(30, 0)).insert(kdb.DBox(0, 0, 0.756, 0.27))
+_via.shapes(_ly.layer(35, 0)).insert(kdb.DBox(0, 0, 0.018, 0.024))
+for _c in range(4):
+    _top.insert(kdb.DCellInstArray(_big.cell_index(), kdb.DTrans(_c * 0.756, 0)))
+    for _k in range(3):
+        _top.insert(kdb.DCellInstArray(_via.cell_index(), kdb.DTrans(_c * 0.756 + 0.1 + 0.2 * _k, 0.1)))
+_gds = Path(tempfile.mkdtemp()) / "arr.gds"
+_ly.write(str(_gds))
+_g = pex.array_grid(_gds, "arr")
+check("windows: the grid is the array's cell, not the vias placed on it (more of them, but tiny)",
+      _g is not None and abs(_g[2] - 0.756) < 1e-6, _g)
 flat = pex.extract(gds, "invarray", TMP / "invarray_flat.spice", mode="c", cap="flat")
 win = pex.extract(gds, "invarray", TMP / "invarray_win.spice", mode="c", cap="window")
 ws = win["windows"] or {}

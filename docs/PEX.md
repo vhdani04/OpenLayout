@@ -14,6 +14,11 @@ openlayout pex <layout.gds> [--cell NAME] [--out FILE] [--mode rc|c] [--rmodel r
 - **From KLayout**: OpenLayout > Run PEX extracts the cell as edited, saved or not. It writes
   `<cell>.pex.spice` next to the layout file and shows the total capacitance per pin. The result
   also goes to the cell's Checks list in the hub.
+  It runs in the background, with a window that logs each step and, for a large block, each window
+  as its solve finishes (with the time since the start); *Stop* ends the run and its FasterCap
+  processes, *Close* hides the window while the run goes on (Run PEX shows it again). KLayout stays
+  usable meanwhile, and large blocks are solved several windows at a time (`--jobs`: all cores but
+  two, at most 6).
 - **From the hub**: the PEX button (Tools > PEX, or `ol.pex(lib, cell)` in the CIW) writes
   `verify/<lib>/<cell>/<cell>.pex.spice`. The summary goes to the CIW and the cell's Checks list.
 - **From the shell**: the default output is `<cell>.pex.spice` next to the layout.
@@ -191,8 +196,8 @@ A 10T bit cell (16 nets) takes 3 s, a row of 8 (107 nets) 5 min, two rows (197 n
 array of thousands of cells would not finish. Above 48 nets, `openlayout pex` therefore solves the
 capacitances window by window. `--cap window` forces this mode and `--cap flat` turns it off.
 
-1. **Windows.** The block is cut into a grid of windows the size of the cell placed most often (an
-   array's bit cell), or `--window WX,WY` µm. The grid is shifted so that its edges cut across
+1. **Windows.** The block is cut into a grid of windows the size of the cell that covers most of
+   it (an array's bit cell, not the vias placed on it), or `--window WX,WY` µm. The grid is shifted so that its edges cut across
    wires rather than along them. This matters for mirrored rows, which put the shared rail exactly
    on the cell edge: a rail cut along its length cost VDD 5 % of accuracy. The outer windows reach
    to the block's edges.

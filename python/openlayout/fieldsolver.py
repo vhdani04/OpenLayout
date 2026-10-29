@@ -192,15 +192,41 @@ def parse_matrix(log_text):
     return tags, rows
 
 
+GMRES_FAILED = "not converging"     # FasterCap: its iterative (GMRES) solve failed
+
+
+def _fastercap(argv, workdir, stop_on=None):
+    """Run FasterCap: (output, ok). With stop_on, it is stopped as soon as a line contains that text
+    (ok = False)."""
+    proc = subprocess.Popen(argv, cwd=workdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    lines = []
+    for line in proc.stdout:
+        lines.append(line)
+        if stop_on and stop_on in line:
+            proc.kill()
+            proc.wait()
+            return "".join(lines), False
+    return "".join(lines), proc.wait() == 0
+
+
 def capacitance_matrix(conductors, dbu, k, workdir, interfaces=(), window=None, max_edge=0.03, accuracy=0.05):
     """Maxwell capacitance matrix (F) between the conductors, by FasterCap: (names, matrix, panels)."""
     lst, names, npanels = write_fastcap(conductors, dbu, workdir, k, interfaces, window, max_edge)
-    argv = ["FasterCap", "-b", f"-a{accuracy}", "-d0.5", "-m0.5", "-f2", "-ap", lst.name]
-    res = subprocess.run(argv, cwd=workdir, capture_output=True, text=True)
-    (Path(workdir) / "fastercap.log").write_text(res.stdout)
-    if res.returncode != 0 or "Capacitance matrix is:" not in res.stdout:
-        raise RuntimeError(f"FasterCap failed:\n{res.stdout[-800:]}{res.stderr[-400:]}")
-    tags, rows = parse_matrix(res.stdout)
+    out, ok = _fastercap(["FasterCap", "-b", f"-a{accuracy}", "-d0.5", "-m0.5", "-f2", "-ap", lst.name], workdir,
+                         stop_on=GMRES_FAILED)
+    if not ok:
+        print(f"    FasterCap ({Path(workdir).name}): GMRES did not converge with -ap; solving again with -pj", flush=True)
+        # With the automatic two-level preconditioner (-ap), FasterCap's iterative (GMRES) solve can stop
+        # converging on large conductors (a window of the 4 x 8 2-bit SRAM array: residual 0.3-2.7 after
+        # 1000 iterations), and its refinement loop then runs for hours. The same solve with the Jacobi
+        # preconditioner converges (there: 6 min, totals within 0.9 % of -ps2048).
+        out, ok = _fastercap(["FasterCap", "-b", f"-a{accuracy}", "-d0.5", "-m0.5", "-f2", "-pj", lst.name], workdir,
+                             stop_on=GMRES_FAILED)
+        out = "OpenLayout: GMRES did not converge with -ap; solved again with -pj\n" + out
+    (Path(workdir) / "fastercap.log").write_text(out)
+    if not ok or "Capacitance matrix is:" not in out:
+        raise RuntimeError(f"FasterCap failed:\n{out[-1200:]}")
+    tags, rows = parse_matrix(out)
     # FasterCap names the conductors g<n>_<name>; ours are c<index>; coordinates are in um
     order = [int(re.search(r"c(\d+)$", t).group(1)) for t in tags]
     mat = [[0.0] * len(names) for _ in names]
