@@ -10,7 +10,8 @@ from pathlib import Path
 import pya
 
 from . import generate as gen
-from . import align_tool, axes, drc, drd, frame_form, generate_form, lvs, mirror, pex, stdcell, vias
+from . import align_tool, axes, connectivity, drc, drd, frame_form, generate_form, lvs, mirror, pex
+from . import layer_grid, pin_place, pin_place_form, stdcell, vias
 from .drag_move import DragMoveFactory, after_move_hooks, move_under_mouse, stretch_under_mouse
 from .lsw import LSW
 from .nets_panel import NetsPanel
@@ -63,6 +64,9 @@ PREFS = {
     "edit-move-angle-mode": "ortho",
     # Clicking on a transistor/instance selects the instance, not a shape inside it.
     "edit-top-level-selection": "true",
+    # A moved / copied instance shows its first 100 shapes (KLayout: 1000) - moving an array of
+    # bit cells drew every shape of every cell at every mouse move.
+    "edit-max-shapes-of-instances": "100",
     # The LSW replaces KLayout's layer panel and layer toolbox (one layer panel only).
     "show-layer-panel": "false",
     "show-layer-toolbox": "false",
@@ -338,6 +342,8 @@ class OpenLayoutUI:
             ("keys", self.action("Keyboard Shortcuts…", self.show_keys)),
             ("axes", self.axes_action()),
             ("drd", self.drd_action()),
+            ("layer_grid", self.action("Show Layer Grid…", lambda: layer_grid.open_form(self.mw, UI))),
+            ("clear_layer_grid", self.action("Clear Layer Grid", layer_grid.clear)),
             (None, None),
             ("move", self.action("Move (object under the mouse)", move_under_mouse)),
             ("stretch", self.action("Stretch (edge under the mouse)", stretch_under_mouse)),
@@ -345,6 +351,7 @@ class OpenLayoutUI:
             ("mirror_x", self.action("Mirror Selection over X Axis", lambda: self.on_selection("mirror_x"))),
             ("mirror_y", self.action("Mirror Selection over Y Axis", lambda: self.on_selection("mirror_y"))),
             ("via", self.action("Create Via…", vias.create_via)),
+            ("place_pins", self.action("Place Pins…", self.place_pins_dialog)),
             (None, None),
             ("stdcell_frame", self.action("Standard-Cell Frame…", self.frame_dialog)),
             ("chain", self.action("Chain Selected Transistors", self.chain_selected)),
@@ -354,6 +361,9 @@ class OpenLayoutUI:
                 menu.insert_separator("openlayout_menu.end", f"sep{i}")
             else:
                 menu.insert_item("openlayout_menu.end", name, action)
+        # the toolbar button opens the same Layer Grid window
+        if menu.is_valid("@toolbar") and "@toolbar.openlayout_layer_grid" not in menu.items("@toolbar"):
+            menu.insert_item("@toolbar.end", "openlayout_layer_grid", menu.action("openlayout_menu.layer_grid"))
 
     def axes_action(self):
         a = self.action("Show Axes", lambda: axes.show(a.is_checked()))
@@ -379,6 +389,35 @@ class OpenLayoutUI:
         a.checkable = True
         a.checked = drd.enabled
         return a
+
+    # ---- pins ----------------------------------------------------------------------------------
+    def place_pins_dialog(self):
+        """The Place Pins window (pin_place_form.py): whole buses at once, one undo step."""
+        view = self.mw.current_view()
+        cv = view.active_cellview() if view else None
+        if cv is None or not cv.is_valid() or cv.cell is None or not view.is_editable():
+            pya.MessageBox.info("OpenLayout", "Open the (editable) layout of the cell first.", pya.MessageBox.Ok)
+            return
+        conn = connectivity.load_conn(cv.filename()) if cv.filename() else None
+        if conn is None:
+            pya.MessageBox.info("OpenLayout", "This layout has no schematic link (<cell>.ol.json): generate it "
+                                "from its schematic first (Generate / Update Layout from Schematic).", pya.MessageBox.Ok)
+            return
+        options = pin_place_form.ask_place_pins(self.mw, cv.cell, conn, UI)
+        if options is None:
+            return
+        view.transaction("Place pins")
+        try:
+            report = pin_place.place_pins(cv.cell, conn, **options)
+        finally:
+            view.commit()
+        self.nets.run_check(force=True)
+        self.mw.message(f"{cv.cell.name}: {pin_place.describe(report)}", 10000)
+        notes = report["problems"] + report["warnings"]
+        if notes:
+            more = f"\n... and {len(notes) - 30} more" if len(notes) > 30 else ""
+            pya.MessageBox.info("Place Pins", pin_place.describe(report) + "\n\n" + "\n".join(notes[:30]) + more,
+                                pya.MessageBox.Ok)
 
     # ---- custom standard cells ------------------------------------------------------------------
     def frame_dialog(self):

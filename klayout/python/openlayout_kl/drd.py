@@ -173,10 +173,23 @@ def violations(moving, static, spec):
     Returns [(gap DBox, p1, p2, required nm, actual nm)]."""
     out = []
     corner = corner_rule(spec)
+    # Only shapes nearer than the rule's largest value can break it: the others - most of them
+    # when a cell or an array is moved - are passed over on their boxes, and the edges of each
+    # shape are found once.
+    reach = max((v for v in spec[1:] if isinstance(v, (int, float))), default=0) / 1000
+    near = [(sp, sp.bbox()) for sp in static]
+    sedges_of = {}
     for mp in moving:
-        medges = _ortho_edges(mp)
-        for sp in static:
-            sedges = _ortho_edges(sp)
+        mbox = mp.bbox().enlarged(reach, reach)
+        medges = None
+        for k, (sp, sbox) in enumerate(near):
+            if not mbox.touches(sbox):
+                continue
+            if medges is None:
+                medges = _ortho_edges(mp)
+            sedges = sedges_of.get(k)
+            if sedges is None:
+                sedges = sedges_of[k] = _ortho_edges(sp)
             for ea, na in medges:
                 for eb, nb in sedges:
                     if abs(na.x + nb.x) > 1e-9 or abs(na.y + nb.y) > 1e-9:
@@ -232,11 +245,8 @@ def _corner_violations(mp, sp, corner):
     return [(pya.DBox(p1, p2), p1, p2, corner, d)]
 
 
-def static_polygons(cell, li, window, skip=None):
-    """Merged shapes of layer li under cell touching window (um), as DPolygons (um).
-    skip(iterator) -> True leaves a shape out (the originals of shapes being moved)."""
-    layout = cell.layout()
-    dbu = layout.dbu
+def _collect(cell, li, window, skip):
+    """the shapes of layer li under cell touching window (um), merged (a Region, dbu)"""
     reg = pya.Region()
     it = cell.begin_shapes_rec_touching(li, window)
     while not it.at_end():
@@ -244,7 +254,31 @@ def static_polygons(cell, li, window, skip=None):
         if (s.is_box() or s.is_polygon() or s.is_path()) and not (skip and skip(it)):
             reg.insert(s.polygon.transformed(it.trans()))
         it.next()
-    return [p.to_dtype(dbu) for p in reg.merged().each()]
+    return reg.merged()
+
+
+# The shapes that stay put while one edit goes on (one skip: a move, a stretch), per layer:
+# [skip, cell, {layer: (covered DBox, merged Region)}]. Moving a cell or an array, every mouse move
+# looked them up again - thousands of shapes, each through skip.
+_static = [None, None, {}]
+
+
+def static_polygons(cell, li, window, skip=None):
+    """Merged shapes of layer li under cell touching window (um), as DPolygons (um).
+    skip(iterator) -> True leaves a shape out (the originals of shapes being moved); with a skip,
+    the layout is taken as unchanged while the same skip is passed (the shapes are kept)."""
+    dbu = cell.layout().dbu
+    if skip is None:
+        return [p.to_dtype(dbu) for p in _collect(cell, li, window, None).each()]
+    if _static[0] is not skip or _static[1] != (id(cell.layout()), cell.cell_index()):
+        _static[:] = [skip, (id(cell.layout()), cell.cell_index()), {}]
+    covered, reg = _static[2].get(li, (None, None))
+    if covered is None or not covered.contains(window.p1) or not covered.contains(window.p2):
+        grow = max(window.width(), window.height()) / 2 + MAX_RULE / 1000
+        covered = window.enlarged(grow, grow)
+        reg = _collect(cell, li, covered, skip)
+        _static[2][li] = (covered, reg)
+    return [p.to_dtype(dbu) for p in reg.interacting(pya.Region(window.to_itype(dbu))).each()]
 
 
 def _split(cell, other_li, mreg, window, skip, dbu):
@@ -503,6 +537,7 @@ def show_layers(view, cell, moving, skip=None, trans=None):
 
 def clear(view):
     display(view).clear()
+    _static[:] = [None, None, {}]
 
 
 def set_enabled(on: bool):

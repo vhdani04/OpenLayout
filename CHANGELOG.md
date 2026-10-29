@@ -39,6 +39,21 @@
   (setup/patches/xschem-wire-corner-off-nets.patch; rerun `setup/install.sh`).
 
 ### Layout (KLayout)
+- **Layer grid** (*OpenLayout ▸ Show Layer Grid…*, also on the toolbar): tick layers in a window
+  and their legal tracks are drawn over the layout - fins (27 nm), gates (54 nm), the M1-M3 router
+  tracks, the M4-M7 DRC track grid - as light lines, one colour per layer, that follow zoom and pan
+  and never become shapes; *Clear* removes them. The grids are read from the DRC deck and the ASAP7
+  tech / library LEF, not typed in; M8 / M9, whose track positions no source defines, are listed
+  but not drawn. See docs/KEYS.md, *Layer grid*.
+- **Moving many cells stays smooth**: dragging a selection of cells - an array of SRAM bit cells,
+  say - redrew each step only after the DRD spacing hints had been worked out again for every
+  shape in it, up to seconds per mouse move (the 4x8 b2SRAMsbc array: 3.7 s; one bit cell inside it:
+  1 s). The hints now pass over shapes farther apart than the rule, keep the shapes that stay put
+  for the whole move, and merge the moved ones once; and hints that still take longer than a frame
+  appear when the mouse rests instead of at every step. A moved instance also shows only its first
+  100 shapes (KLayout's *edit-max-shapes-of-instances*, set by OpenLayout; KLayout's default is
+  1000) instead of every shape of every cell. The array now takes 9 ms per mouse move and one cell
+  6 ms. The hints themselves are unchanged.
 - **Selecting what lies underneath**: click the same spot again for the next object under the
   mouse, down to the frame's GCUT, fins and rails (they could not be clicked under a transistor).
   A **Select** window sets which object types can be selected (instances, vias, shapes, pins,
@@ -57,6 +72,14 @@
 - **LISD over a gate is no short**: the connectivity check joined LISD to any diffusion under it, so
   a LISD strap across a gate (as in the ASAP7 flip-flops) showed its source and drain shorted. LISD
   now reaches the diffusion only through SDT, as in LVS.
+- **Place Pins…** (OpenLayout menu): the pins of whole buses in one go instead of one by one -
+  the window lists the schematic's buses (BL[7:0] as one row) with how many bits the layout has
+  already. Pins go on each net's own terminal (the sub-cell pin nearest the chosen side: on drawn
+  metal of the net, so they connect and DRC is clean with no wiring), on the ends of the nets'
+  wires, or along a side of the cell - aligned with the terminals (a bit line's pin right above
+  it) or evenly spaced at a pitch, in port order. On M4 - M7 edge pins snap onto the SADP routing
+  tracks. Pins already there are moved, one undo step; pins too close together, or not yet on
+  drawn metal (OL.PIN), are reported. Batch: `pin_place.place_pins_file(gds, ["BL", "WL"], ...)`.
 
 ### Verification
 - **LVS of mixed-case nets**: KLayout upper-cases a `.subckt`'s pins, but the ASAP7 reader passed

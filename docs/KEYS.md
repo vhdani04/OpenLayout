@@ -143,6 +143,13 @@ or a right click finishes. Metal pads are the tech LEF's default vias (VIA12 ...
 along each metal's direction. A placed via is an OpenLayout_ASAP7 `via` PCell: `q` changes its
 via, rows and columns.
 
+**Pins (*OpenLayout ▸ Place Pins…*)**: places the pins of whole buses at once (the cell needs its
+schematic link, from *Generate / Update Layout from Schematic*). Tick the buses, then choose where:
+*on the net's terminals* (the sub-cell pin nearest the chosen side - connected, no wire needed),
+*on the ends of the net's wires* (route the bus out first), or *along a side of the cell*, aligned
+with the terminals or evenly spaced at a pitch from the left / bottom (on M4 - M7 onto the SADP
+tracks). Pins already there are moved; `u` undoes the whole placement.
+
 **Custom standard cells.** *OpenLayout ▸ Standard-Cell Frame…* draws the cell template at the origin
 of the open cell, as plain shapes in the cell itself (no extra hierarchy level - every shape can be
 selected and edited): a 7.5-track frame (270 nm high, a whole number of 54 nm gate pitches wide)
@@ -203,6 +210,39 @@ to row devices and parked.
 
 The **x and y axes** through the origin are drawn in every layout view (*OpenLayout ▸ Show Axes*
 switches them off and on).
+
+**Layer grid** (*OpenLayout ▸ Show Layer Grid…*, or the same button on the toolbar): a window with
+one checkbox per layer; a ticked layer's tracks - where it may be routed - are drawn over the layout
+as thin lines, one colour per layer, solid where a DRC rule puts the wires there and dashed where
+they are only the place-and-route tracks of the tech LEF. The lines are markers, not shapes (nothing
+to select, nothing saved); they follow zoom and pan, and a layer whose tracks would be less than 5
+pixels apart waits until the view is zoomed in (the window says which). *Clear* (or *OpenLayout ▸
+Clear Layer Grid*) removes them. The grids are in the coordinates of the cell being edited - the DRC
+checks that cell flat from its origin - and are read from the PDK files each session, not typed into
+OpenLayout (klayout/python/openlayout_kl/layer_grid.py; hover a layer in the window for its source):
+
+| Layer | Lines | Track centrelines | Min width (nm) | Source |
+|---|---|---|---|---|
+| Fin | horizontal | y = 13.5 + 27k nm | 7 | DRC deck FIN.S.1 / FIN.W.1 (DRM: exact fin pitch 27 nm) |
+| Gate | vertical | x = 27 + 54k nm | 20 | DRC deck GATE.S.1 / GATE.W.1 (DRM: exact gate pitch 54 nm) |
+| M1 | vertical, dashed | x = 0 + 36k nm | 18 | tech LEF M1 PITCH / OFFSET (no DRM grid rule) |
+| M2 | horizontal, dashed | y = 45, 81, ... 225 nm (36 nm apart) in each 270 nm row | 18 | tech LEF M2 LEF58_PITCH 36 FIRSTLASTPITCH 45; row height from the library LEF's SITE |
+| M3 | vertical, dashed | x = 0 + 36k nm | 18 | tech LEF M3 PITCH / OFFSET (no DRM grid rule) |
+| M4 | horizontal | y = 12 + 48k nm | 24 | DRC deck M4.AUX.2 (DRM: minimum-width wires on tracks 2 x 24 nm apart, offset 0) |
+| M5 | vertical | x = 12 + 48k nm | 24 | DRC deck M5.AUX.2 |
+| M6 | horizontal | y = 16 + 64k nm | 32 | DRC deck M6.AUX.2 |
+| M7 | vertical | x = 16 + 64k nm | 32 | DRC deck M7.AUX.2 |
+| M8, M9 | - | **not drawn** | 40 | tech LEF: PITCH 80 nm but no OFFSET, no DRM grid rule - the positions are not defined |
+
+"DRC deck" is pdk/asap7/klayout/drc/asap7.drc (written from the DRM r1p7), "tech LEF" the library's
+techlef_misc/asap7_tech_1x_201209.lef. Where the two disagree the DRC rule wins: the LEF has M4
+OFFSET 3 nm and M5 OFFSET 0 (the DRC: 12 nm, the wire centre) and no OFFSET for M6 / M7. The DRM
+lets the M4-M7 grid be shifted by a multiple of 12 / 16 nm through an environment variable;
+OpenLayout's deck uses the default, 0. Vias have no grid of their own: a via sits where the tracks of
+the two metals cross. Checked against the library (tests/klayout/test_layer_grid.py): every fin,
+gate and minimum-width M2 piece of the 212 cells of the 7.5T R library lies on its line. M1 is the
+exception: the cells draw M1 where their pins need it, most of it on the gate lines (x = 27 + 54k
+nm), not on the LEF's M1 router tracks.
 
 **Connecting to the rails**: run a source's LISD down (or up) into the LIG rail - LIG and LISD
 connect where they overlap, as in the ASAP7 cells - and the rail's V0s take it to the M1 VDD / VSS.

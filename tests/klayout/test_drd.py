@@ -5,6 +5,7 @@
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 HOME = Path(os.environ["OPENLAYOUT_HOME"])
@@ -171,6 +172,70 @@ for inst in top2.each_inst():
         found += drd.check(top2, li, polys)
     found += drd.enclosures(top2, moving)
     check(f"moving a correct {inst.cell.name}: no hints", not found, sorted({h[5] for h in found}))
+
+# ---- large moves stay quick ------------------------------------------------------------------
+def reference_violations(moving, static, spec):
+    """drd.violations without its shortcuts: every pair of shapes, every pair of facing edges"""
+    out = []
+    corner = drd.corner_rule(spec)
+    for mp in moving:
+        for sp in static:
+            for ea, na in drd._ortho_edges(mp):
+                for eb, nb in drd._ortho_edges(sp):
+                    if abs(na.x + nb.x) > 1e-9 or abs(na.y + nb.y) > 1e-9:
+                        continue
+                    horizontal = abs(na.x) > 0.5
+                    a, b = (ea.p1.x, eb.p1.x) if horizontal else (ea.p1.y, eb.p1.y)
+                    gap = (b - a) * (na.x if horizontal else na.y)
+                    span = (lambda e: sorted((e.p1.y, e.p2.y))) if horizontal else (lambda e: sorted((e.p1.x, e.p2.x)))
+                    lo, hi = max(span(ea)[0], span(eb)[0]), min(span(ea)[1], span(eb)[1])
+                    if gap <= 1e-9 or hi - lo <= 1e-9:
+                        continue
+                    req = drd.required(spec, ea.length() * 1000, eb.length() * 1000, horizontal)
+                    if req is not None and gap * 1000 < req - 1e-6:
+                        out.append((round(req, 3), round(gap * 1000, 3)))
+            if corner:
+                out += [(round(v[3], 3), round(v[4], 3)) for v in drd._corner_violations(mp, sp, corner)]
+    return sorted(out)
+
+
+import random  # noqa: E402
+rnd = random.Random(7)
+scene = [pya.DPolygon(pya.DBox(x, y, x + rnd.choice((0.018, 0.03, 0.06)), y + rnd.choice((0.018, 0.05, 0.2))))
+         for x, y in ((rnd.uniform(0, 1.5), rnd.uniform(0, 1.5)) for _ in range(160))]
+moving_part, static_part = scene[:40], scene[40:]
+for spec_name in ("m1", "m8", "active", "v4"):
+    spec = drd.RULES[spec_name]
+    got = sorted((round(v[3], 3), round(v[4], 3)) for v in drd.violations(moving_part, static_part, spec))
+    check(f"{spec_name.upper()} spacing among 160 random shapes: the same gaps as checking every pair",
+          got == reference_violations(moving_part, static_part, spec), f"{len(got)} gaps")
+spec = ("hv", 27, 27, None)        # a between-layers rule (ACTIVE-WELL)
+got = sorted((round(v[3], 3), round(v[4], 3)) for v in drd.violations(moving_part, static_part, spec))
+check("a between-layers rule among the random shapes: the same gaps", got == reference_violations(moving_part, static_part, spec))
+
+# the shapes that stay put are collected once per move (the same skip), and anew for the next
+for li in c.layout().layer_indexes():
+    c.shapes(li).clear()
+m1_li = ly.layer(19, 0)
+c.shapes(m1_li).insert(pya.DBox(0, 0, 0.1, 0.1))
+c.shapes(m1_li).insert(pya.DBox(2, 0, 2.1, 0.1))
+near_a, near_b = pya.DBox(-0.1, -0.1, 0.2, 0.2), pya.DBox(1.9, -0.1, 2.2, 0.2)
+
+
+def keep_all(it):
+    return False
+
+
+check("with a skip, the same shapes as without one",
+      [str(q) for q in drd.static_polygons(c, m1_li, near_a, keep_all)]
+      == [str(q) for q in drd.static_polygons(c, m1_li, near_a)])
+c.shapes(m1_li).insert(pya.DBox(0, 0.3, 0.1, 0.4))
+check("during the move (the same skip) the shapes are kept",
+      len(drd.static_polygons(c, m1_li, pya.DBox(-0.1, -0.1, 0.2, 0.45), keep_all)) == 1)
+check("... and looked up where the move goes beyond them",
+      len(drd.static_polygons(c, m1_li, near_b, keep_all)) == 1)
+check("the next move (another skip) sees the layout as it is now",
+      len(drd.static_polygons(c, m1_li, pya.DBox(-0.1, -0.1, 0.2, 0.45), lambda it: False)) == 2)
 
 # ---- in the editor ----------------------------------------------------------------------------
 mw = pya.Application.instance().main_window()
@@ -398,6 +463,50 @@ placer.show(pya.DPoint(0.12, 0.05))
 check("placing a via 11 nm from a wire: hint (the pad's 28 nm side is a line end: 25 nm)", "25 nm min" in labels(),
       labels())
 drd.clear(view)
+
+# moving one of two instances of the same cell: the other one stays a neighbour
+restore()
+layout = cell.layout()
+sub = layout.create_cell("SUB")
+sub.shapes(m1).insert(pya.DBox(0, 0, 0.05, 0.05))
+for x in (0.0, 0.1):
+    cell.insert(pya.DCellInstArray(sub.cell_index(), pya.DTrans(pya.DVector(x, 0.18))))
+view.switch_mode("select")
+view.clear_selection()
+click(0.025, 0.205)
+check("an instance is selected", [o.is_cell_inst() for o in view.each_object_selected()] == [True])
+pa, pb = px(0.025, 0.205), px(0.065, 0.205)
+view.send_mouse_move_event(pa, 0)
+view.send_mouse_press_event(pa, L)
+for i in range(1, 7):
+    view.send_mouse_move_event(pa + (pb - pa) * (i / 6), L)
+check("moving an instance to 10 nm from another copy of its cell: hint", "18 nm min" in labels(), labels())
+view.send_mouse_release_event(pb, L)
+view.send_mouse_move_event(pb + pya.DVector(40, 40), 0)
+for inst in list(cell.each_inst()):
+    inst.delete()
+layout.delete_cell(sub.cell_index())
+
+# hints slow to find (a large selection) wait until the mouse rests, so the drag stays smooth
+restore()
+saved_budget = drag_move.DRD_BUDGET
+drag_move.DRD_BUDGET = -1.0          # every hint "slow"
+click(0.25, 0.05)
+pa, pb = px(0.25, 0.05), px(0.16, 0.05)
+view.send_mouse_move_event(pa, 0)
+view.send_mouse_press_event(pa, L)
+for i in range(1, 7):
+    view.send_mouse_move_event(pa + (pb - pa) * (i / 6), L)
+check("a slow hint: none while the mouse moves", not shown.markers and not labels(), labels())
+t0 = time.perf_counter()
+while time.perf_counter() - t0 < 4 * drag_move.DRD_REST_MS / 1000:
+    pya.Application.instance().process_events()
+check("... shown once the mouse rests", "18 nm min" in labels(), labels())
+view.send_mouse_release_event(pb, L)
+view.send_mouse_move_event(pb + pya.DVector(40, 40), 0)
+check("... and cleared by the drop", not shown.markers and not labels(), labels())
+drag_move.DRD_BUDGET = saved_budget
+restore()
 
 # off: no hints
 drd.set_enabled(False)

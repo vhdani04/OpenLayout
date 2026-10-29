@@ -38,6 +38,8 @@ layers. (The path tool and the via placer show theirs themselves.)
 This service takes no mode of its own; it holds a mouse grab so it sees presses and clicks before
 KLayout's selection does.
 """
+import time
+
 import pya
 
 from . import drd, mirror, picking, pin_group, stdcell
@@ -46,6 +48,8 @@ NAME = "openlayout_drag_move"
 MODES = ("select", "move")
 MOVE_ACTION = "@secrets.sel_move_interactive"
 CATCH_PIXELS = 5
+DRD_BUDGET = 0.05     # s: a move's hints slower than this to find wait until the mouse rests ...
+DRD_REST_MS = 150     # ... this long (a large selection: the drag itself stays smooth)
 _under_mouse = None   # the DragMove of the view the mouse was last over, and where
 after_move_hooks = []  # f(view), called when a move is done
 
@@ -141,6 +145,9 @@ class DragMove(pya.Plugin):
         self._stretching = None    # (origin, cv, layer, polygon, edge index, skip) of an edge stretch
         self.box_new = False       # a box / polygon / stretch was just started (KLayout then cancels other drags)
         self.drd_tried = False     # the selection being moved was looked at (it may have no checked layer)
+        self.drd_cost = 0.0        # s the last move hints took to find
+        self.drd_rest = None       # the timer that shows them once the mouse rests (slow ones)
+        self.drd_pending = None    # ... and where the mouse rests
         self.last_p = None         # the mouse position of the previous move event
         self.inst_cache = {}       # (cell name, angle, mirror) -> {layer: [DPolygon]} for Instance mode
         self.inst_shown = False
@@ -326,7 +333,7 @@ class DragMove(pya.Plugin):
                     if self._drd_moving is None and not self.drd_tried:
                         # a move KLayout started itself (its Move tool, copy): from where the mouse was
                         self.drd_start(last or p)
-                    self.drd_update(p)
+                    self.drd_follow(p)
                 return False
             if self.moving:          # a move / stretch was just placed: back to Select mode
                 self._back_to_select()
@@ -710,14 +717,33 @@ class DragMove(pya.Plugin):
                     shapes.setdefault(obj.layer, []).append(poly)
             if cv is None or not shapes:
                 return
+            # merged once (the checks merge them anyway): far fewer polygons to move at every step
+            dbu = cv.layout().dbu
+            shapes = {li: [q.to_dtype(dbu) for q in pya.Region([poly.to_itype(dbu) for poly in polys]).merged().each()]
+                      for li, polys in shapes.items()}
             sel_shapes = [(o.cell_index(), o.shape) for o in objs if not o.is_cell_inst()]
-            sel_paths = [[e.inst() for e in o.path] for o in objs if o.is_cell_inst()]
+            # the moved instances by (depth, cell, placement) - instances compare equal but do not
+            # hash alike - and then compared exactly: skip runs for every shape around the move
+            sel_paths = {}
+            for o in objs:
+                if o.is_cell_inst():
+                    sp = [e.inst() for e in o.path]
+                    sel_paths.setdefault(_inst_key(sp), []).append(sp)
+            depths = sorted({k[0] for k in sel_paths})
 
             def skip(it):
-                if any(c == it.cell_index() and s == it.shape() for c, s in sel_shapes):
+                if sel_shapes and any(c == it.cell_index() and s == it.shape() for c, s in sel_shapes):
                     return True
+                if not sel_paths:
+                    return False
                 path = [e.inst() for e in it.path()]
-                return any(len(path) >= len(sp) and all(a == b for a, b in zip(path, sp)) for sp in sel_paths)
+                for n in depths:
+                    if len(path) < n:
+                        break
+                    for sp in sel_paths.get(_inst_key(path[:n]), ()):
+                        if all(a == b for a, b in zip(path, sp)):
+                            return True
+                return False
             self.drd_moving = (p, shapes, skip, cv)
         except Exception as e:
             print(f"OpenLayout DRD: {e}")
@@ -732,7 +758,36 @@ class DragMove(pya.Plugin):
         moved = {li: [poly.moved(d.x, d.y) for poly in polys] for li, polys in shapes.items()}
         drd.show_layers(self._view, cv.cell, moved, skip, trans=cv.context_dtrans())
 
+    def drd_follow(self, p):
+        """the move hints at mouse position p: at once, or - when they take long to find (a large
+        selection) - once the mouse rests, the old ones taken down meanwhile"""
+        if self.drd_cost <= DRD_BUDGET:
+            self._drd_now(p)
+            return
+        drd.display(self._view).clear()
+        self.drd_pending = p
+        if self.drd_rest is None:
+            self.drd_rest = pya.QTimer()
+            self.drd_rest.singleShot = True
+            self.drd_rest.interval = DRD_REST_MS
+            self.drd_rest.timeout = self._drd_rested
+        self.drd_rest.start()
+
+    def _drd_rested(self):
+        p, self.drd_pending = self.drd_pending, None
+        if p is not None and self.drd_moving is not None and not self.destroyed():
+            self._drd_now(p)
+
+    def _drd_now(self, p):
+        t = time.perf_counter()
+        self.drd_update(p)
+        self.drd_cost = time.perf_counter() - t
+
     def drd_stop(self):
+        if self.drd_rest is not None:
+            self.drd_rest.stop()
+        self.drd_pending = None
+        self.drd_cost = 0.0
         self.drd_moving = None
         self.drd_tried = False
         self.stretching = None
@@ -740,6 +795,13 @@ class DragMove(pya.Plugin):
 
     def deactivated(self):
         self.dragging = False
+
+
+def _inst_key(path):
+    """an instance path ([Instance]) as a dictionary key: its depth and the last instance's cell and
+    placement (equal paths have equal keys)"""
+    last = path[-1]
+    return len(path), last.cell_index, str(last.cplx_trans)
 
 
 def hover_outline(view, oip):
