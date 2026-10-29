@@ -498,8 +498,20 @@ proc ol_key_r {w x y} {
   }
 }
 
+# Caps Lock: Tk and xschem see the keysym it produces, so with Caps Lock on, c arrived as C (xschem's
+# "place arc") and every lowercase key binding (x, p, l, r, i ...) missed. A key pressed with Caps Lock
+# is re-issued without it: the letter's case follows Shift alone, as if Caps Lock were off.
+proc ol_caps_key {w k s x y} {
+  set s [expr {$s & ~2}]
+  if {[string length $k] == 1 && [string is alpha $k]} {
+    set k [expr {($s & 1) ? [string toupper $k] : [string tolower $k]}]
+  }
+  event generate $w <KeyPress> -keysym $k -state $s -x $x -y $y
+}
+
 proc ol_bind_keys {{w .drw}} {
   if {![winfo exists $w]} return
+  bind $w <Lock-KeyPress> {ol_caps_key %W %K %s %x %y; break}
   bind $w <KeyPress-p> {ol_pin_dialog %x %y; break}
   bind $w <KeyPress-l> {ol_key_l %W %x %y; break}
   bind $w <KeyPress-r> {ol_key_r %W %x %y; break}

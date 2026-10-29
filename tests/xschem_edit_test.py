@@ -339,6 +339,22 @@ check("a plain click on one of the selected still selects just that one",
       send("xschem selected_set") == "{M1}", send("xschem selected_set"))
 send("xschem unselect_all; xschem set_modify 0")
 
+# ---- Caps Lock: keys act as if it were off -------------------------------------------------------
+# With Caps Lock, c arrives as C: xschem's "place arc". Re-issued without Lock it is the copy again.
+send(f"xschem load {{{cpdir / 'cp.sch'}}}; xschem zoom_box -150 -150 350 150; update; focus -force .drw; update")
+send("xschem unselect_all; xschem select instance M2")
+n0 = int(send("xschem get instances"))
+px, py = to_px(100, 0)
+send(f"event generate .drw <Motion> -x {px} -y {py} -warp 1; update; "
+     f"event generate .drw <KeyPress> -keysym C -state 2 -x {px} -y {py}; update")
+send(click1(px, py))
+qx, qy = to_px(100, 100)
+send(move(qx, qy) + "; " + click1(qx, qy))
+reply = send("xschem get instances")
+check("c with Caps Lock on copies (not an arc)", reply == str(n0 + 1), reply)
+send("xschem undo; update; xschem unselect_all; xschem set_modify 0")
+check("keys pressed with Caps Lock are re-issued without it", "ol_caps_key" in send("bind .drw <Lock-KeyPress>"))
+
 # ---- symbol pins stay on the 10 grid ---------------------------------------------------------------
 # A pin off it can't be reached by schematic wires. Saving snaps it, its stub moves along and stays
 # straight; a selected pin moves on the 10 grid.

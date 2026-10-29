@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Schematic (xschem)
+- **Caps Lock no longer changes the keys**: with Caps Lock on, `c` reached xschem as `C` (place arc),
+  so copy drew arcs/circles, and the other lowercase keys (`x`, `p`, `l`, `r`, `i` ...) did nothing.
+  A key pressed with Caps Lock is now re-issued as if it were off (the letter's case follows Shift).
 - **Add Instance** (`i`, `Insert`, *Tools ▸ Add Instance…*, the toolbar's symbol button, the
   right-click menu): a symbol browser laid out like the hub's Library Manager - the workarea's
   libraries and a *Basic* library of xschem's devices, a filter, and a preview with the symbol's
