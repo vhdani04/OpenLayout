@@ -56,6 +56,9 @@
   now reaches the diffusion only through SDT, as in LVS.
 
 ### Verification
+- **LVS of mixed-case nets**: KLayout upper-cases a `.subckt`'s pins, but the ASAP7 reader passed
+  the schematic's transistor nets as written, so a net such as `X_bar` or `BL_Bar` became two nets
+  and `purge` dropped the pin. The reader now upper-cases the transistors' nets too.
 - **Connectivity check**: row transistors' gates are probed over their channel - a gate cut at
   mid-cell no longer reports "nothing drawn at its gate".
 - **LVS / PEX outside a workarea**: the schematic is netlisted with the ASAP7 libraries; a symbol

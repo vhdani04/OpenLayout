@@ -42,7 +42,9 @@ class ASAP7Reader < RBA::NetlistSpiceReaderDelegate
     return super unless element == "N"
     tok = s.split
     data = RBA::ParseElementData.new
-    data.net_names = tok[0, 4]
+    # SPICE names are case-insensitive and KLayout upper-cases the .subckt pin names: do the same here,
+    # or a mixed-case net (X_bar, BL_Bar) splits into an empty pin net and the transistors' own net
+    data.net_names = tok[0, 4].map(&:upcase)
     data.model_name = tok[4].to_s
     params = {}
     tok[5..-1].to_a.each do |t|
