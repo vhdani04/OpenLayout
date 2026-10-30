@@ -148,6 +148,26 @@ def test_vector_level_expressions(tmp_path):
         v.levels(v.outputs()[0], {"vdd": "0.7"})
 
 
+def test_vector_time_variables(tmp_path):
+    """time settings may be design variables / expressions (in seconds): sweep one column's delay"""
+    f = tmp_path / "t.vec"
+    f.write_text("radix 1 1\nio i i\nvname clk d\ntunit ps\nperiod 100\ntrise 10\n"
+                 "idelay tdata 0 1\nodelay tclk/4\n0 0\n1 1\n")
+    vf = vectors.parse(f)
+
+    def first_edge(lines, node):
+        line = next(x for x in lines if x.startswith(f"Vvec_{node} "))
+        nums = [float(x) for x in line.split("PWL(")[1].rstrip(")").split()]
+        return next(t for t, v in zip(nums[::2], nums[1::2]) if v > 0) - 10e-12   # start of the rise
+    for tdata in ("0", "30p", "-20p"):
+        lines = vf.sources({"tdata": tdata, "vdd": "0.7"})
+        assert abs(first_edge(lines, "d") - (100e-12 + vectors.si(tdata))) < 1e-15, tdata
+        assert abs(first_edge(lines, "clk") - 100e-12) < 1e-15             # the mask: only d moves
+    assert abs(vf.setting(vf.bits[0], "odelay", {"tclk": "200p"}) - 50e-12) < 1e-18
+    with pytest.raises(vectors.VectorError, match="unit"):
+        vf.sources({"tdata": "30", "vdd": "0.7"})                          # 30 s: the unit is missing
+
+
 def test_vector_check():
     vf = vectors.VectorFile("x", [vectors.Bit("out", "o", 0, values=["1", "0", "1"])], [0, 1e-10, 2e-10],
                             1e-10, {})
@@ -194,6 +214,7 @@ def test_clean_netlist_and_variables():
 def test_sweeps_and_points():
     assert sweep_values("1f 2f, 4f") == ["1f", "2f", "4f"]
     assert sweep_values("0.6:0.1:0.8") == ["600m", "700m", "800m"]
+    assert sweep_values("-100p:5p:100p")[20] == sweep_values("0")[0] == "0"   # exactly 0, no -1.3e-26
     s = Setup(tests=[MTest("t", {"netlist": "x"}, [Analysis("op")])], variables={"vdd": "0.7", "c": "1f 2f"},
               corners=[Corner("ss", True, "ss", "125", {"vdd": "0.63"}), Corner("off", False)])
     pts = s.points()

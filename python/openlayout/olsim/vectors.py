@@ -11,6 +11,8 @@ sources on the nodes they name, expected outputs are checked against the simulat
     vih vdd ; vil 0       ; input levels - a number, a design variable or an expression (0.9*vdd)
     voh 0.5 ; vol 0.2     ; output thresholds (default 80 % / 20 % of vih)
     idelay 0 ; odelay 90  ; input delay, output check time after each vector (default: just before the next)
+    idelay tdata 0 1 0    ; a time setting may be a design variable or an expression of them, in
+                          ; seconds with its unit (tdata = 30p) - e.g. sweep D's arrival for setup / hold
     0 1 0
     1 1 0
     0 0 0
@@ -30,6 +32,8 @@ from .calc import CalcError, Context, Waveform, evaluate, si
 
 TUNITS = {"fs": 1e-15, "ps": 1e-12, "ns": 1e-9, "us": 1e-6, "ms": 1e-3, "s": 1.0}
 SETTINGS = ("vih", "vil", "voh", "vol", "trise", "tfall", "slope", "idelay", "odelay", "tdelay")
+TIMES = ("trise", "tfall", "slope", "idelay", "odelay", "tdelay")
+MAX_TIME = 1e-3        # s: a time setting from a variable this large lacks its unit (30 instead of 30p)
 
 
 class VectorError(Exception):
@@ -51,7 +55,8 @@ class VectorFile:
     bits: list
     times: list                     # seconds, one per vector
     period: float | None
-    settings: dict                  # global settings (raw strings / numbers, times already in seconds)
+    settings: dict                  # global settings (numbers: times already in seconds; strings: variables /
+                                    # expressions, evaluated per point - times then in seconds)
 
     def inputs(self):
         return [b for b in self.bits if b.io in ("i", "b")]
@@ -66,18 +71,21 @@ class VectorFile:
         if isinstance(raw, (int, float)):
             return float(raw)
         if raw in variables:
-            return si(variables[raw])
-        try:
-            return si(raw)
-        except ValueError:
-            pass
-        try:                                         # an expression of design variables: 0.8*vdd
-            v = evaluate(raw, Context([], variables))
-        except CalcError as e:
-            raise VectorError(f"{self.path}: {key} {raw!r} is not a number, a design variable or an "
-                              f"expression of them ({e})") from None
+            v = si(variables[raw])
+        else:
+            try:
+                v = si(raw)
+            except ValueError:
+                try:                                     # an expression of design variables: 0.8*vdd
+                    v = evaluate(raw, Context([], variables))
+                except CalcError as e:
+                    raise VectorError(f"{self.path}: {key} {raw!r} is not a number, a design variable or "
+                                      f"an expression of them ({e})") from None
         if not isinstance(v, (int, float)):
             raise VectorError(f"{self.path}: {key} {raw!r} is not a number")
+        if key in TIMES and abs(v) >= MAX_TIME:
+            raise VectorError(f"{self.path}: {key} {raw!r} = {v:g} s - a time from a variable is in seconds: "
+                              f"give it its unit (30p, not 30)")
         return float(v)
 
     def levels(self, bit, variables):
@@ -157,6 +165,15 @@ class VectorFile:
                     got = "1" if v > voh else "0" if v < vol else "between"
                     errors.append({"time": at, "signal": b.name, "expected": exp, "got": got, "value": v})
         return sorted(errors, key=lambda e: e["time"])
+
+
+def _time(raw, tunit):
+    """A time setting: a number in tunit (to seconds), else kept as written (a design variable or
+    an expression, evaluated by VectorFile.setting)."""
+    try:
+        return float(raw) * tunit
+    except ValueError:
+        return raw
 
 
 def _interp(w: Waveform, at):
@@ -255,13 +272,13 @@ def parse(path) -> VectorFile:
         for n in col_names:
             bits.append(Bit(n.lower(), io[col], col))
     # time settings to seconds
-    for key in ("trise", "tfall", "slope", "idelay", "odelay", "tdelay"):
-        if key in settings:
-            settings[key] = float(settings[key]) * tunit
+    for key in TIMES:                                      # numbers are in tunit; anything else is a
+        if key in settings:                                # variable / expression, evaluated per point
+            settings[key] = _time(settings[key], tunit)
     for kw, val, mask, lineno in masked:
         if len(mask) != ncol:
             raise VectorError(f"{path}:{lineno}: the mask of {kw} needs {ncol} digits")
-        v = float(val) * tunit if kw in ("trise", "tfall", "slope", "idelay", "odelay", "tdelay") else val
+        v = _time(val, tunit) if kw in TIMES else val
         for b in bits:
             if mask[b.column] not in ("0",):
                 b.settings[kw] = v

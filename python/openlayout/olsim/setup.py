@@ -133,7 +133,9 @@ def sweep_values(spec) -> list[str]:
         if step == 0 or (b - a) / step < 0:
             raise ValueError(f"bad sweep {spec!r}")
         n = int(round((b - a) / step))
-        return [fmt(a + i * step, 6) for i in range(n + 1)]
+        vals = [a + i * step for i in range(n + 1)]
+        # rounding error on a point that should be 0 (-100p:5p:100p) would print as -1.3e-26
+        return [fmt(0.0 if abs(v) < abs(step) * 1e-9 else v, 6) for v in vals]
     parts = [p for p in s.replace(",", " ").split() if p]
     return parts or [""]
 

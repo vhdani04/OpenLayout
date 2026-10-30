@@ -148,6 +148,7 @@ trise 10              ; also tfall, slope
 vih vdd               ; input high level: a number or a design variable (default vdd); vil 0
 voh 0.5               ; output thresholds (default 80 % / 20 % of vih); vol 0.2
 idelay 0              ; input delay; odelay: check time after each vector (default: just before the next)
+idelay tdata 0 1 0     ; a time setting may be a design variable / expression (seconds: tdata = 30p)
 0 F
 5 A
 A 5
@@ -159,6 +160,11 @@ F 0
   - A line may also be written compact: `0110`.
 - **Masks:** a statement may end with a mask that limits it to some columns, one digit per column:
   `vih 0.9 1 1 0`.
+- **Timing from design variables:** `trise`, `tfall`, `slope`, `idelay`, `odelay` and `tdelay` take a
+  number (in `tunit`), a design variable or an expression of them (`tclk/4`). A variable's value is in
+  seconds, so give it its unit (`tdata = 30p`). With a mask, one column can be swept against the
+  others: `idelay tdata 0 1 0` moves only the second column - D's arrival against the clock, for
+  setup and hold.
 - **Plotting a check:** double-click a **vector errors** cell, or use Plot Vector Check in its
   menu. The viewer shows:
   - the inputs and the outputs as simulated, buses in hex;

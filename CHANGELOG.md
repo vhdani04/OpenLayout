@@ -131,6 +131,10 @@
   used to fail inside the comparison). The hub shows why a DRC / LVS / PEX run failed.
 
 ### Simulation (OLSim)
+- **Vector-file timing from design variables**: `trise`, `tfall`, `slope`, `idelay`, `odelay` and
+  `tdelay` take a design variable or an expression (in seconds: `tdata = 30p`), so they can be
+  swept - with a mask, one column at a time (`idelay tdata 0 1 0`: D's arrival against the clock
+  for setup / hold). A value without its unit (30 s) is reported.
 - **Post-layout simulation of cells with bus pins**: PEX writes a bus pin such as `A[1]` as `A_1_`
   in the extracted netlist, and the config view matched the PEX pins to the schematic's by their
   raw names - so an extracted cell with any bus pin stopped the run with "the layout has pin(s)
