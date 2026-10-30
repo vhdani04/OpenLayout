@@ -285,8 +285,23 @@ The **Results** dock browses OLSim histories (point → analysis → signals) an
     again. A strip made with New Strip waits empty for the next signal.
   - AC signals plot as dB magnitude on a log axis, with the phase in a strip below.
   - Units are automatic (ps, mV, GHz, …).
-- **Mouse:** the wheel zooms; left drag pans, or draws a box in **Zoom Box** mode; right drag zooms
-  one axis.
+  - Each strip's legend sits in a margin to its right, never over the data. A long one (a sweep
+    overlaid) never makes its strip taller: it shows the entries that fit.
+  - **A net across sweep points** (Plot Outputs, Plot Across All Points) has one legend row, `Q ▾ 41`.
+    Click it for a list of the points, each with its colour and a tick to show or hide it (hover a
+    point to highlight its curve), plus Show All and Show Only the First; the list scrolls when it
+    is long. Drag the row onto another strip to move the whole group.
+  - A net that is the same at every point - a clock the sweep does not touch - is plotted once,
+    labelled `CLK (all 41 points)`. The points are compared on each other's time steps.
+- **Global x range:** the overview under the strips shows the whole run (of the top strip's x
+  quantity) with a shaded range. Drag the range, or its edges, to set the x range of every strip on
+  that axis at once; zooming or panning any strip moves the range with it. **F** fits it all again.
+- **Mouse:** the wheel zooms; left drag pans, or draws a box in **Zoom Box** mode; **Ctrl + left
+  drag** draws a zoom box in either mode. A zoom box fills the strip exactly (the strips sharing its
+  x axis follow in x). Right drag zooms one axis.
+  - **Moving a strip:** drag a strip by its y axis (the hand cursor shows over it) onto another
+    strip. Dropped on that strip's upper half it goes above it, on the lower half below it. The
+    curves stay together: nothing is merged.
   - **Merging strips:** drag a curve (press on the trace, or on its legend entry) onto another
     strip to move it there. A strip left empty is removed, so dragging one of two single-signal
     plots onto the other gives one plot with both. Curves only move between strips with the same x
@@ -315,6 +330,7 @@ The **Results** dock browses OLSim histories (point → analysis → signals) an
   - OLSim in the hub on an xschem testbench: olsim view created, variables copied, PVT corners,
     run, results table, auto-plot, setup saved;
   - the viewer: overlays, cursors and the readout, the calculator, PNG / CSV export, curve and
-    strip editing, merging strips by drag and drop;
+    strip editing, merging strips by drag and drop, moving whole strips by their y axis, Ctrl + drag
+    zoom boxes, the overview's global x range, legends outside the plots;
   - vector-check and parametric plots, and an AC raw file as dB and phase.
 - Both run in `openlayout test` and `openlayout doctor`.

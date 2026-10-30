@@ -433,3 +433,176 @@ def test_raw_file_in_viewer(app, tmp_path):
     assert v.strips[0].plot.getViewBox().state["logMode"][0]
     assert v.strips[0].curves[0].y[0] == pytest.approx(0, abs=0.01)
     v.close()
+
+
+def _viewer_with(app, n=3):
+    import numpy as np
+    from openlayout.hub.waveview import Viewer
+    from openlayout.olsim.calc import Waveform
+    v = Viewer()
+    v.resize(1200, 900)
+    v.show()
+    t = np.linspace(0, 1e-9, 1001)
+    curves = [v.plot_wave(Waveform(t, np.sin(t * (k + 1) * 1e10) * 0.35 + 0.35, f"s{k}", "time"), f"s{k}", "tran", "V",
+                          new_strip=k > 0) for k in range(n)]
+    for _ in range(20):
+        app.processEvents()
+    return v, curves
+
+
+def _drag(app, area, start, end, modifiers=Qt.NoModifier):
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+
+    def send(kind, pos, buttons):
+        QApplication.sendEvent(area.viewport(), QMouseEvent(kind, QPointF(pos), QPointF(area.viewport().mapToGlobal(pos)),
+                                                            Qt.LeftButton, buttons, modifiers))
+        app.processEvents()
+    send(QEvent.MouseButtonPress, start, Qt.LeftButton)
+    for f in (0.25, 0.5, 0.75):
+        send(QEvent.MouseMove, start + (end - start) * f, Qt.LeftButton)
+    send(QEvent.MouseMove, end, Qt.LeftButton)
+    send(QEvent.MouseButtonRelease, end, Qt.NoButton)
+
+
+def test_viewer_legend_outside(app):
+    v, (a, b, c) = _viewer_with(app)
+    for s in v.strips:
+        leg, view = s.legend.sceneBoundingRect(), s.plot.getViewBox().sceneBoundingRect()
+        assert leg.left() >= view.right() - 1, (leg, view)          # right of the data, not over it
+        assert v.strip_at(leg.center()) is s                         # and still part of its strip
+    assert [lab.text for _, lab in a.strip.legend.items] == ["s0"]
+    v.set_curve_visible(a, False)                                    # hidden: off the legend too
+    assert a.strip.legend.items == [] and len(b.strip.legend.items) == 1
+    v.close()
+
+
+def test_viewer_drag_strip_to_another_row(app):
+    v, (a, b, c) = _viewer_with(app)
+    area = v.layout_widget
+    assert [s.curves[0].label for s in v._packed] == ["s0", "s1", "s2"]
+    ax = c.strip.plot.getAxis("left")
+    grip = ax.parentItem().mapRectToScene(ax.geometry()).center()
+    assert v.axis_handle_at(grip) is c.strip
+    assert v.axis_handle_at(c.strip.plot.getViewBox().sceneBoundingRect().center()) is None   # the grid is not
+    top = a.strip.plot.sceneBoundingRect()
+    _drag(app, area, area.mapFromScene(grip), area.mapFromScene(pg_point(top.center().x(), top.top() + 5)))
+    assert [s.curves[0].label for s in v._packed] == ["s2", "s0", "s1"]    # above the strip it hit
+    assert all(len(s.curves) == 1 for s in v.strips)                       # moved, not merged
+    ax = c.strip.plot.getAxis("left")
+    grip = ax.parentItem().mapRectToScene(ax.geometry()).center()
+    bottom = b.strip.plot.sceneBoundingRect()
+    _drag(app, area, area.mapFromScene(grip), area.mapFromScene(pg_point(bottom.center().x(), bottom.bottom() - 5)))
+    assert [s.curves[0].label for s in v._packed] == ["s0", "s1", "s2"]    # below it
+    v.close()
+
+
+def test_viewer_ctrl_drag_zoom_box(app):
+    v, (a, b, c) = _viewer_with(app)
+    area, vb = v.layout_widget, b.strip.plot.getViewBox()
+    from PySide6.QtCore import QPointF
+    p0 = area.mapFromScene(vb.mapViewToScene(QPointF(0.2e-9, 0.6)))
+    p1 = area.mapFromScene(vb.mapViewToScene(QPointF(0.4e-9, 0.2)))
+    _drag(app, area, p0, p1, Qt.ControlModifier)
+    for _ in range(10):
+        app.processEvents()
+    (x0, x1), (y0, y1) = vb.viewRange()
+    assert x0 == pytest.approx(0.2e-9, rel=0.05) and x1 == pytest.approx(0.4e-9, rel=0.05), (x0, x1)
+    assert y0 == pytest.approx(0.2, abs=0.02) and y1 == pytest.approx(0.6, abs=0.02), (y0, y1)
+    assert a.strip.plot.getViewBox().viewRange()[0] == pytest.approx([x0, x1])    # x axes linked
+    assert vb.state["mouseMode"] == vb.PanMode                                    # and back to panning
+    v.close()
+
+
+def test_viewer_global_range(app):
+    v, (a, b, c) = _viewer_with(app)
+    v.refresh_overview()
+    assert v.region.isVisible() and v.overview.height() > 0
+    v.region.setRegion((0.25e-9, 0.5e-9))                     # the slider sets every strip ...
+    app.processEvents()
+    for s in v._packed:
+        assert s.plot.getViewBox().viewRange()[0] == pytest.approx([0.25e-9, 0.5e-9], rel=1e-6)
+    b.strip.plot.setXRange(0.1e-9, 0.3e-9, padding=0)          # ... and follows a zoom in any strip
+    app.processEvents()
+    assert list(v.region.getRegion()) == pytest.approx([0.1e-9, 0.3e-9], rel=1e-6)
+    v.fit()
+    for _ in range(5):
+        app.processEvents()
+    assert v.region.getRegion()[0] == pytest.approx(0, abs=1e-11) and v.region.getRegion()[1] == pytest.approx(1e-9, rel=0.05)
+    v.close()
+
+
+def pg_point(x, y):
+    from PySide6.QtCore import QPointF
+    return QPointF(x, y)
+
+
+def test_viewer_long_legends_keep_every_strip(app):
+    """a sweep of 41 points overlaid in each of 3 strips: the legends are long, the strips stay"""
+    import numpy as np
+    from openlayout.hub.waveview import Viewer
+    from openlayout.olsim.calc import Waveform
+    v = Viewer()
+    v.resize(1300, 820)
+    v.show()
+    t = np.linspace(0, 1e-9, 201)
+    for k, name in enumerate(("D", "CLK", "Q")):
+        for i in range(41):
+            v.plot_wave(Waveform(t, np.sin(t * 1e10 + i) * 0.35 + 0.35, name, "time"), f"{name} tdata={i}p",
+                        "tran", "V", new_strip=(i == 0 and k > 0))
+    for _ in range(30):
+        app.processEvents()
+    area = v.layout_widget.viewport().rect()
+    assert len(v._packed) == 3
+    for s in v._packed:
+        r = v.layout_widget.mapFromScene(s.plot.sceneBoundingRect()).boundingRect()
+        assert area.contains(r.center()) and r.height() < area.height() / 2, (r, area)
+        leg, view = s.legend.sceneBoundingRect(), s.plot.getViewBox().sceneBoundingRect()
+        assert leg.left() >= view.right() - 1
+    v.close()
+
+
+def test_viewer_sweep_groups(app):
+    """a net across sweep points: one legend row with a dropdown list; a net the same at every point
+    (the clock) is plotted once"""
+    import numpy as np
+    from openlayout.hub.waveview import Viewer
+    from openlayout.olsim.calc import Waveform
+    v = Viewer()
+    v.resize(1300, 820)
+    v.show()
+    v.add_history = lambda h: None
+    t = np.linspace(0, 1e-9, 201)
+
+    class H:
+        points = [{"index": i, "label": f"Nominal tdata={i}p"} for i in range(3)]
+
+        def wave(self, index, name):
+            if name == "CLK":                     # the same PWL clock, sampled differently per run
+                bp_t = [0, 1e-10, 1.1e-10, 2e-10, 2.1e-10, 3e-10, 3.1e-10, 1e-9]
+                bp_v = [0, 0, 0.7, 0.7, 0, 0, 0.7, 0.7]
+                tt = np.unique(np.concatenate([np.linspace(0, 1e-9, 150 + 37 * index), bp_t]))
+                return Waveform(tt, np.interp(tt, bp_t, bp_v), "CLK", "time")
+            return Waveform(t, np.sin(t * 1e10 + index) * 0.35 + 0.35, name, "time")
+    v.plot_output(H(), "CLK")
+    v.plot_output(H(), "Q")
+    for _ in range(20):
+        app.processEvents()
+    clk, q = v.strips
+    assert [c.label for c in clk.curves] == ["CLK (all 3 points)"] and not clk.groups
+    assert len(q.curves) == 3 and list(q.groups) == ["Q"]
+    assert [lab.text for _, lab in q.legend.items] == ["Q  \u25be 3"]                 # one legend row
+    sample, label = q.legend.items[0]
+    assert q.group_at(label.sceneBoundingRect().center()) == "Q"
+    lst = v.group_menu(q, "Q", show=False)
+    assert lst.count() == 3 and lst.item(1).text() == "Nominal tdata=1p"
+    lst.item(1).setCheckState(Qt.Unchecked)                                         # hide one point
+    assert [c.visible for c in q.curves] == [True, False, True]
+    lst.item(0).setCheckState(Qt.Unchecked)
+    lst.item(2).setCheckState(Qt.Unchecked)                                         # the last one stays
+    assert sum(c.visible for c in q.curves) == 1 and q in v._packed
+    lst.item(1).setCheckState(Qt.Checked)
+    moved = v.move_group(q, "Q", clk)                                               # the whole group moves
+    assert len(moved) == 3 and len(v.strips) == 1 and list(clk.groups) == ["Q"]
+    assert len(clk.legend.items) == 2                                               # CLK + the Q group row
+    v.close()

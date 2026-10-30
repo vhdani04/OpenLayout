@@ -131,6 +131,17 @@
   used to fail inside the comparison). The hub shows why a DRC / LVS / PEX run failed.
 
 ### Simulation (OLSim)
+- **Waveform viewer: arranging and zooming**
+  - Drag a strip by its y axis to move the whole strip to another row (above or below the strip
+    it is dropped on); dragging a curve still merges it into the strip it lands on.
+  - Ctrl + left drag draws a zoom box in any mode, and a zoom box now fills the strip exactly.
+  - An overview under the strips with one range for all of them: drag it to set every strip's x
+    range, and it follows when any strip is zoomed or panned.
+  - The legends sit in a margin right of the plots instead of over the curves; a long legend (a
+    sweep overlaid) does not push the other strips out of the window.
+  - A net plotted across sweep points gets one legend row (`Q ▾ 41`) whose dropdown lists the
+    points, each with a tick to show or hide it; a net the same at every point (the clock) is
+    plotted once.
 - **Vector-file timing from design variables**: `trise`, `tfall`, `slope`, `idelay`, `odelay` and
   `tdelay` take a design variable or an expression (in seconds: `tdata = 30p`), so they can be
   swept - with a mask, one column at a time (`idelay tdata 0 1 0`: D's arrival against the clock

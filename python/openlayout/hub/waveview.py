@@ -5,9 +5,12 @@ pyqtgraph (MIT): fast enough for millions of points, zoom and pan with the mouse
 
     openlayout waves [file.raw ... | <olsim history dir>]
 
-Mouse: wheel zooms, left drag pans (zoom box mode: drags a box), right drag zooms an axis,
-double-click a signal in the browser to plot it. Keys: F fit, A / B put the cursor at the mouse,
-M marker at the nearest point, Delete removes the selected curve, Ctrl+N new strip.
+Mouse: wheel zooms, left drag pans (zoom box mode: drags a box), Ctrl + left drag draws a zoom box
+in any mode, right drag zooms an axis, double-click a signal in the browser to plot it. Drag a curve
+(or its legend entry) onto another strip to put it there; drag a strip by its y axis to move the
+whole strip to another row. The range on the overview under the strips sets the x range of every
+strip at once. Keys: F fit, A / B put the cursor at the mouse, M marker at the nearest point, Delete
+removes the selected curve, Ctrl+N new strip.
 """
 from __future__ import annotations
 
@@ -20,12 +23,12 @@ from pathlib import Path
 
 os.environ.setdefault("PYQTGRAPH_QT_LIB", "PySide6")
 import numpy as np  # noqa: E402
-from PySide6.QtCore import Qt, Signal  # noqa: E402
-from PySide6.QtGui import QAction, QKeySequence  # noqa: E402
+from PySide6.QtCore import Qt, QTimer, Signal  # noqa: E402
+from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QPixmap  # noqa: E402
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDockWidget, QFileDialog,  # noqa: E402
                                QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QMainWindow,
-                               QMenu, QPushButton, QTableWidget, QTableWidgetItem, QToolBar,
-                               QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+                               QListWidgetItem, QMenu, QPushButton, QTableWidget, QTableWidgetItem, QToolBar,
+                               QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QWidgetAction)
 import pyqtgraph as pg  # noqa: E402
 import pyqtgraph.exporters  # noqa: E402,F401
 
@@ -36,10 +39,40 @@ from . import theme  # noqa: E402
 CANVAS = theme.THEME["canvas"]
 COLORS = ["#4fa3ff", "#ef6b6b", "#4cc38a", "#e8b04b", "#c678dd", "#4dd0c4", "#ff8a80", "#bfff81",
           "#d16ba5", "#d2d46b", "#5fb4ff", "#fdb200", "#9fb7a5", "#ef6158", "#7bd88f", "#b5a642"]
+LEGEND_WIDTH = 170      # px: the legend margin right of each strip
+LEGEND_ROW = 18         # px: one legend entry
+GROUP_LIST_HEIGHT = 320  # px: the most a group's dropdown list shows before it scrolls
+OVERVIEW_HEIGHT = 72    # px: the overview with the global x range, under the strips
 UNITS = {"time": "s", "frequency": "Hz", "voltage": "V", "current": "A", "v-sweep": "V", "i-sweep": "A",
          "temp-sweep": "°C"}
 
 pg.setConfigOptions(antialias=True, background=CANVAS["background"], foreground=CANVAS["text"])
+
+
+def _all_same(waves, tol=1e-3):
+    """Are these waveforms one curve? Each run picks its own time steps, so they are compared on
+    each other's x points: the same x span, and y within tol of the swing everywhere."""
+    def real(w):
+        y = np.asarray(w.y)
+        return np.asarray(w.x, float), (np.abs(y) if np.iscomplexobj(y) else y.astype(float))
+    ax, ay = real(waves[0])
+    if len(ax) < 2:
+        return False
+    span = max(float(np.ptp(ay)), 1e-30)
+    xspan = float(ax[-1] - ax[0]) or 1.0
+    for w in waves[1:]:
+        bx, by = real(w)
+        if len(bx) < 2 or abs(bx[0] - ax[0]) > 1e-9 * abs(xspan) or abs(bx[-1] - ax[-1]) > 1e-9 * abs(xspan):
+            return False
+        if ax[0] > ax[-1]:                                 # np.interp needs increasing x
+            ax2, ay2, bx2, by2 = ax[::-1], ay[::-1], bx[::-1], by[::-1]
+        else:
+            ax2, ay2, bx2, by2 = ax, ay, bx, by
+        if np.max(np.abs(np.interp(bx2, ax2, ay2) - by2)) > tol * span:
+            return False
+        if np.max(np.abs(np.interp(ax2, bx2, by2) - ay2)) > tol * span:
+            return False
+    return True
 
 
 def _unit_of(name, unit_word):
@@ -88,6 +121,7 @@ class Curve:
         self.strip = None
         self.in_legend = True
         self.visible = True
+        self.group = None                 # a net plotted at several points: one legend row for all
 
     def text_at(self, x):
         """The readout text at x: a number, a logic level, or a bus value."""
@@ -118,7 +152,18 @@ class Strip:
         self.curves: list[Curve] = []
         self.xunit = None
         self.xkind = None
-        self.legend = plot.addLegend(offset=(-10, 10), labelTextColor=CANVAS["text"])
+        # the legend sits in a margin right of the data (the right axis, blank, reserves it), never
+        # over the curves; it floats there, so a long one (a sweep's 40 points) never makes the strip
+        # taller - what does not fit is clipped at the strip's bottom
+        self.legend = pg.LegendItem(offset=None, labelTextColor=CANVAS["text"], verSpacing=-4)
+        self.legend.setParentItem(plot)
+        self.legend.anchor(itemPos=(0, 0), parentPos=(1, 0), offset=(-LEGEND_WIDTH + 6, 2))
+        plot.showAxis("right")
+        margin = plot.getAxis("right")
+        margin.setStyle(showValues=False, tickLength=0)
+        margin.setPen(pg.mkPen(0, 0, 0, 0))
+        margin.setWidth(LEGEND_WIDTH)
+        plot.setFlag(plot.GraphicsItemFlag.ItemClipsChildrenToShape)
         plot.showGrid(x=True, y=True, alpha=0.25)
         plot.setClipToView(True)
         # (no automatic downsampling: pyqtgraph sizes it from the initial 0..1 view and loses
@@ -127,16 +172,26 @@ class Strip:
         self.cursors = {}
         self.hcursor = None
         self.fresh = True                 # made by New Strip, nothing plotted on it yet
+        self.groups: dict[str, list] = {}   # group -> its curves (a net across sweep points)
+        self._group_items = {}            # group -> the curve item its legend row shows
 
     @property
     def shown(self):
         """On screen: has a visible curve (or is a new, empty strip)."""
         return not self.curves or any(c.visible for c in self.curves)
 
-    def add(self, x, y, label, unit, xunit, xkind, color=None, style=Qt.SolidLine, symbol=None, legend=True):
+    def add(self, x, y, label, unit, xunit, xkind, color=None, style=Qt.SolidLine, symbol=None, legend=True,
+            group=None):
+        """A curve. With group, it joins the others of that group: one legend row for them all
+        ("Q ▾ 41"), which opens their list."""
+        if group:
+            legend = False
         color = color or COLORS[self.viewer.next_color() % len(COLORS)]
         pen = pg.mkPen(color=color, width=1.6, style=style)
-        item = self.plot.plot(x, y, pen=pen, name=label if legend else None, connect="finite")
+        item = self.plot.plot(x, y, pen=pen, connect="finite")
+        if legend:
+            self.legend.addItem(item, label)
+            self._legend_rows()
         if symbol:
             item.setSymbol(symbol)
             item.setSymbolSize(7)
@@ -147,7 +202,10 @@ class Strip:
         item.curve.setClickable(True, width=6)
         item.sigClicked.connect(lambda *_: self.viewer.select_curve(self, item))
         c = Curve(item, np.asarray(x, float), np.asarray(y, float), label, unit, xunit)
-        c.strip, c.in_legend = self, legend
+        c.strip, c.in_legend, c.group = self, legend, group
+        if group:
+            self.groups.setdefault(group, []).append(c)
+            self._group_entry(group)
         self.curves.append(c)
         self.fresh = False
         if self.xunit is None:
@@ -155,7 +213,36 @@ class Strip:
             self.plot.setLabel("bottom", units=xunit)
         units = {cv.unit for cv in self.curves}
         self.plot.setLabel("left", units=units.pop() if len(units) == 1 else "")
+        self.viewer.schedule_overview()
         return c
+
+    def _group_entry(self, group):
+        """The group's legend row: its first curve's sample and "name ▾ count"."""
+        old = self._group_items.pop(group, None)
+        if old is not None:
+            self.legend.removeItem(old)
+        members = self.groups.get(group) or []
+        if not members:
+            self.groups.pop(group, None)
+            return
+        self.legend.addItem(members[0].item, f"{group}  \u25be {len(members)}")
+        self._group_items[group] = members[0].item
+        self._legend_rows()
+
+    def group_at(self, scene_pos):
+        """The group whose legend row is at a scene point, or None."""
+        for sample, label in self.legend.items:
+            if sample.sceneBoundingRect().contains(scene_pos) or label.sceneBoundingRect().contains(scene_pos):
+                return next((g for g, it in self._group_items.items() if it is sample.item), None)
+        return None
+
+    def _legend_rows(self):
+        """Every legend row at one fixed height: pyqtgraph sizes the legend from its rows' current
+        heights, which its own layout stretches - with many entries (a sweep) that grows without end."""
+        lay = self.legend.layout
+        for r in range(lay.rowCount()):
+            lay.setRowFixedHeight(r, LEGEND_ROW)
+        self.legend.updateSize()
 
     def set_visible(self, curve, on):
         """Show / hide a curve (hidden: off the plot and the legend, kept for showing again)."""
@@ -166,14 +253,20 @@ class Strip:
         if curve.in_legend:
             if on:
                 self.legend.addItem(curve.item, curve.label)
+                self._legend_rows()
             else:
                 self.legend.removeItem(curve.item)
+        self.viewer.schedule_overview()
 
     def remove(self, curve):
         self.plot.removeItem(curve.item)
         self.legend.removeItem(curve.item)
         self.curves.remove(curve)
+        if curve.group in self.groups:
+            self.groups[curve.group] = [c for c in self.groups[curve.group] if c is not curve]
+            self._group_entry(curve.group)
         self.viewer.forget(curve)
+        self.viewer.schedule_overview()
 
     def clear(self):
         for c in list(self.curves):
@@ -181,34 +274,89 @@ class Strip:
         self.xunit = self.xkind = None
 
 
+class StripViewBox(pg.ViewBox):
+    """A strip's view box: Ctrl + left drag draws a zoom box whatever the mouse mode; the box
+    fills the strip exactly, and the strips on the same x axis follow in x."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._box_drag = False
+
+    def mouseDragEvent(self, ev, axis=None):
+        if ev.button() == Qt.LeftButton and axis is None:
+            if ev.isStart():
+                self._box_drag = bool(ev.modifiers() & Qt.ControlModifier)
+            if self._box_drag and self.state["mouseMode"] != self.RectMode:
+                self.state["mouseMode"] = self.RectMode
+                try:
+                    super().mouseDragEvent(ev, axis)
+                finally:
+                    self.state["mouseMode"] = self.PanMode
+                if ev.isFinish():
+                    self._box_drag = False
+                return
+        super().mouseDragEvent(ev, axis)
+
+    def showAxRect(self, ax, **kwargs):
+        kwargs.setdefault("padding", 0)            # a zoom box fills the strip exactly
+        super().showAxRect(ax, **kwargs)
+
+
 class StripArea(pg.GraphicsLayoutWidget):
     """The stack of strips. A curve (or its legend entry) dragged onto another strip moves there -
-    two plots become one; a press anywhere else pans and zooms as usual."""
+    two plots become one; a strip dragged by its y axis moves to another row (above or below the
+    strip it is dropped on); a press anywhere else pans and zooms as usual."""
 
     def __init__(self, viewer):
         super().__init__()
         self.viewer = viewer
         self._drag = None                 # (strip, curve, start position, dragging)
+        self._sdrag = None                # (strip, start position, dragging): a strip by its y axis
+        self.setMouseTracking(True)
 
     def _scene(self, ev):
         return self.mapToScene(ev.position().toPoint())
 
     def mousePressEvent(self, ev):
-        if ev.button() == Qt.LeftButton:
+        if ev.button() == Qt.LeftButton and not ev.modifiers() & Qt.ControlModifier:
+            strip = self.viewer.axis_handle_at(self._scene(ev))
+            if strip is not None:
+                self._sdrag = [strip, ev.position(), False]
+                ev.accept()
+                return
             hit = self.viewer.curve_at(self._scene(ev))
             if hit is not None:
-                self._drag = [hit[0], hit[1], ev.position(), False]
+                group = hit[0].group_at(self._scene(ev))
+                self._drag = [hit[0], hit[1], ev.position(), False, group]
                 ev.accept()
                 return
         super().mousePressEvent(ev)
 
     def mouseMoveEvent(self, ev):
+        if self._sdrag is not None:
+            strip, start, dragging = self._sdrag
+            if not dragging and (ev.position() - start).manhattanLength() > 6:
+                self._sdrag[2] = True
+                self.viewport().setCursor(Qt.ClosedHandCursor)
+                self.viewer.statusBar().showMessage("drop the strip on another one: above its middle goes "
+                                                    "above it, below goes below")
+            if self._sdrag[2]:
+                target = self.viewer.strip_at(self._scene(ev))
+                if target is not None:
+                    self.viewer.set_active(target)
+            ev.accept()
+            return
+        if ev.buttons() == Qt.NoButton and self._drag is None:      # hover: the y axis is a handle
+            if self.viewer.axis_handle_at(self._scene(ev)) is not None:
+                self.viewport().setCursor(Qt.OpenHandCursor)
+            else:
+                self.viewport().unsetCursor()
         if self._drag is not None:
-            strip, curve, start, dragging = self._drag
+            strip, curve, start, dragging, group = self._drag
             if not dragging and (ev.position() - start).manhattanLength() > 6:
                 self._drag[3] = True
                 self.viewport().setCursor(Qt.ClosedHandCursor)
-                self.viewer.statusBar().showMessage(f"drop {curve.label} on another plot to put it there")
+                self.viewer.statusBar().showMessage(f"drop {group or curve.label} on another plot to put it there")
             if self._drag[3]:
                 target = self.viewer.strip_at(self._scene(ev))
                 if target is not None:
@@ -218,13 +366,30 @@ class StripArea(pg.GraphicsLayoutWidget):
         super().mouseMoveEvent(ev)
 
     def mouseReleaseEvent(self, ev):
+        if self._sdrag is not None and ev.button() == Qt.LeftButton:
+            strip, _, dragging = self._sdrag
+            self._sdrag = None
+            self.viewport().unsetCursor()
+            pos = self._scene(ev)
+            target = self.viewer.strip_at(pos)
+            if dragging and target is not None and target is not strip:
+                self.viewer.move_strip(strip, target, after=pos.y() > target.plot.sceneBoundingRect().center().y())
+            else:
+                self.viewer.set_active(strip)
+            ev.accept()
+            return
         if self._drag is not None and ev.button() == Qt.LeftButton:
-            strip, curve, _, dragging = self._drag
+            strip, curve, _, dragging, group = self._drag
             self._drag = None
             self.viewport().unsetCursor()
             target = self.viewer.strip_at(self._scene(ev))
             if dragging and target is not None and target is not strip:
-                self.viewer.move_curve(curve, target)
+                if group:
+                    self.viewer.move_group(strip, group, target)
+                else:
+                    self.viewer.move_curve(curve, target)
+            elif group and not dragging:
+                self.viewer.group_menu(strip, group, ev.globalPosition().toPoint())
             else:
                 self.viewer.select_curve(strip, curve.item)
             ev.accept()
@@ -252,7 +417,14 @@ class Viewer(QMainWindow):
         self._readout_curves = []
         self.layout_widget = StripArea(self)
         self.layout_widget.ci.setSpacing(4)
-        self.setCentralWidget(self.layout_widget)
+        self._build_overview()
+        central = QWidget()
+        cl = QVBoxLayout(central)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(0)
+        cl.addWidget(self.layout_widget, 1)
+        cl.addWidget(self.overview)
+        self.setCentralWidget(central)
         self._build_browser()
         self._build_readout()
         self._build_calculator()
@@ -335,6 +507,89 @@ class Viewer(QMainWindow):
         self.addDockWidget(Qt.BottomDockWidgetArea, dock)
         self.calc_dock = dock
 
+    def _build_overview(self):
+        """The global x range: a thin plot under the strips with a range to drag or resize. It
+        follows the top strip's x axis, and moving it sets every strip on that axis."""
+        self.overview = pg.PlotWidget()
+        self.overview.setFixedHeight(OVERVIEW_HEIGHT)
+        op = self.overview.getPlotItem()
+        op.hideAxis("left")
+        op.setMenuEnabled(False)
+        op.setMouseEnabled(x=False, y=False)
+        op.hideButtons()
+        op.getAxis("bottom").setStyle(showValues=True)
+        self._ov_curve = op.plot([], [], pen=pg.mkPen(color=CANVAS["text"], width=1))
+        self._ov_curve.setOpacity(0.45)
+        accent = pg.mkColor(CANVAS["cursor"])
+        fill = pg.mkColor(accent)
+        fill.setAlpha(45)
+        self.region = pg.LinearRegionItem(brush=pg.mkBrush(fill), pen=pg.mkPen(accent, width=2))
+        self.region.setZValue(10)
+        op.addItem(self.region)
+        self.region.sigRegionChanged.connect(self._region_moved)
+        self._ov_kind = None                # the x axis (kind) the overview follows
+        self._ov_sync = False               # (no feedback while one side sets the other)
+        self._ov_timer = QTimer(self)
+        self._ov_timer.setSingleShot(True)
+        self._ov_timer.timeout.connect(self.refresh_overview)
+
+    def schedule_overview(self):
+        self._ov_timer.start(0)
+
+    def _ov_strips(self):
+        return [s for s in self._packed if s.xkind and s.xkind == self._ov_kind]
+
+    def refresh_overview(self):
+        """The overview's span: all the data on the top strip's x axis, and its range: that axis's view."""
+        main = next((s for s in self._packed if s.xkind and any(c.visible for c in s.curves)), None)
+        op = self.overview.getPlotItem()
+        if main is None:
+            self._ov_kind = None
+            self._ov_curve.setData([], [])
+            self.region.hide()
+            return
+        self._ov_kind = main.xkind
+        logx = main.plot.getViewBox().state["logMode"][0]
+        op.setLogMode(x=logx)
+        xs = [c.x for s in self._ov_strips() for c in s.curves if c.visible and len(c.x)]
+        lo = min(float(np.nanmin(x)) for x in xs)
+        hi = max(float(np.nanmax(x)) for x in xs)
+        if logx:
+            lo, hi = math.log10(max(lo, 1e-300)), math.log10(max(hi, 1e-300))
+        if not hi > lo:
+            hi = lo + 1.0
+        ref = next(c for c in main.curves if c.visible)
+        y = ref.y if ref.lane is None else ref.y - ref.lane
+        self._ov_curve.setData(ref.x, y)
+        op.getAxis("bottom").setLabel(units=main.xunit or "")
+        op.setXRange(lo, hi, padding=0)
+        op.enableAutoRange(axis="y")
+        self.region.setBounds((lo, hi))
+        self.region.show()
+        self._view_changed(main)
+
+    def _region_moved(self):
+        if self._ov_sync:
+            return
+        lo, hi = self.region.getRegion()
+        self._ov_sync = True
+        try:
+            for s in self._ov_strips():
+                s.plot.setXRange(lo, hi, padding=0)
+        finally:
+            self._ov_sync = False
+
+    def _view_changed(self, strip):
+        """A strip was zoomed or panned: the overview's range follows (its axis only)."""
+        if self._ov_sync or strip.xkind != self._ov_kind or self._ov_kind is None:
+            return
+        lo, hi = strip.plot.getViewBox().viewRange()[0]
+        self._ov_sync = True
+        try:
+            self.region.setRegion((lo, hi))
+        finally:
+            self._ov_sync = False
+
     def _act(self, tb, text, slot, key=None, checkable=False, tip=None):
         a = QAction(text, self)
         if key:
@@ -354,7 +609,7 @@ class Viewer(QMainWindow):
         tb.addSeparator()
         self._act(tb, "Fit", self.fit, "F")
         self.zoom_box = self._act(tb, "Zoom Box", self._toggle_zoom_box, checkable=True,
-                                  tip="Left drag draws a zoom box (otherwise it pans)")
+                                  tip="Left drag draws a zoom box (otherwise it pans); Ctrl + drag always does")
         self.logx = self._act(tb, "Log X", lambda on: self._log("x", on), checkable=True)
         self.logy = self._act(tb, "Log Y", lambda on: self._log("y", on), checkable=True)
         tb.addSeparator()
@@ -551,8 +806,12 @@ class Viewer(QMainWindow):
         return self._color - 1
 
     def new_strip(self):
-        plot = self.layout_widget.addPlot(row=len(self._packed), col=0)
+        row = len(self._packed)
+        plot = self.layout_widget.addPlot(row=row, col=0, viewBox=StripViewBox())
+        if self.zoom_box.isChecked():
+            plot.getViewBox().setMouseMode(pg.ViewBox.RectMode)
         strip = Strip(self, plot)
+        plot.getViewBox().sigXRangeChanged.connect(lambda *_: self._view_changed(strip))
         self.strips.append(strip)
         self._packed.append(strip)
         for name, x in self.cursor_x.items():
@@ -617,6 +876,26 @@ class Viewer(QMainWindow):
             self.active = shown[-1] if shown else None
         self.set_active(self.active)
         self._relink()
+        self.schedule_overview()
+
+    def move_strip(self, strip, target, after=False):
+        """Put a strip in another row: just above (or below, with after) `target`."""
+        if strip is target or strip not in self.strips or target not in self.strips:
+            return
+        order = [s for s in self.strips if s is not strip]
+        order.insert(order.index(target) + (1 if after else 0), strip)
+        self.strips = order
+        self._repack()
+        self.set_active(strip)
+        self.statusBar().showMessage("strip moved", 3000)
+
+    def axis_handle_at(self, scene_pos):
+        """The strip whose y axis is at a scene point (the handle to drag a whole strip), or None."""
+        for s in self._packed:
+            ax = s.plot.getAxis("left")        # (its bounding rect spans the plot when the grid is on)
+            if ax.isVisible() and ax.parentItem().mapRectToScene(ax.geometry()).contains(scene_pos):
+                return s
+        return None
 
     def _tidy(self):
         """No empty plots: a strip left without curves goes away (unless it is the only one, or a
@@ -645,7 +924,7 @@ class Viewer(QMainWindow):
         return s
 
     def plot_wave(self, wave: Waveform, label, xkind, unit="", new_strip=False, color=None, style=Qt.SolidLine,
-                  complex_mode=None):
+                  complex_mode=None, group=None):
         """Plot a calculator Waveform (complex: dB magnitude, or phase with complex_mode="phase")."""
         y = wave.y
         if np.iscomplexobj(y):
@@ -657,7 +936,8 @@ class Viewer(QMainWindow):
                 label, unit = f"dB20({label})", "dB"
         xunit = UNITS.get(wave.xname, "s" if wave.xname == "time" else "Hz" if wave.xname == "frequency" else "")
         s = self._target_strip(xkind, new_strip)
-        c = s.add(wave.x, np.asarray(y, float), label, unit, xunit, xkind, color, style)
+        c = s.add(wave.x, np.asarray(y, float), label, unit, xunit, xkind, color, style,
+                  group=f"{group} {'phase' if complex_mode == 'phase' else ''}".strip() if group else None)
         if xkind == "ac" and not s.plot.getViewBox().state["logMode"][0]:
             s.plot.setLogMode(x=True, y=False)
         self._relink()
@@ -667,7 +947,7 @@ class Viewer(QMainWindow):
         self.update_readout()
         return c
 
-    def plot_signal(self, source_index, kind, name, new_strip=False, color=None, label=None):
+    def plot_signal(self, source_index, kind, name, new_strip=False, color=None, label=None, group=None):
         key = (source_index, kind, name)
         if self.keyed.get(key) and not new_strip:      # plotted already: show it again, no second copy
             self.set_signal_visible(key, True)
@@ -676,10 +956,11 @@ class Viewer(QMainWindow):
         w, p = src.wave(kind, name)
         unit = _unit_of(name, p.units[p.index(name)] if p.index(name) is not None else "")
         lab = label or (name if len(self.sources) == 1 else f"{name} [{src.label.split(' / ')[-1]}]")
-        c = self.plot_wave(w, lab, kind, unit, new_strip, color)
+        c = self.plot_wave(w, lab, kind, unit, new_strip, color, group=group)
         made = [c]
         if p.complex and kind == "ac":                 # the phase in a strip below the magnitude
-            made.append(self.plot_wave(w, lab, kind, "°", new_strip=True, color=color, complex_mode="phase"))
+            made.append(self.plot_wave(w, lab, kind, "°", new_strip=True, color=color, complex_mode="phase",
+                                       group=group))
         for m in made:
             m.key = key
             self.keyed.setdefault(key, []).append(m)
@@ -687,22 +968,30 @@ class Viewer(QMainWindow):
         return c
 
     def plot_across(self, history, kind, name, new_strip=True):
-        """The signal at every point of a history, overlaid."""
-        first = True
+        """The signal at every point of a history, overlaid, as one group (one legend row); a signal
+        the same at every point (a clock the sweep does not touch) is plotted once."""
+        found = []
         for i, src in enumerate(self.sources):
             if src.history is None or src.history.path != history.path:
                 continue
             try:
-                self.plot_signal(i, kind, name, new_strip=new_strip and first,
-                                 label=f"{name} {src.label.split(' / ')[-1]}")
-                first = False
+                found.append((i, src, src.wave(kind, name)[0]))
             except (KeyError, StopIteration):
                 continue
+        if not found:
+            return
+        if len(found) > 1 and _all_same([w for _, _, w in found]):
+            i, _, _ = found[0]
+            return self.plot_signal(i, kind, name, new_strip=new_strip,
+                                    label=f"{name} (all {len(found)} points)")
+        for k, (i, src, _) in enumerate(found):
+            self.plot_signal(i, kind, name, new_strip=new_strip and k == 0,
+                             label=f"{name} {src.label.split(' / ')[-1]}", group=name if len(found) > 1 else None)
 
     def plot_output(self, history, output_name, indexes=None, new_strip=True):
         """A OLSim output (a waveform expression) at the given points (default all), overlaid."""
         self.add_history(history)
-        first = True
+        found = []
         for p in history.points:
             if indexes is not None and p["index"] not in indexes:
                 continue
@@ -711,12 +1000,19 @@ class Viewer(QMainWindow):
             except (CalcError, StopIteration, KeyError) as e:
                 self.statusBar().showMessage(f"{output_name} at point {p['index']}: {e}", 8000)
                 continue
-            if not isinstance(w, Waveform):
-                continue
+            if isinstance(w, Waveform):
+                found.append((p, w))
+        if not found:
+            return
+        if len(found) > 1 and _all_same([w for _, w in found]):      # e.g. a clock the sweep does not touch
+            found = found[:1]
+            labels = [f"{output_name} (all {len(history.points)} points)"]
+        else:
+            labels = [f"{output_name} {p['label']}" if len(history.points) > 1 else output_name for p, _ in found]
+        group = output_name if len(found) > 1 else None
+        for k, ((p, w), label) in enumerate(zip(found, labels)):
             kind = "ac" if w.xname == "frequency" else "dc" if w.xname not in ("time", "frequency") else "tran"
-            self.plot_wave(w, f"{output_name} {p['label']}" if len(history.points) > 1 else output_name,
-                           kind, _unit_of(w.name, ""), new_strip=new_strip and first)
-            first = False
+            self.plot_wave(w, label, kind, _unit_of(w.name, ""), new_strip=new_strip and k == 0, group=group)
 
     def plot_xy(self, x, y, label, xname, xunit="", unit="", new_strip=False):
         """A parametric curve - a scalar output against a swept variable - with point markers."""
@@ -887,6 +1183,7 @@ class Viewer(QMainWindow):
     def fit(self):
         for s in self._packed:
             s.plot.enableAutoRange()
+        self.schedule_overview()
 
     def _toggle_zoom_box(self, on):
         for s in self.strips:
@@ -895,10 +1192,13 @@ class Viewer(QMainWindow):
     def _log(self, axis, on):
         if self.active:
             self.active.plot.setLogMode(**{axis: on})
+            self.schedule_overview()
 
     # ---- moving curves between strips -----------------------------------------------------------
     def strip_at(self, scene_pos):
-        return next((s for s in self._packed if s.plot.sceneBoundingRect().contains(scene_pos)), None)
+        """The strip at a scene point: its plot or its legend."""
+        return next((s for s in self._packed if s.plot.sceneBoundingRect().contains(scene_pos)
+                     or s.legend.sceneBoundingRect().contains(scene_pos)), None)
 
     def curve_at(self, scene_pos, tolerance=7.0):
         """(strip, curve) of the visible curve within `tolerance` pixels of a scene point, or of the
@@ -951,7 +1251,7 @@ class Viewer(QMainWindow):
         key, visible = curve.key, curve.visible
         src.remove(curve)                                  # (drops it from the signal map)
         new = target.add(curve.x, curve.y, curve.label, curve.unit, curve.xunit, src.xkind,
-                         pen.color().name(), pen.style(), legend=curve.in_legend)
+                         pen.color().name(), pen.style(), legend=curve.in_legend, group=curve.group)
         if key is not None:
             new.key = key
             self.keyed.setdefault(key, []).append(new)
@@ -966,6 +1266,69 @@ class Viewer(QMainWindow):
         self.update_readout()
         self.statusBar().showMessage(f"{curve.label} moved", 4000)
         return new
+
+    def move_group(self, strip, group, target):
+        """All the curves of a group (a net across sweep points) to another strip."""
+        moved = [self.move_curve(c, target) for c in list(strip.groups.get(group, []))]
+        return [m for m in moved if m is not None]
+
+    def group_menu(self, strip, group, global_pos=None, show=True):
+        """The dropdown of a group's legend row: every point of the net, its colour and a tick to
+        show or hide it, in a list that scrolls when it is long. Returns the list (for tests)."""
+        menu = QMenu(self)
+        menu.addSection(f"{group}: {len(strip.groups.get(group, []))} curves")
+        lst = QListWidget(menu)
+        lst.setMouseTracking(True)
+        members = list(strip.groups.get(group, []))
+        prefix = f"{group} "
+        for c in members:
+            pix = QPixmap(14, 14)
+            pix.fill(QColor(c.item.opts["pen"].color()))
+            it = QListWidgetItem(QIcon(pix), c.label[len(prefix):] if c.label.startswith(prefix) else c.label)
+            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+            it.setCheckState(Qt.Checked if c.visible else Qt.Unchecked)
+            lst.addItem(it)
+        rows = lst.sizeHintForRow(0) if members else LEGEND_ROW
+        lst.setFixedHeight(min(GROUP_LIST_HEIGHT, rows * len(members) + 6))
+        lst.setMinimumWidth(max(220, lst.sizeHintForColumn(0) + 40))
+
+        def changed(it):
+            c = members[lst.row(it)]
+            on = it.checkState() == Qt.Checked
+            if not on and c.visible and sum(cv.visible for cv in strip.curves) == 1:
+                lst.blockSignals(True)                    # the last curve of the strip stays
+                it.setCheckState(Qt.Checked)
+                lst.blockSignals(False)
+                self.statusBar().showMessage("the strip's last curve stays shown", 4000)
+                return
+            self.set_curve_visible(c, on)
+
+        def highlight(it):
+            for k, c in enumerate(members):
+                c.item.setPen(pg.mkPen(color=c.item.opts["pen"].color(), width=3.2 if lst.item(k) is it else 1.6))
+
+        def unhighlight():
+            for c in members:
+                c.item.setPen(pg.mkPen(color=c.item.opts["pen"].color(), width=1.6))
+        lst.itemChanged.connect(changed)
+        lst.itemEntered.connect(highlight)
+        menu.aboutToHide.connect(unhighlight)
+        wa = QWidgetAction(menu)
+        wa.setDefaultWidget(lst)
+        menu.addAction(wa)
+        menu.addSeparator()
+
+        def set_all(on):
+            for k in range(lst.count()):
+                if not on and k == 0:
+                    continue                              # one stays, so the strip does not fold away
+                lst.item(k).setCheckState(Qt.Checked if on else Qt.Unchecked)
+        menu.addAction("Show All", lambda: set_all(True))
+        menu.addAction("Show Only the First", lambda: (set_all(True), set_all(False)))
+        self._group_list = lst
+        if show:
+            menu.popup(global_pos if global_pos is not None else self.cursor().pos())
+        return lst
 
     def select_curve(self, strip, item):
         if self.selected:
