@@ -88,6 +88,11 @@
   drawn metal (OL.PIN), are reported. Batch: `pin_place.place_pins_file(gds, ["BL", "WL"], ...)`.
 
 ### Verification
+- **LVS of layout variants**: a layout cell named `<cell>__<tag>` (e.g. `REGx2__B`, a copy whose M4
+  sits 12 nm lower so that rows mirrored on a 270 nm pitch keep M4 on the 48 nm tracks) is compared
+  as the schematic's `<cell>`. The variant and its `<cell>` are flattened on both sides, so the
+  variant's own devices and wiring are checked (a schematic circuit pairs with one layout circuit
+  only). Layouts without such cells compare as before.
 - **PEX no longer hangs on large windows**: with its automatic two-level preconditioner (`-ap`),
   FasterCap's GMRES solve stopped converging on the large conductors of some windows (6 of the 12
   kinds in a 4 x 8 array of 2-bit SRAM cells: residual 0.3-2.7 after 1000 iterations), and its

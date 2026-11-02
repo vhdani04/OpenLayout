@@ -219,6 +219,16 @@ end
 schematic.purge
 schematic.combine_devices
 same_circuits(source.cell_name, top_name) if top_ref
+# Layout variants: a cell "<cell>__<tag>" is <cell> drawn another way (e.g. a row whose M4 sits on the
+# other track offset). The variant and its <cell> are flattened on both sides, so the variant's own
+# devices and wiring are what is compared (a schematic circuit pairs with one layout circuit only).
+variants = netlist.each_circuit.map(&:name).grep(/__[A-Za-z0-9]+\z/)
+(variants + variants.map { |n| n.sub(/__[A-Za-z0-9]+\z/, "") }).uniq.each do |n|
+  [[netlist, n], [ref, n.upcase]].each do |nl, cn|
+    c = nl.circuit_by_name(cn)
+    nl.flatten_circuit(c) if c
+  end
+end
 # Placed library standard cells are compared as black boxes (pins only, the usual black box for a
 # verified library) - unless -rd stdcells=check compares their transistors too. (Nine library cells
 # order series transistors differently from their CDL, which a strict topological compare reports.)
