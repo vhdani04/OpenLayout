@@ -413,11 +413,12 @@ def windowed_capacitance(conds, plate, window, dbu, tech, work, substrate_net, g
         return key, res, len(names), time.time() - t
 
     nsolve = len(pending)
+    workers = max(1, min(jobs, nsolve))     # never more solves at once than there are windows
     if pending:
-        log(f"    {nsolve} kinds of window to solve, {max(1, jobs)} at a time")
+        log(f"    {nsolve} kind{'s' if nsolve != 1 else ''} of window to solve, {workers} at a time")
     from concurrent.futures import ThreadPoolExecutor, as_completed
     ts = time.time()
-    with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:     # FasterCap runs as its own process
+    with ThreadPoolExecutor(max_workers=workers) as pool:     # FasterCap runs as its own process
         futures = [pool.submit(solve, item) for item in enumerate(pending.items())]
         for done, f in enumerate(as_completed(futures), 1):
             key, res, nc, dt = f.result()
