@@ -324,6 +324,18 @@ PEX_INV = (".subckt inv Z A VSS VDD\nN1 Z A_1 VSS VSS nmos_rvt l=20n nfin=2\nN2 
            "R1 A A_1 30\nC1 Z VSS 0.1f\n.ends\n")
 
 
+def test_netlist_continuation_lines():
+    """A statement wrapped over "+" lines (xschem wraps a long instance line) is one statement, and
+    an X instance's cell is found after the continuation."""
+    from openlayout.olsim.config import Netlist
+    text = "\n".join(["* tb", "x1 A[7] A[6] A[5] A[4]", "+ LD CLK O1 O0 piso", "C1 O1 VSS 0.5f",
+                      ".subckt piso a7 a6 a5 a4 ld clk o1 o0", ".ends"])
+    n = Netlist(text)
+    x = [s for s in n.top if s.cell]
+    assert len(x) == 1 and x[0].inst == "x1" and x[0].cell == "piso" and len(x[0].lines) == 2
+    assert [n.path for n in n.tree()] == ["x1"]
+
+
 def test_config_bind(tmp_path):
     """The config view's bindings: per cell, per instance (bound copies of the cells above it),
     a default; PEX pins matched by name, global supplies dropped from them."""

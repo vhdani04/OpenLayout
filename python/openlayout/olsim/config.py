@@ -164,7 +164,7 @@ class Netlist:
         stmts = []
         for line in text.splitlines():
             if line.lstrip().startswith("+") and stmts:
-                stmts[-1].lines.append(line)
+                stmts[-1].append(line)
             else:
                 stmts.append([line])
         self.items, self.subckts, self.globals = [], {}, {"0"}

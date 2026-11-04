@@ -136,6 +136,9 @@
   used to fail inside the comparison). The hub shows why a DRC / LVS / PEX run failed.
 
 ### Simulation (OLSim)
+- **Testbenches with wrapped lines**: a statement continued on a `+` line (xschem wraps a long
+  instance line - e.g. a cell with 22 pins) stopped every run at once with
+  `'list' object has no attribute 'lines'`. Continuations now join their statement.
 - **Waveform viewer: arranging and zooming**
   - Drag a strip by its y axis to move the whole strip to another row (above or below the strip
     it is dropped on); dragging a curve still merges it into the strip it lands on.
